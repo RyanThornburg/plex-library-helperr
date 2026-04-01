@@ -1,0 +1,16 @@
+[project]
+name = "plex-library-helperr"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "arrapi>=1.4.14",
+    "plexapi>=4.18.1",
+    "rich>=14.3.3",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]

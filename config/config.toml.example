@@ -1,0 +1,72 @@
+[settings]
+dry_run = true  # for testing, will not actually move/change/delete any files
+
+# Filter time formats are: d | h | m
+#   #d for # days (ex: 6d would be 6 days)
+#   commented out filter_time if you do not want a filter
+filter_time = "7d"
+
+#############################################################
+# PLEX
+#############################################################
+[plex]
+baseurl = 
+token = 
+
+#############################################################
+# RADARR
+#############################################################
+[radarr]
+baseurl = 
+apikey = 
+
+# documentary
+[[radarr.movers]]
+path = '/movies/movies-documentary'
+plex_library = 'Documentary'
+genres = ['documentary']
+genre_match = 'any'
+exclude_genres = ['comedy', 'action', 'drama']
+exclude_paths = ['/movies/movies-kids']
+
+# g rated disney
+[[radarr.movers]]
+plex_library = 'Kids Movies'
+path = '/movies/movies-kids'
+genres = ['family']
+genre_match = 'any'
+certifications = ['G']
+studios = ['Walt Disney Pictures']
+
+# profiler
+[[radarr.profilers]]
+profile = 'NoDownload'
+titles = ['Melania']
+monitored = false
+
+#############################################################
+# SONARR
+#############################################################
+[sonarr]
+baseurl = 
+apikey =
+
+# move based on family + animation - any rating
+[[sonarr.movers]]
+plex_library = 'Kids TV Shows'
+path = '/tv/tv-kids'
+genres = ['family', 'animation']
+genre_match = 'all'
+certifications = ['G', 'TV-Y7']
+
+# kids networks
+[[sonarr.movers]]
+plex_library = 'Kids TV Shows'
+path = '/tv/tv-kids'
+networks = [
+    "Playhouse Disney",
+    "Disney Channel",
+    "Toon Disney",
+    "Nickelodeon",
+    "Nick Jr.",
+]
