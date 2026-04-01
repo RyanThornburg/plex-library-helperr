@@ -29,7 +29,7 @@ uv run main.py
 ```
 
 1. Before running copy `config.toml.example` to `config.toml`.
-    - If you run `main.py` before doing this, it will create `config.toml` for you.
+    - If you run `main.py` before doing this, it will create `config.toml` from `config.toml.example`.
 1. Edit `config.toml` with your Radarr/Sonarr URL and API key
 
 `config.toml.example` has examples for movers and profiles. You should delete or modify those before running on your library.
@@ -79,7 +79,7 @@ Moves movies matching the rule to the specified root folder. Multiple rules are 
 
 ### `[[radarr.profilers]]`/`[[sonarr.profilers]]`
 
-Assigns a quality profile to movies matched by title or studio.
+Assigns a quality profile to movies matched by title or studio/network.
 
 | Key           | Description                                                               |
 |-----          |-------------                                                              |
