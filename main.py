@@ -90,9 +90,9 @@ def get_matches_based_on_mover_rules(
 
     if not filtered_media:
         logger.info(
-            "%s\t No media to check not in %s",
+            "%s\t No media to check for mover: %s",
             log_name,
-            mover.path,
+            mover,
         )
         return []
 
@@ -246,7 +246,9 @@ def main() -> None:
 
         if settings.filter_time:
             logger.info("%s\t Filtering media...", log_name)
-            filter_time = datetime.now(timezone.utc) - settings.filter_time
+            filter_time = (
+                datetime.now(timezone.utc).replace(tzinfo=None) - settings.filter_time
+            )
             media = [m for m in media if m.added >= filter_time]
             logger.info("%s\t Total Files: %s", log_name, len(media))
 
