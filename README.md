@@ -11,7 +11,7 @@ I used **Movers** for moving files to different library. I use **Profilers** pri
 - **Dry run mode**  -  preview what would change without touching anything
 - **Time filter**  -  only evaluate media added within a recent window
 - **Movers**  -  moves movies (radarr)/series (sonarr) to a different root folder based on genre, studio, network, certification, or a combination
-- **Profilers**  -  assigns a quality profile to movies/series matched by title or studio
+- **Profilers**  -  assigns a quality profile to movies/series matched by title or studio/network
 
 ## Requirements
 

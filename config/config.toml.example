@@ -1,10 +1,10 @@
 [settings]
-dry_run = true  # for testing, will not actually move/change/delete any files
+dry_run = true  # for testing, true will not actually move/change/delete any files. Set to false when finished testing.
 
 # Filter time formats are: d | h | m
 #   #d for # days (ex: 6d would be 6 days)
 #   commented out filter_time if you do not want a filter
-filter_time = "7d"
+filter_time = "1d"
 
 #############################################################
 # PLEX
