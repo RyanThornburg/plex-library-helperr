@@ -10,15 +10,15 @@ filter_time = "1d"
 # PLEX
 #############################################################
 [plex]
-baseurl = 
-token = 
+baseurl = ''
+token = ''
 
 #############################################################
 # RADARR
 #############################################################
 [radarr]
-baseurl = 
-apikey = 
+baseurl = ''
+apikey = ''
 
 # documentary
 [[radarr.movers]]
@@ -48,8 +48,8 @@ monitored = false
 # SONARR
 #############################################################
 [sonarr]
-baseurl = 
-apikey =
+baseurl = ''
+apikey = ''
 
 # move based on family + animation - any rating
 [[sonarr.movers]]
