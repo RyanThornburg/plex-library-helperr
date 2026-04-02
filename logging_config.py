@@ -12,7 +12,7 @@ LOGGING_CONFIG: dict[str, Any] = {
     "formatters": {
         "rich": {"format": "%(message)s"},
         "default": {
-            "format": "%(levelname)s %(asctime)s [%(filename)s:%(funcName)s:%(lineno)d] %(message)s"
+            "format": "%(levelname)s %(asctime)s [%(filename)s:%(lineno)d]\t %(message)s"
         },
     },
     "handlers": {
