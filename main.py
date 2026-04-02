@@ -193,7 +193,7 @@ def get_media_matching_profile_rules(
     networks_set = {s.casefold() for s in profile.networks}
 
     logger.info(
-        "%s\t Checking %s files for profiler: [blue]%s[/blue]",
+        "%s\t Checking %s files for profiler: %s",
         log_name,
         len(filtered_media),
         profile.profile,
@@ -235,7 +235,7 @@ def main() -> None:
 
     for arr_config, api_cls, all_fn, edit_fn, log_name in arr_dispatch:
         logger.info("-" * 90)
-        logger.info("[yellow bold]STARTING %s[/yellow bold]", log_name)
+        logger.info("STARTING %s", log_name)
         if arr_config is None or not arr_config.apikey or not arr_config.baseurl:
             logger.warning("%s not configured. Skipping...", log_name)
             continue
@@ -275,12 +275,10 @@ def main() -> None:
                             ids=media_ids, root_folder=mover.path, move_files=True
                         )
                     else:
-                        logger.info(
-                            "%s\t [red]DRY RUN[/red] - not actually moving", log_name
-                        )
+                        logger.info("%s\t DRY RUN - not actually moving", log_name)
                 else:
                     logger.info(
-                        "%s\t [sandy_brown]No media found matching rule[/sandy_brown]",
+                        "%s\t No media found matching rule",
                         log_name,
                     )
 
@@ -304,12 +302,10 @@ def main() -> None:
                             monitored=p.monitored,
                         )
                     else:
-                        logger.info(
-                            "%s\t [red]DRY RUN[/red] - not actually moving", log_name
-                        )
+                        logger.info("%s\t DRY RUN - not actually moving", log_name)
                 else:
                     logger.info(
-                        "%s\t [sandy_brown]No matches found for profiler[/sandy_brown]",
+                        "%s\t No matches found for profiler",
                         log_name,
                     )
 

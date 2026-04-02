@@ -25,7 +25,7 @@ def refresh_plex_libraries(plex_config: PlexConfig | None, plex_libraries: set[s
 
     # update libraries
     for library in plex_libraries:
-        logger.info("PLEX Updating library: [blue]%s[/blue]", library)
+        logger.info("PLEX Updating library: %s", library)
         try:
             plex.library.section(library).update()  # type: ignore[reportUnknownMemberType]
         except plexapi_exceptions.NotFound:
