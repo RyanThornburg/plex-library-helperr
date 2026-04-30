@@ -272,7 +272,14 @@ def main() -> None:
                         if mover.plex_library:
                             plex_libraries.add(mover.plex_library)
                         getattr(arr, edit_fn)(
-                            ids=media_ids, root_folder=mover.path, move_files=True
+                            ids=media_ids,
+                            root_folder=mover.path,
+                            move_files=True,
+                            **(
+                                {"tags": arr_config.tag, "apply_tags": "add"}
+                                if arr_config.tag
+                                else {}
+                            ),
                         )
                     else:
                         logger.info("%s\t DRY RUN - not actually moving", log_name)

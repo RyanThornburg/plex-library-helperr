@@ -38,6 +38,7 @@ def _build_arr_config(data: dict[str, Any], dry_run: bool) -> ArrConfig:
         dry_run=data.get("dry_run", dry_run),
         movers=[MoverRule(**g) for g in data.get("movers", [])],
         profilers=[ProfileRule(**p) for p in data.get("profilers", [])],
+        tag=data.get("tag"),
     )
 
 

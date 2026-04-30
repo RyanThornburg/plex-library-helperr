@@ -55,7 +55,8 @@ uv run main.py
 | Key       | Description                                                           |
 |-----      |-------------                                                          |
 | `baseurl` | URL to your Radarr/Sonarr instance (e.g. `http://192.168.1.1:7878/`)  |
-| `apikey`  | Your API key                                                   |
+| `apikey`  | Your API key                                                          |
+| `tag`     | Adds a tag identifing any files moved by this script                  |
 
 ### `[[radarr.movers]]`/`[[sonarr.movers]]`
 

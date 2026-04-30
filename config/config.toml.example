@@ -19,6 +19,7 @@ token = ''
 [radarr]
 baseurl = ''
 apikey = ''
+tag = 'helperr'
 
 # documentary
 [[radarr.movers]]
@@ -50,6 +51,7 @@ monitored = false
 [sonarr]
 baseurl = ''
 apikey = ''
+tag = 'helperr'
 
 # move based on family + animation - any rating
 [[sonarr.movers]]

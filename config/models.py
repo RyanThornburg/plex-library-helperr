@@ -132,6 +132,7 @@ class ArrConfig:
 
     baseurl: str | None
     apikey: str | None
+    tag: str | None
     movers: list[MoverRule] = field(default_factory=list[MoverRule])
     profilers: list[ProfileRule] = field(default_factory=list[ProfileRule])
     dry_run: bool = False
@@ -145,6 +146,7 @@ class ArrConfig:
             ("movers", self.movers or None),
             ("profilers", self.profilers or None),
             ("dry_run", self.dry_run),
+            ("tag", self.tag or None),
         ]
         return f"ArrConfig({','.join(f'{k}={v}' for k, v in fields if v is not None)})"
 
