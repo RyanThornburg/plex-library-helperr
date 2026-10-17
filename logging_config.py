@@ -20,7 +20,7 @@ LOGGING_CONFIG: dict[str, Any] = {
             "class": "rich.logging.RichHandler",
             "level": "INFO",
             "formatter": "rich",
-            "markup": True,
+            "markup": False,
             "rich_tracebacks": True,
         },
         "logfile": {
