@@ -4,7 +4,8 @@ from datetime import timedelta
 
 import pytest
 
-from config import parse_duration
+import config
+from config import _build_arr_config, parse_duration
 from config.models import MoverRule, ProfileRule
 
 
@@ -37,6 +38,9 @@ class TestParseDuration:
 
     def test_invalid_format_returns_none(self):
         assert parse_duration("abc") is None
+
+    def test_non_string_returns_none(self):
+        assert parse_duration(7) is None
 
     def test_whitespace_is_stripped(self):
         assert parse_duration(" 5d ") == timedelta(days=5)
@@ -91,3 +95,73 @@ class TestProfileRuleValidation:
 
     def test_studios_only_does_not_raise(self):
         ProfileRule(profile="HD-1080p", studios=["A24"])
+
+
+# ---------------------------------------------------------------------------
+# arr-specific field validation
+# ---------------------------------------------------------------------------
+
+
+class TestArrFieldValidation:
+    def test_networks_on_radarr_mover_raises(self):
+        data = {"movers": [{"path": "/movies/kids", "networks": ["HBO"]}]}
+        with pytest.raises(ValueError, match=r"radarr\.movers\]\] #1: 'networks'"):
+            _build_arr_config(data, False, "radarr")
+
+    def test_studios_on_sonarr_profiler_raises(self):
+        data = {"profilers": [{"profile": "HD", "studios": ["A24"]}]}
+        with pytest.raises(ValueError, match=r"sonarr\.profilers\]\] #1: 'studios'"):
+            _build_arr_config(data, False, "sonarr")
+
+    def test_reports_correct_rule_number(self):
+        data = {
+            "movers": [
+                {"path": "/tv/kids", "genres": ["family"]},
+                {"path": "/tv/kids", "studios": ["Pixar"]},
+            ]
+        }
+        with pytest.raises(ValueError, match="#2"):
+            _build_arr_config(data, False, "sonarr")
+
+    def test_supported_fields_do_not_raise(self):
+        _build_arr_config(
+            {"movers": [{"path": "/movies/kids", "studios": ["Pixar"]}]},
+            False,
+            "radarr",
+        )
+        _build_arr_config(
+            {"movers": [{"path": "/tv/kids", "networks": ["HBO"]}]}, False, "sonarr"
+        )
+
+
+# ---------------------------------------------------------------------------
+# plex config
+# ---------------------------------------------------------------------------
+
+
+class TestPlexConfig:
+    def _load(self, tmp_path, monkeypatch, plex_toml: str):
+        (tmp_path / "config.toml").write_text(plex_toml)
+        monkeypatch.setattr(config, "__file__", str(tmp_path / "__init__.py"))
+        return config.load_config()
+
+    def test_empty_plex_values_is_none(self, tmp_path, monkeypatch):
+        settings = self._load(
+            tmp_path, monkeypatch, "[plex]\nbaseurl = ''\ntoken = ''\n"
+        )
+        assert settings.plex is None
+
+    def test_missing_token_is_none(self, tmp_path, monkeypatch):
+        settings = self._load(
+            tmp_path, monkeypatch, "[plex]\nbaseurl = 'http://plex:32400'\n"
+        )
+        assert settings.plex is None
+
+    def test_configured_plex(self, tmp_path, monkeypatch):
+        settings = self._load(
+            tmp_path,
+            monkeypatch,
+            "[plex]\nbaseurl = 'http://plex:32400'\ntoken = 'abc'\n",
+        )
+        assert settings.plex is not None
+        assert settings.plex.baseurl == "http://plex:32400"

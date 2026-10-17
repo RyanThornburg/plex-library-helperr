@@ -12,13 +12,45 @@ from config.models import ArrConfig, ConfigSettings, MoverRule, PlexConfig, Prof
 
 logger = logging.getLogger(__name__)
 
+# fields only available on one arr type, keyed by the arr that does NOT support it
+UNSUPPORTED_FIELDS: dict[str, str] = {"radarr": "networks", "sonarr": "studios"}
 
-def parse_duration(value: str) -> timedelta | None:
+
+def _validate_rules(
+    rules: list[MoverRule] | list[ProfileRule], arr_name: str, rule_type: str
+) -> None:
+    unsupported = UNSUPPORTED_FIELDS[arr_name]
+    for i, rule in enumerate(rules, start=1):
+        if getattr(rule, unsupported):
+            raise ValueError(
+                f"[[{arr_name}.{rule_type}]] #{i}: '{unsupported}' is not supported for {arr_name}"
+            )
+
+
+def _build_arr_config(data: dict[str, Any], dry_run: bool, arr_name: str) -> ArrConfig:
+    movers = [MoverRule(**g) for g in data.get("movers", [])]
+    profilers = [ProfileRule(**p) for p in data.get("profilers", [])]
+    _validate_rules(movers, arr_name, "movers")
+    _validate_rules(profilers, arr_name, "profilers")
+
+    return ArrConfig(
+        baseurl=data.get("baseurl"),
+        apikey=data.get("apikey"),
+        dry_run=data.get("dry_run", dry_run),
+        movers=movers,
+        profilers=profilers,
+        tag=data.get("tag"),
+    )
+
+
+def parse_duration(value: object) -> timedelta | None:
     """parses duration or returns None on error/missing"""
-    if not value:
+    if value is None or value == "":
         return None
 
-    match = re.fullmatch(r"(\d+)([dhm])", value.strip())
+    match = (
+        re.fullmatch(r"(\d+)([dhm])", value.strip()) if isinstance(value, str) else None
+    )
     if not match:
         logger.warning("Invalid time filter. Not filtering by time")
         return None
@@ -29,17 +61,6 @@ def parse_duration(value: str) -> timedelta | None:
         "h": timedelta(hours=duration),
         "m": timedelta(minutes=duration),
     }[unit]
-
-
-def _build_arr_config(data: dict[str, Any], dry_run: bool) -> ArrConfig:
-    return ArrConfig(
-        baseurl=data.get("baseurl"),
-        apikey=data.get("apikey"),
-        dry_run=data.get("dry_run", dry_run),
-        movers=[MoverRule(**g) for g in data.get("movers", [])],
-        profilers=[ProfileRule(**p) for p in data.get("profilers", [])],
-        tag=data.get("tag"),
-    )
 
 
 def load_config() -> ConfigSettings:
@@ -65,12 +86,18 @@ def load_config() -> ConfigSettings:
         filter_time: timedelta | None = parse_duration(
             raw_settings.get("filter_time", None)
         )
-    plex = PlexConfig(
-        baseurl=plex_config.get("baseurl"), token=plex_config.get("token")
+    plex = (
+        PlexConfig(baseurl=plex_config["baseurl"], token=plex_config["token"])
+        if plex_config.get("baseurl") and plex_config.get("token")
+        else None
     )
 
-    radarr = _build_arr_config(radarr_config, dry_run) if radarr_config else None
-    sonarr = _build_arr_config(sonarr_config, dry_run) if sonarr_config else None
+    radarr = (
+        _build_arr_config(radarr_config, dry_run, "radarr") if radarr_config else None
+    )
+    sonarr = (
+        _build_arr_config(sonarr_config, dry_run, "sonarr") if sonarr_config else None
+    )
 
     return ConfigSettings(
         plex=plex,
