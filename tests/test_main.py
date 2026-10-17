@@ -5,8 +5,15 @@ from unittest.mock import MagicMock, patch
 from arrapi import ConnectionFailure
 
 import main
-from config.models import ArrConfig, ConfigSettings, MoverRule, ProfileRule
+from config.models import (
+    ArrConfig,
+    AutoscanConfig,
+    ConfigSettings,
+    MoverRule,
+    ProfileRule,
+)
 from main import (
+    get_moved_dirs,
     get_matches_based_on_mover_rules,
     get_media_matching_profile_rules,
     is_path_valid,
@@ -561,10 +568,14 @@ def make_arr(media, root_paths):
     arr.all_movies.return_value = media
     arr.root_folder.return_value = [make_root_folder(p) for p in root_paths]
     arr.quality_profile.return_value = []
+    arr.edit_multiple_movies.return_value = ([], [])
     return arr
 
 
 class TestRunArr:
+    def setup_method(self):
+        self.scan_dirs: set[str] = set()
+
     def _run(self, arr, arr_config):
         main.run_arr(
             arr_config,
@@ -574,6 +585,7 @@ class TestRunArr:
             "RADARR",
             None,
             set(),
+            self.scan_dirs,
         )
 
     def test_first_matching_mover_wins(self):
@@ -611,6 +623,42 @@ class TestRunArr:
         assert arr.edit_multiple_movies.call_args.kwargs["ids"] == [kids]
 
 
+    def test_moved_folders_added_to_scan_dirs(self):
+        movie = make_movie(
+            id=1,
+            genres=["Documentary"],
+            path="/data/media/movies/movies/Free Solo (2018)",
+        )
+        arr = make_arr([movie], ["/data/media/movies/docs"])
+        updated = make_movie(id=1, path="/data/media/movies/docs/Free Solo (2018)")
+        arr.edit_multiple_movies.return_value = ([updated], [])
+        arr_config = ArrConfig(
+            baseurl="http://radarr",
+            apikey="key",
+            tag=None,
+            movers=[MoverRule(path="/data/media/movies/docs", genres=["documentary"])],
+        )
+        self._run(arr, arr_config)
+        assert self.scan_dirs == {
+            "/data/media/movies/movies/Free Solo (2018)",
+            "/data/media/movies/docs/Free Solo (2018)",
+        }
+
+    def test_dry_run_adds_no_scan_dirs(self):
+        movie = make_movie(genres=["Documentary"])
+        arr = make_arr([movie], ["/movies/docs"])
+        arr_config = ArrConfig(
+            baseurl="http://radarr",
+            apikey="key",
+            tag=None,
+            dry_run=True,
+            movers=[MoverRule(path="/movies/docs", genres=["documentary"])],
+        )
+        self._run(arr, arr_config)
+        arr.edit_multiple_movies.assert_not_called()
+        assert self.scan_dirs == set()
+
+
 class TestMainErrorHandling:
     def test_arr_failure_does_not_stop_other_arrs(self):
         arr_config = ArrConfig(baseurl="http://arr", apikey="key", tag=None)
@@ -624,3 +672,55 @@ class TestMainErrorHandling:
         ):
             main.main()
         assert run_arr.call_count == 2
+
+class TestGetMovedDirs:
+    def test_uses_updated_path_from_arr(self):
+        old = make_series(id=5, path="/data/media/tv/tv/Bluey (2018)")
+        new = make_series(id=5, path="/data/media/tv/tv-kids/Bluey")
+        assert get_moved_dirs([old], [new], "/data/media/tv/tv-kids") == {
+            "/data/media/tv/tv/Bluey (2018)",
+            "/data/media/tv/tv-kids/Bluey",
+        }
+
+    def test_falls_back_to_target_plus_folder_name(self):
+        old = make_series(id=5, path="/data/media/tv/tv/Bluey (2018)")
+        assert get_moved_dirs([old], [], "/data/media/tv/tv-kids") == {
+            "/data/media/tv/tv/Bluey (2018)",
+            "/data/media/tv/tv-kids/Bluey (2018)",
+        }
+
+
+class TestMainScanDispatch:
+    def _main(self, settings, scan_dirs, plex_libraries):
+        def fake_run_arr(*args):
+            args[-2].update(plex_libraries)
+            args[-1].update(scan_dirs)
+
+        with (
+            patch.object(main.config, "load_config", return_value=settings),
+            patch.object(main.logging.config, "dictConfig"),
+            patch.object(main, "run_arr", side_effect=fake_run_arr),
+            patch.object(main, "trigger_autoscan") as autoscan,
+            patch.object(main, "refresh_plex_libraries") as plex,
+        ):
+            main.main()
+        return autoscan, plex
+
+    def _settings(self, autoscan):
+        arr_config = ArrConfig(baseurl="http://arr", apikey="key", tag=None)
+        return ConfigSettings(
+            plex=None, radarr=arr_config, sonarr=None, autoscan=autoscan
+        )
+
+    def test_autoscan_used_instead_of_plex_when_configured(self):
+        autoscan_config = AutoscanConfig(url="http://autoscan:3030")
+        autoscan, plex = self._main(
+            self._settings(autoscan_config), {"/a", "/b"}, {"Movies"}
+        )
+        autoscan.assert_called_once_with(autoscan_config, {"/a", "/b"})
+        plex.assert_not_called()
+
+    def test_plex_refresh_when_autoscan_not_configured(self):
+        autoscan, plex = self._main(self._settings(None), {"/a"}, {"Movies"})
+        autoscan.assert_not_called()
+        plex.assert_called_once()

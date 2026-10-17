@@ -14,6 +14,18 @@ baseurl = ''
 token = ''
 
 #############################################################
+# AUTOSCAN (optional)
+#   When url is set, moved folders (old and new location) are sent to
+#   Autoscan's manual trigger instead of refreshing whole Plex libraries.
+#   Paths are sent as Radarr/Sonarr see them; use a rewrite on the
+#   Autoscan Plex target if Plex sees different paths.
+#############################################################
+[autoscan]
+url = ''
+username = ''
+password = ''
+
+#############################################################
 # RADARR
 #############################################################
 [radarr]

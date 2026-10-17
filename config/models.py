@@ -127,6 +127,23 @@ class PlexConfig:
 
 
 @dataclass
+class AutoscanConfig:
+    """Autoscan manual trigger for scanning moved folders"""
+
+    url: str
+    username: str | None = None
+    password: str | None = None
+
+    def __repr__(self):
+        fields: list[tuple[str, str | None]] = [
+            ("url", self.url),
+            ("username", self.username or None),
+            ("password", len(self.password) * "*" if self.password else None),
+        ]
+        return f"AutoscanConfig({','.join(f'{k}={v}' for k, v in fields if v is not None)})"
+
+
+@dataclass
 class ArrConfig:
     """shared arr config"""
 
@@ -159,6 +176,7 @@ class ConfigSettings:
     radarr: ArrConfig | None
     sonarr: ArrConfig | None
     filter_time: timedelta | None = None
+    autoscan: AutoscanConfig | None = None
 
     def __repr__(self):
-        return f"ConfigSettings(filter_time={self.filter_time}, plex={self.plex}, sonarr={self.sonarr}, radarr={self.radarr})"
+        return f"ConfigSettings(filter_time={self.filter_time}, plex={self.plex}, autoscan={self.autoscan}, sonarr={self.sonarr}, radarr={self.radarr})"

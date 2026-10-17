@@ -18,6 +18,7 @@ from arrapi import (
 )
 
 import config
+from autoscan import trigger_autoscan
 from config.models import ArrConfig, MoverRule, PlexConfig, ProfileRule
 from logging_config import LOGGING_CONFIG
 from plex import refresh_plex_libraries
@@ -56,6 +57,23 @@ def filter_media(media: list[Movie | Series], mover: MoverRule) -> list[Movie | 
             filtered_media.append(m)
 
     return filtered_media
+
+
+def get_moved_dirs(
+    matches: list[Movie | Series],
+    updated: list[Movie | Series],
+    target: str,
+) -> set[str]:
+    """old and new folders for moved media, to scan both source and target libraries"""
+    new_paths = {u.id: u.path for u in updated}
+    dirs: set[str] = set()
+    for m in matches:
+        dirs.add(m.path)
+        # arr returns the updated path, fall back to target root + current folder name
+        dirs.add(
+            new_paths.get(m.id) or str(PurePosixPath(target) / PurePosixPath(m.path).name)
+        )
+    return dirs
 
 
 def get_matches_based_on_mover_rules(
@@ -209,8 +227,13 @@ def run_arr(
     log_name: str,
     filter_time: timedelta | None,
     plex_libraries: set[str],
+    scan_dirs: set[str],
 ) -> None:
     """Run movers and profilers against a single radarr/sonarr instance"""
+    if not arr_config.apikey or not arr_config.baseurl:
+        logger.warning("%s not configured. Skipping...", log_name)
+        return
+
     arr = api_cls(arr_config.baseurl, arr_config.apikey)
     logger.info("%s\t Reading all media...", log_name)
     media: list[Movie | Series] = getattr(arr, all_fn)()
@@ -245,7 +268,7 @@ def run_arr(
                 if not arr_config.dry_run:
                     if mover.plex_library:
                         plex_libraries.add(mover.plex_library)
-                    getattr(arr, edit_fn)(
+                    updated, _ = getattr(arr, edit_fn)(
                         ids=matches,
                         root_folder=mover.path,
                         move_files=True,
@@ -255,6 +278,7 @@ def run_arr(
                             else {}
                         ),
                     )
+                    scan_dirs.update(get_moved_dirs(matches, updated, mover.path))
                 else:
                     logger.info("%s\t DRY RUN - not actually moving", log_name)
             else:
@@ -300,6 +324,7 @@ def main() -> None:
     logger.info(settings)
 
     plex_libraries: set[str] = set()
+    scan_dirs: set[str] = set()
 
     arr_dispatch: list[
         tuple[ArrConfig | None, type[RadarrAPI | SonarrAPI], str, str, str]
@@ -311,7 +336,7 @@ def main() -> None:
     for arr_config, api_cls, all_fn, edit_fn, log_name in arr_dispatch:
         logger.info("-" * 90)
         logger.info("STARTING %s", log_name)
-        if arr_config is None or not arr_config.apikey or not arr_config.baseurl:
+        if arr_config is None:
             logger.warning("%s not configured. Skipping...", log_name)
             continue
         try:
@@ -323,13 +348,18 @@ def main() -> None:
                 log_name,
                 settings.filter_time,
                 plex_libraries,
+                scan_dirs,
             )
         except ArrException:
             logger.exception("%s\t Failed, skipping remaining rules", log_name)
 
     logger.info("-" * 90)
-    # CALL PLEX
-    if plex_libraries:
+    # SCAN MOVED FOLDERS
+    if settings.autoscan:
+        if scan_dirs:
+            trigger_autoscan(settings.autoscan, scan_dirs)
+            logger.info("-" * 90)
+    elif plex_libraries:
         plex_config: PlexConfig | None = settings.plex
         refresh_plex_libraries(
             plex_config,

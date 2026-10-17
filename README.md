@@ -50,6 +50,28 @@ uv run main.py
 | `baseurl` | URL to your Plex instance (e.g. `http://192.168.1.1:32400/`)  |
 | `token`   | Plex token                                                    |
 
+### `[autoscan]` (optional)
+
+When `url` is set, each moved title's old and new folder is sent to [Autoscan](https://github.com/Cloudbox/autoscan)'s manual trigger instead of refreshing whole Plex libraries. Autoscan's `minimum-age` gives Radarr/Sonarr time to finish moving files, and scanning the old folder removes stale entries from the source library.
+
+| Key        | Description                                                  |
+|-----       |-------------                                                 |
+| `url`      | URL to your Autoscan instance (e.g. `http://192.168.1.1:3030`) |
+| `username` | Autoscan basic auth username (optional)                      |
+| `password` | Autoscan basic auth password (optional)                      |
+
+Paths are sent as Radarr/Sonarr see them, the same as Autoscan's own Sonarr/Radarr triggers. If Plex uses different paths, the rewrite on your Autoscan Plex target handles it (no manual trigger rewrite needed):
+
+```yaml
+targets:
+  plex:
+    - url: http://192.168.1.1:32400
+      token: xxxxx
+      rewrite:
+        - from: /data/media/
+          to: /mnt/nfs/
+```
+
 ### `[radarr]`/`[sonarr]`
 
 | Key       | Description                                                           |
@@ -64,7 +86,7 @@ Moves movies matching the rule to the specified root folder. Multiple rules are 
 
 | Key                      | Description                                                              |
 |-----                     |-------------                                                             |
-| `plex_library`           | Plex library to refresh (if plex config setup)                           |
+| `plex_library`           | Plex library to refresh (if plex config setup and autoscan is not)       |
 | `path`                   | Root folder path to move matched movies into                             |
 | `genres`                 | List of genres to match                                                  |
 | `genre_match`            | `"any"` (at least one genre matches) or `"all"` (every genre must match) |

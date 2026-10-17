@@ -8,7 +8,14 @@ import tomllib
 from datetime import timedelta
 from typing import Any
 
-from config.models import ArrConfig, ConfigSettings, MoverRule, PlexConfig, ProfileRule
+from config.models import (
+    ArrConfig,
+    AutoscanConfig,
+    ConfigSettings,
+    MoverRule,
+    PlexConfig,
+    ProfileRule,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +87,7 @@ def load_config() -> ConfigSettings:
         data = tomllib.load(f)
         raw_settings = data.get("settings", {})
         plex_config = data.get("plex", {})
+        autoscan_config = data.get("autoscan", {})
         radarr_config = data.get("radarr", {})
         sonarr_config = data.get("sonarr", {})
         dry_run: bool = raw_settings.get("dry_run", False)
@@ -89,6 +97,15 @@ def load_config() -> ConfigSettings:
     plex = (
         PlexConfig(baseurl=plex_config["baseurl"], token=plex_config["token"])
         if plex_config.get("baseurl") and plex_config.get("token")
+        else None
+    )
+    autoscan = (
+        AutoscanConfig(
+            url=autoscan_config["url"],
+            username=autoscan_config.get("username") or None,
+            password=autoscan_config.get("password") or None,
+        )
+        if autoscan_config.get("url")
         else None
     )
 
@@ -104,4 +121,5 @@ def load_config() -> ConfigSettings:
         radarr=radarr,
         sonarr=sonarr,
         filter_time=filter_time,
+        autoscan=autoscan,
     )
