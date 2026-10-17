@@ -60,7 +60,7 @@ uv run main.py
 
 ### `[[radarr.movers]]`/`[[sonarr.movers]]`
 
-Moves movies matching the rule to the specified root folder. Multiple rules are supported. At least one of `genres`, `tags`, `studios`, `networks`, or `certifications` is required.
+Moves movies matching the rule to the specified root folder. Multiple rules are supported and are checked in order. If media matches more than one rule, the first matching rule wins. At least one of `genres`, `tags`, `studios`, `networks`, or `certifications` is required.
 
 | Key                      | Description                                                              |
 |-----                     |-------------                                                             |
@@ -104,7 +104,6 @@ uv run pytest tests/ -v
 
 ## TODO
 
-- [ ] Validation against movies that match more than one mover rule
 - [ ] Command-line argument support
 - [ ] could improve some of the looping / set checks
 

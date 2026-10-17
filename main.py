@@ -3,11 +3,12 @@ Helper script for organizing sonarr/radarr libraries with plex
 """
 
 import logging.config
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import PurePosixPath
 from typing import Callable, Iterable
 
 from arrapi import (
+    ArrException,
     Movie,
     QualityProfile,
     RadarrAPI,
@@ -57,28 +58,14 @@ def filter_media(media: list[Movie | Series], mover: MoverRule) -> list[Movie | 
     return filtered_media
 
 
-def get_media_id(media: Movie | Series, requester: str) -> int | str:
-    """return the id of the media"""
-    if requester.lower() == "sonarr":
-        return media.tvdbId if media.tvdbId else media.id
-
-    if media.tmdbId:
-        return media.tmdbId
-
-    if media.imdbId:
-        return media.imdbId
-
-    return media.id
-
-
 def get_matches_based_on_mover_rules(
     mover: MoverRule,
     media: list[Movie | Series],
     root_folders: list[RootFolder],
     log_name: str,
-) -> list[int | str]:
+) -> list[Movie | Series]:
     """Check genres with conditional inputs to move to different library"""
-    media_ids: list[int | str] = []
+    matches: list[Movie | Series] = []
 
     # validation
     if not is_path_valid(mover.path, root_folders):
@@ -110,7 +97,6 @@ def get_matches_based_on_mover_rules(
     exclude_tags_set = {e.casefold() for e in mover.exclude_tags}
 
     for fm in filtered_media:
-        fm_id = get_media_id(fm, log_name)
         media_genres = {g.casefold() for g in fm.genres}
         media_tags = {t.label.casefold() for t in fm.tags}
 
@@ -160,9 +146,9 @@ def get_matches_based_on_mover_rules(
             continue
 
         logger.info("%s\t Adding %s to mover list", log_name, fm.title)
-        media_ids.append(fm_id)
+        matches.append(fm)
 
-    return media_ids
+    return matches
 
 
 def get_media_matching_profile_rules(
@@ -170,9 +156,9 @@ def get_media_matching_profile_rules(
     media: list[Movie | Series],
     quality_profiles: list[QualityProfile],
     log_name: str,
-) -> list[int | str]:
+) -> list[Movie | Series]:
     """Check media titles/studios/network and update profile"""
-    media_ids: list[int | str] = []
+    matches: list[Movie | Series] = []
 
     # validation
     if not is_profile_valid(profile.profile, quality_profiles):
@@ -199,7 +185,6 @@ def get_media_matching_profile_rules(
         profile.profile,
     )
     for fm in filtered_media:
-        fm_id = get_media_id(fm, log_name)
 
         studio_match = bool(
             studios_set and fm.studio and fm.studio.casefold() in studios_set
@@ -211,9 +196,99 @@ def get_media_matching_profile_rules(
 
         if title_match or studio_match or network_match:
             logger.info("%s\t Adding %s to profiler list", log_name, fm.title)
-            media_ids.append(fm_id)
+            matches.append(fm)
 
-    return media_ids
+    return matches
+
+
+def run_arr(
+    arr_config: ArrConfig,
+    api_cls: type[RadarrAPI | SonarrAPI],
+    all_fn: str,
+    edit_fn: str,
+    log_name: str,
+    filter_time: timedelta | None,
+    plex_libraries: set[str],
+) -> None:
+    """Run movers and profilers against a single radarr/sonarr instance"""
+    arr = api_cls(arr_config.baseurl, arr_config.apikey)
+    logger.info("%s\t Reading all media...", log_name)
+    media: list[Movie | Series] = getattr(arr, all_fn)()
+    logger.info("%s\t Total Files: %s", log_name, len(media))
+
+    if filter_time:
+        logger.info("%s\t Filtering media...", log_name)
+        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - filter_time
+        media = [m for m in media if m.added >= cutoff]
+        logger.info("%s\t Total Files: %s", log_name, len(media))
+
+    root_folders: list[RootFolder] = arr.root_folder()
+    quality_profiles: list[QualityProfile] = arr.quality_profile()
+
+    if arr_config.movers:
+        logger.info("%s\t Mover checks starting", log_name)
+        # first matching mover wins, later movers skip already matched media
+        claimed_ids: set[int] = set()
+        for mover in arr_config.movers:
+            unclaimed = [m for m in media if m.id not in claimed_ids]
+            matches = get_matches_based_on_mover_rules(
+                mover, unclaimed, root_folders, log_name
+            )
+            if matches:
+                claimed_ids.update(m.id for m in matches)
+                logger.info(
+                    "%s\t Moving %s files to root: %s",
+                    log_name,
+                    len(matches),
+                    mover.path,
+                )
+                if not arr_config.dry_run:
+                    if mover.plex_library:
+                        plex_libraries.add(mover.plex_library)
+                    getattr(arr, edit_fn)(
+                        ids=matches,
+                        root_folder=mover.path,
+                        move_files=True,
+                        **(
+                            {"tags": arr_config.tag, "apply_tags": "add"}
+                            if arr_config.tag
+                            else {}
+                        ),
+                    )
+                else:
+                    logger.info("%s\t DRY RUN - not actually moving", log_name)
+            else:
+                logger.info(
+                    "%s\t No media found matching rule",
+                    log_name,
+                )
+
+    if arr_config.profilers:
+        logger.info("%s\t Profilers starting", log_name)
+        for p in arr_config.profilers:
+            matches = get_media_matching_profile_rules(
+                p, media, quality_profiles, log_name
+            )
+            if matches:
+                logger.info(
+                    "%s\t Updating %s media profiles to %s",
+                    log_name,
+                    len(matches),
+                    p.profile,
+                )
+                if not arr_config.dry_run:
+                    getattr(arr, edit_fn)(
+                        ids=matches,
+                        quality_profile=p.profile,
+                        monitored=p.monitored,
+                    )
+                else:
+                    logger.info("%s\t DRY RUN - not actually updating", log_name)
+            else:
+                logger.info(
+                    "%s\t No matches found for profiler",
+                    log_name,
+                )
 
 
 def main() -> None:
@@ -239,82 +314,18 @@ def main() -> None:
         if arr_config is None or not arr_config.apikey or not arr_config.baseurl:
             logger.warning("%s not configured. Skipping...", log_name)
             continue
-        arr = api_cls(arr_config.baseurl, arr_config.apikey)
-        logger.info("%s\t Reading all media...", log_name)
-        media: list[Movie | Series] = getattr(arr, all_fn)()
-        logger.info("%s\t Total Files: %s", log_name, len(media))
-
-        if settings.filter_time:
-            logger.info("%s\t Filtering media...", log_name)
-            filter_time = (
-                datetime.now(timezone.utc).replace(tzinfo=None) - settings.filter_time
+        try:
+            run_arr(
+                arr_config,
+                api_cls,
+                all_fn,
+                edit_fn,
+                log_name,
+                settings.filter_time,
+                plex_libraries,
             )
-            media = [m for m in media if m.added >= filter_time]
-            logger.info("%s\t Total Files: %s", log_name, len(media))
-
-        root_folders: list[RootFolder] = arr.root_folder()
-        quality_profiles: list[QualityProfile] = arr.quality_profile()
-
-        if arr_config.movers:
-            logger.info("%s\t Mover checks starting", log_name)
-            for mover in arr_config.movers:
-                media_ids = get_matches_based_on_mover_rules(
-                    mover, media, root_folders, log_name
-                )
-                if media_ids:
-                    logger.info(
-                        "%s\t Moving %s files to root: %s",
-                        log_name,
-                        len(media_ids),
-                        mover.path,
-                    )
-                    if not arr_config.dry_run:
-                        if mover.plex_library:
-                            plex_libraries.add(mover.plex_library)
-                        getattr(arr, edit_fn)(
-                            ids=media_ids,
-                            root_folder=mover.path,
-                            move_files=True,
-                            **(
-                                {"tags": arr_config.tag, "apply_tags": "add"}
-                                if arr_config.tag
-                                else {}
-                            ),
-                        )
-                    else:
-                        logger.info("%s\t DRY RUN - not actually moving", log_name)
-                else:
-                    logger.info(
-                        "%s\t No media found matching rule",
-                        log_name,
-                    )
-
-        if arr_config.profilers:
-            logger.info("%s\t Profilers starting", log_name)
-            for p in arr_config.profilers:
-                media_ids = get_media_matching_profile_rules(
-                    p, media, quality_profiles, log_name
-                )
-                if media_ids:
-                    logger.info(
-                        "%s\t Updating %s media profiles to %s",
-                        log_name,
-                        len(media_ids),
-                        p.profile,
-                    )
-                    if not arr_config.dry_run:
-                        getattr(arr, edit_fn)(
-                            ids=media_ids,
-                            quality_profile=p.profile,
-                            monitored=p.monitored,
-                        )
-                    else:
-                        logger.info("%s\t DRY RUN - not actually moving", log_name)
-                else:
-                    logger.info(
-                        "%s\t No matches found for profiler",
-                        log_name,
-                    )
+        except ArrException:
+            logger.exception("%s\t Failed, skipping remaining rules", log_name)
 
     logger.info("-" * 90)
     # CALL PLEX

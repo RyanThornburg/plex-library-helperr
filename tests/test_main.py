@@ -1,11 +1,13 @@
 """Tests for main.py"""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
-from config.models import MoverRule, ProfileRule
+from arrapi import ConnectionFailure
+
+import main
+from config.models import ArrConfig, ConfigSettings, MoverRule, ProfileRule
 from main import (
     get_matches_based_on_mover_rules,
-    get_media_id,
     get_media_matching_profile_rules,
     is_path_valid,
     is_profile_valid,
@@ -75,42 +77,6 @@ def make_movie(**kwargs) -> MagicMock:
     m.studio = kwargs.get("studio", "Universal Pictures")
     m.qualityProfile = make_quality_profile(kwargs.get("quality_profile", "HD-1080p"))
     return m
-
-
-# ---------------------------------------------------------------------------
-# get_media_id
-# ---------------------------------------------------------------------------
-
-
-def make_media(tvdb_id=None, tmdb_id=None, imdb_id=None, media_id=1):
-    m = MagicMock()
-    m.id = media_id
-    m.tvdbId = tvdb_id
-    m.tmdbId = tmdb_id
-    m.imdbId = imdb_id
-    return m
-
-
-class TestGetMediaId:
-    def test_sonarr_returns_tvdb_id(self):
-        media = make_media(tvdb_id=76320)
-        assert get_media_id(media, "sonarr") == 76320
-
-    def test_sonarr_falls_back_to_id_when_no_tvdb(self):
-        media = make_media(tvdb_id=None, media_id=738)
-        assert get_media_id(media, "SONARR") == 738
-
-    def test_radarr_returns_tmdb_id(self):
-        media = make_media(tmdb_id=329, media_id=485)
-        assert get_media_id(media, "radarr") == 329
-
-    def test_radarr_falls_back_to_imdb_when_no_tmdb(self):
-        media = make_media(tmdb_id=None, imdb_id="tt0107290", media_id=485)
-        assert get_media_id(media, "RADARR") == "tt0107290"
-
-    def test_radarr_falls_back_to_id_when_no_tmdb_or_imdb(self):
-        media = make_media(tmdb_id=None, imdb_id=None, media_id=485)
-        assert get_media_id(media, "radarr") == 485
 
 
 # ---------------------------------------------------------------------------
@@ -197,7 +163,7 @@ class TestMoverRulesSonarr:
         result = get_matches_based_on_mover_rules(
             mover, [series], self._root_folders(), self.LOG
         )
-        assert result == [series.tvdbId]
+        assert result == [series]
 
     def test_genre_match_all_returns_tvdb_id_when_all_present(self):
         mover = MoverRule(
@@ -209,7 +175,7 @@ class TestMoverRulesSonarr:
         result = get_matches_based_on_mover_rules(
             mover, [series], self._root_folders(), self.LOG
         )
-        assert result == [series.tvdbId]
+        assert result == [series]
 
     def test_genre_match_all_returns_empty_when_not_all_present(self):
         mover = MoverRule(
@@ -229,7 +195,7 @@ class TestMoverRulesSonarr:
         result = get_matches_based_on_mover_rules(
             mover, [series], self._root_folders(), self.LOG
         )
-        assert result == [series.tvdbId]
+        assert result == [series]
 
     def test_network_no_match_returns_empty(self):
         mover = MoverRule(path=self.TARGET, networks=["HBO"])
@@ -245,7 +211,7 @@ class TestMoverRulesSonarr:
         result = get_matches_based_on_mover_rules(
             mover, [series], self._root_folders(), self.LOG
         )
-        assert result == [series.tvdbId]
+        assert result == [series]
 
     def test_certification_match_returns_tvdb_id(self):
         mover = MoverRule(path=self.TARGET, certifications=["TV-Y7"])
@@ -253,7 +219,7 @@ class TestMoverRulesSonarr:
         result = get_matches_based_on_mover_rules(
             mover, [series], self._root_folders(), self.LOG
         )
-        assert result == [series.tvdbId]
+        assert result == [series]
 
     def test_certification_no_match_returns_empty(self):
         mover = MoverRule(path=self.TARGET, certifications=["TV-MA"])
@@ -305,7 +271,7 @@ class TestMoverRulesSonarr:
         result = get_matches_based_on_mover_rules(
             mover, [series], self._root_folders(), self.LOG
         )
-        assert result == [series.tvdbId]
+        assert result == [series]
 
     def test_tag_match_all_returns_tvdb_id_when_all_present(self):
         mover = MoverRule(
@@ -315,7 +281,7 @@ class TestMoverRulesSonarr:
         result = get_matches_based_on_mover_rules(
             mover, [series], self._root_folders(), self.LOG
         )
-        assert result == [series.tvdbId]
+        assert result == [series]
 
     def test_tag_match_all_returns_empty_when_not_all_present(self):
         mover = MoverRule(
@@ -336,7 +302,7 @@ class TestMoverRulesSonarr:
         result = get_matches_based_on_mover_rules(
             mover, [jl, non_animated], self._root_folders(), self.LOG
         )
-        assert result == [jl.tvdbId]
+        assert result == [jl]
 
     def test_empty_media_list_returns_empty(self):
         mover = MoverRule(path=self.TARGET, genres=["Animation"])
@@ -366,7 +332,7 @@ class TestMoverRulesRadarr:
         result = get_matches_based_on_mover_rules(
             mover, [movie], self._root_folders(), self.LOG
         )
-        assert result == [movie.id]
+        assert result == [movie]
 
     def test_studio_match_returns_movie_id(self):
         mover = MoverRule(path=self.TARGET, studios=["Universal Pictures"])
@@ -374,7 +340,7 @@ class TestMoverRulesRadarr:
         result = get_matches_based_on_mover_rules(
             mover, [movie], self._root_folders(), self.LOG
         )
-        assert result == [movie.id]
+        assert result == [movie]
 
     def test_studio_no_match_returns_empty(self):
         mover = MoverRule(path=self.TARGET, studios=["Warner Bros"])
@@ -390,7 +356,7 @@ class TestMoverRulesRadarr:
         result = get_matches_based_on_mover_rules(
             mover, [movie], self._root_folders(), self.LOG
         )
-        assert result == [movie.id]
+        assert result == [movie]
 
     def test_certification_match_returns_movie_id(self):
         mover = MoverRule(path=self.TARGET, certifications=["PG"])
@@ -398,16 +364,7 @@ class TestMoverRulesRadarr:
         result = get_matches_based_on_mover_rules(
             mover, [movie], self._root_folders(), self.LOG
         )
-        assert result == [movie.id]
-
-    def test_radarr_uses_movie_id_not_tvdb(self):
-        """RADARR log_name means we always use fm.id, not tvdbId."""
-        mover = MoverRule(path=self.TARGET, genres=["Action"])
-        movie = make_movie(id=485, tvdbId=None)
-        result = get_matches_based_on_mover_rules(
-            mover, [movie], self._root_folders(), self.LOG
-        )
-        assert result == [485]
+        assert result == [movie]
 
     def test_media_already_in_target_is_skipped(self):
         mover = MoverRule(path=self.TARGET, genres=["Action"])
@@ -453,7 +410,7 @@ class TestProfileRulesSonarr:
         result = get_media_matching_profile_rules(
             rule, [series], self._quality_profiles(), self.LOG
         )
-        assert result == [series.tvdbId]
+        assert result == [series]
 
     def test_title_match_returns_tvdb_id(self):
         rule = ProfileRule(profile=self.PROFILE, titles=["Justice League"])
@@ -461,7 +418,7 @@ class TestProfileRulesSonarr:
         result = get_media_matching_profile_rules(
             rule, [series], self._quality_profiles(), self.LOG
         )
-        assert result == [series.tvdbId]
+        assert result == [series]
 
     def test_title_match_is_case_insensitive(self):
         rule = ProfileRule(profile=self.PROFILE, titles=["justice league"])
@@ -469,7 +426,7 @@ class TestProfileRulesSonarr:
         result = get_media_matching_profile_rules(
             rule, [series], self._quality_profiles(), self.LOG
         )
-        assert result == [series.tvdbId]
+        assert result == [series]
 
     def test_no_match_returns_empty(self):
         rule = ProfileRule(profile=self.PROFILE, networks=["HBO"])
@@ -493,7 +450,7 @@ class TestProfileRulesSonarr:
         result = get_media_matching_profile_rules(
             rule, [jl, other], self._quality_profiles(), self.LOG
         )
-        assert result == [jl.tvdbId]
+        assert result == [jl]
 
 
 class TestProfileRulesRadarr:
@@ -509,7 +466,7 @@ class TestProfileRulesRadarr:
         result = get_media_matching_profile_rules(
             rule, [movie], self._quality_profiles(), self.LOG
         )
-        assert result == [movie.id]
+        assert result == [movie]
 
     def test_studio_match_is_case_insensitive(self):
         rule = ProfileRule(profile=self.PROFILE, studios=["universal pictures"])
@@ -517,7 +474,7 @@ class TestProfileRulesRadarr:
         result = get_media_matching_profile_rules(
             rule, [movie], self._quality_profiles(), self.LOG
         )
-        assert result == [movie.id]
+        assert result == [movie]
 
     def test_title_match_returns_movie_id(self):
         rule = ProfileRule(profile=self.PROFILE, titles=["Jurassic Park"])
@@ -525,15 +482,7 @@ class TestProfileRulesRadarr:
         result = get_media_matching_profile_rules(
             rule, [movie], self._quality_profiles(), self.LOG
         )
-        assert result == [movie.id]
-
-    def test_radarr_uses_movie_id(self):
-        rule = ProfileRule(profile=self.PROFILE, titles=["Jurassic Park"])
-        movie = make_movie(id=485, tvdbId=None)
-        result = get_media_matching_profile_rules(
-            rule, [movie], self._quality_profiles(), self.LOG
-        )
-        assert result == [485]
+        assert result == [movie]
 
     def test_or_logic_title_match_overrides_missing_studio(self):
         """A title match alone is sufficient even when studio does not match."""
@@ -546,7 +495,7 @@ class TestProfileRulesRadarr:
         result = get_media_matching_profile_rules(
             rule, [movie], self._quality_profiles(), self.LOG
         )
-        assert result == [movie.id]
+        assert result == [movie]
 
     def test_empty_media_list_returns_empty(self):
         rule = ProfileRule(profile=self.PROFILE, titles=["Jurassic Park"])
@@ -571,7 +520,7 @@ class TestProfileRulesSonarrExtended:
         result = get_media_matching_profile_rules(
             rule, [series], self._quality_profiles(), self.LOG
         )
-        assert result == [series.tvdbId]
+        assert result == [series]
 
     def test_studio_match_returns_tvdb_id(self):
         rule = ProfileRule(profile=self.PROFILE, studios=["Warner Bros"])
@@ -579,7 +528,7 @@ class TestProfileRulesSonarrExtended:
         result = get_media_matching_profile_rules(
             rule, [series], self._quality_profiles(), self.LOG
         )
-        assert result == [series.tvdbId]
+        assert result == [series]
 
     def test_or_logic_network_match_overrides_missing_title(self):
         """A network match alone is sufficient even when title does not match."""
@@ -592,7 +541,7 @@ class TestProfileRulesSonarrExtended:
         result = get_media_matching_profile_rules(
             rule, [series], self._quality_profiles(), self.LOG
         )
-        assert result == [series.tvdbId]
+        assert result == [series]
 
     def test_empty_media_list_returns_empty(self):
         rule = ProfileRule(profile=self.PROFILE, networks=["Cartoon Network"])
@@ -600,3 +549,78 @@ class TestProfileRulesSonarrExtended:
             rule, [], self._quality_profiles(), self.LOG
         )
         assert result == []
+
+
+# ---------------------------------------------------------------------------
+# run_arr / main
+# ---------------------------------------------------------------------------
+
+
+def make_arr(media, root_paths):
+    arr = MagicMock()
+    arr.all_movies.return_value = media
+    arr.root_folder.return_value = [make_root_folder(p) for p in root_paths]
+    arr.quality_profile.return_value = []
+    return arr
+
+
+class TestRunArr:
+    def _run(self, arr, arr_config):
+        main.run_arr(
+            arr_config,
+            MagicMock(return_value=arr),
+            "all_movies",
+            "edit_multiple_movies",
+            "RADARR",
+            None,
+            set(),
+        )
+
+    def test_first_matching_mover_wins(self):
+        movie = make_movie(genres=["Documentary", "Family"])
+        arr = make_arr([movie], ["/movies/docs", "/movies/kids"])
+        arr_config = ArrConfig(
+            baseurl="http://radarr",
+            apikey="key",
+            tag=None,
+            movers=[
+                MoverRule(path="/movies/docs", genres=["documentary"]),
+                MoverRule(path="/movies/kids", genres=["family"]),
+            ],
+        )
+        self._run(arr, arr_config)
+        arr.edit_multiple_movies.assert_called_once_with(
+            ids=[movie], root_folder="/movies/docs", move_files=True
+        )
+
+    def test_unclaimed_media_still_matches_later_mover(self):
+        doc = make_movie(id=1, genres=["Documentary"])
+        kids = make_movie(id=2, genres=["Family"])
+        arr = make_arr([doc, kids], ["/movies/docs", "/movies/kids"])
+        arr_config = ArrConfig(
+            baseurl="http://radarr",
+            apikey="key",
+            tag=None,
+            movers=[
+                MoverRule(path="/movies/docs", genres=["documentary"]),
+                MoverRule(path="/movies/kids", genres=["family"]),
+            ],
+        )
+        self._run(arr, arr_config)
+        assert arr.edit_multiple_movies.call_count == 2
+        assert arr.edit_multiple_movies.call_args.kwargs["ids"] == [kids]
+
+
+class TestMainErrorHandling:
+    def test_arr_failure_does_not_stop_other_arrs(self):
+        arr_config = ArrConfig(baseurl="http://arr", apikey="key", tag=None)
+        settings = ConfigSettings(plex=None, radarr=arr_config, sonarr=arr_config)
+        with (
+            patch.object(main.config, "load_config", return_value=settings),
+            patch.object(main.logging.config, "dictConfig"),
+            patch.object(
+                main, "run_arr", side_effect=[ConnectionFailure("down"), None]
+            ) as run_arr,
+        ):
+            main.main()
+        assert run_arr.call_count == 2
