@@ -29,9 +29,37 @@ class TestTriggerAutoscan:
             )
         assert post.call_args.kwargs["auth"] == ("u", "p")
 
-    def test_request_error_is_logged_not_raised(self, caplog):
+    def test_http_error_logs_status_without_traceback(self, caplog):
         response = MagicMock()
-        response.raise_for_status.side_effect = requests.exceptions.HTTPError("401")
+        response.status_code = 401
+        response.raise_for_status.side_effect = requests.exceptions.HTTPError(
+            response=response
+        )
         with patch("autoscan.requests.post", return_value=response):
             trigger_autoscan(AutoscanConfig(url="http://autoscan:3030"), {"/a"})
-        assert "Failed to trigger scan" in caplog.text
+        assert (
+            "Failed to trigger scan: HTTP 401 (http://autoscan:3030/triggers/manual)"
+            " - check autoscan username/password"
+            in caplog.text
+        )
+        assert "Traceback" not in caplog.text
+
+    def test_connection_error_logs_short_message(self, caplog):
+        with patch(
+            "autoscan.requests.post",
+            side_effect=requests.exceptions.ConnectionError("long urllib3 message"),
+        ):
+            trigger_autoscan(AutoscanConfig(url="http://localhost:3030"), {"/a"})
+        assert (
+            "Failed to trigger scan: could not connect (http://localhost:3030/triggers/manual)"
+            in caplog.text
+        )
+        assert "long urllib3 message" not in caplog.text
+
+    def test_timeout_logs_short_message(self, caplog):
+        with patch(
+            "autoscan.requests.post",
+            side_effect=requests.exceptions.ConnectTimeout(),
+        ):
+            trigger_autoscan(AutoscanConfig(url="http://autoscan:3030"), {"/a"})
+        assert "Failed to trigger scan: timed out" in caplog.text

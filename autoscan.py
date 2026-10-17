@@ -29,5 +29,15 @@ def trigger_autoscan(autoscan_config: AutoscanConfig, scan_dirs: set[str]) -> No
             timeout=30,
         )
         response.raise_for_status()
-    except requests.exceptions.RequestException:
-        logger.exception("AUTOSCAN Failed to trigger scan")
+    except requests.exceptions.HTTPError as e:
+        status = e.response.status_code if e.response is not None else "error"
+        hint = " - check autoscan username/password" if status == 401 else ""
+        logger.error(
+            "AUTOSCAN Failed to trigger scan: HTTP %s (%s)%s", status, url, hint
+        )
+    except requests.exceptions.Timeout:
+        logger.error("AUTOSCAN Failed to trigger scan: timed out (%s)", url)
+    except requests.exceptions.ConnectionError:
+        logger.error("AUTOSCAN Failed to trigger scan: could not connect (%s)", url)
+    except requests.exceptions.RequestException as e:
+        logger.error("AUTOSCAN Failed to trigger scan: %s (%s)", e, url)
