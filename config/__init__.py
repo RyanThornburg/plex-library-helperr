@@ -200,3 +200,23 @@ def load_config() -> ConfigSettings:
         tautulli=tautulli,
         empty_trash=empty_trash,
     )
+
+
+def force_dry_run(settings: ConfigSettings) -> None:
+    """turn on every dry_run, for runs the user asked to be dry. a new dry_run setting
+    must be added here (tests check none is missed)"""
+    for arr in (settings.radarr, settings.sonarr):
+        if arr:
+            arr.dry_run = True
+            arr.remover_settings.dry_run = True
+    settings.empty_trash.dry_run = True
+
+
+def config_dry_run(job: str, settings: ConfigSettings) -> bool | None:
+    """whether a job run as configured would be a dry run, None when the arrs disagree"""
+    if job == "removers":
+        return settings.sonarr.remover_settings.dry_run if settings.sonarr else True
+    if job == "empty_trash":
+        return settings.empty_trash.dry_run
+    values = {arr.dry_run for arr in (settings.radarr, settings.sonarr) if arr}
+    return values.pop() if len(values) == 1 else (None if values else True)

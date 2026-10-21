@@ -24,7 +24,7 @@ from arrapi import (
 import config
 from autoscan import trigger_autoscan
 from config.models import ArrConfig, ConfigSettings, MoverRule, ProfileRule
-from logging_config import LOGGING_CONFIG
+from logging_config import logging_config
 from plex import empty_plex_trash, refresh_plex_libraries
 from remover import run_removers
 from results import JOBS, Change, JobResult
@@ -440,7 +440,7 @@ def main(argv: list[str] | None = None) -> JobResult | None:
     """Run one job and return its result, or serve the web app"""
 
     args = parse_args(argv)
-    logging.config.dictConfig(LOGGING_CONFIG)
+    logging.config.dictConfig(logging_config("web.log" if args.serve else "log.log"))
     if args.serve:
         serve()
         return None
@@ -491,7 +491,4 @@ def scan_changed(settings: ConfigSettings, result: JobResult) -> None:
 
 if __name__ == "__main__":
     job_result = main()
-    failed = job_result is not None and (
-        job_result.errors or any(c.status == "failed" for c in job_result.changes)
-    )
-    sys.exit(1 if failed else 0)
+    sys.exit(1 if job_result is not None and job_result.failed else 0)

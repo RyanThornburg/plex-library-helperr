@@ -6,6 +6,7 @@
   <title>{% block title %}Helperr{% endblock %}</title>
   {# root relative: behind cloudflared the app sees http, so absolute urls would be http:// #}
   <link rel="stylesheet" href="/static/app.css">
+  {% block head %}{% endblock %}
 </head>
 <body>
   <header class="topbar">

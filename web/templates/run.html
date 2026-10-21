@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block head %}{% if active %}<meta http-equiv="refresh" content="2">{% endif %}{% endblock %}
+{% block content %}
+<p><a href="/">← All runs</a></p>
+<h1>
+  {{ JOB_INFO[run.job][0] }} #{{ run.id }}
+  <span class="status status-{{ run.status }}">{{ run.status }}</span>
+</h1>
+
+<dl class="facts">
+  <dt>Mode</dt><dd>{{ "dry run (forced)" if run.dry_run else "config.toml settings" }}</dd>
+  <dt>Requested by</dt><dd>{{ run.requested_by or "-" }} ({{ run.trigger }})</dd>
+  <dt>Queued</dt><dd>{{ run.created_at | localtime }}</dd>
+  <dt>Started</dt><dd>{{ run.started_at | localtime }}</dd>
+  <dt>Finished</dt><dd>{{ run.finished_at | localtime }}</dd>
+  <dt>Took</dt><dd>{{ duration(run) }}</dd>
+</dl>
+
+{% if active %}
+<p class="muted">This page refreshes until the run finishes.</p>
+{% endif %}
+
+{% if run.result %}
+{% if run.result.errors %}
+<h2>Errors</h2>
+<ul class="errors">
+  {% for error in run.result.errors %}<li>{{ error }}</li>{% endfor %}
+</ul>
+{% endif %}
+
+<h2>Changes</h2>
+{% if run.result.changes %}
+<table>
+  <thead>
+    <tr><th>Service</th><th>Action</th><th>Status</th><th>Target</th><th>Items</th><th>Detail</th></tr>
+  </thead>
+  <tbody>
+    {% for change in run.result.changes %}
+    <tr>
+      <td>{{ change.service }}</td>
+      <td>{{ change.action }}</td>
+      <td><span class="status status-{{ change.status }}">{{ change.status }}</span></td>
+      <td>{{ change.target }}</td>
+      <td>
+        {% if change["items"] %}
+        <details>
+          <summary>{{ change["items"] | length }}</summary>
+          <ul class="items">{% for item in change["items"] %}<li>{{ item }}</li>{% endfor %}</ul>
+        </details>
+        {% else %}-{% endif %}
+      </td>
+      <td class="muted">{{ change.detail }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">Nothing to change.</p>
+{% endif %}
+{% endif %}
+
+{% if run.log %}
+<h2>Log</h2>
+<pre class="log">{{ run.log }}</pre>
+{% endif %}
+{% endblock %}

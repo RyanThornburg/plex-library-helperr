@@ -1,5 +1,6 @@
 """Tests for the web app: access auth, security headers, database"""
 
+import threading
 import time
 from types import SimpleNamespace
 
@@ -9,6 +10,8 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 from sqlalchemy import inspect
 
+from config.models import ArrConfig, ConfigSettings
+from results import Change, JobResult
 from web.app import create_app
 from web.db import make_engine, migrate
 from web.settings import WebSettings, load_web_settings
@@ -54,10 +57,24 @@ def settings(tmp_path) -> WebSettings:
     )
 
 
+def live_config() -> ConfigSettings:
+    arr = ArrConfig(baseurl="http://arr", apikey="key", tag=None, dry_run=False)
+    return ConfigSettings(plex=None, radarr=arr, sonarr=None)
+
+
+def fake_run_job(job: str, settings: ConfigSettings) -> JobResult:
+    return JobResult(job, changes=[Change("RADARR", "move", "/movies/kids", ["Bluey"], "done")])
+
+
 @pytest.fixture
 def client(settings):
-    with TestClient(create_app(settings, keys=FakeKeys())) as c:
+    app = create_app(settings, keys=FakeKeys(), run_job=fake_run_job, load_config=live_config)
+    with TestClient(app) as c:
         yield c
+
+
+def wait(client) -> None:
+    client.app.state.runner.wait_idle()
 
 
 def auth(token: str | None = None) -> dict[str, str]:
@@ -207,3 +224,99 @@ class TestDatabase:
         engine = make_engine(tmp_path / "helperr.db")
         with engine.connect() as conn:
             assert conn.exec_driver_sql("PRAGMA journal_mode").scalar() == "wal"
+
+
+# ---------------------------------------------------------------------------
+# jobs pages / api
+# ---------------------------------------------------------------------------
+
+ORIGIN = {"Origin": "http://testserver"}
+
+
+class TestJobRoutes:
+    def test_dry_run_button_queues_and_redirects(self, client):
+        response = client.post(
+            "/jobs/movers?dry_run=true", headers={**auth(), **ORIGIN}, follow_redirects=False
+        )
+        assert response.status_code == 303
+        run_url = response.headers["location"]
+        wait(client)
+        data = client.get("/api" + run_url, headers=auth()).json()
+        assert data["status"] == "succeeded"
+        assert data["dry_run"] is True
+        assert data["requested_by"] == EMAIL
+        page = client.get(run_url, headers=auth()).text
+        assert "Bluey" in page and "succeeded" in page
+
+    def test_index_lists_runs_and_config_mode(self, client):
+        client.post("/jobs/movers?dry_run=true", headers={**auth(), **ORIGIN})
+        wait(client)
+        page = client.get("/", headers=auth()).text
+        assert 'href="/runs/1"' in page
+        assert "live" in page  # live_config has dry_run off
+
+    def test_confirm_page_warns_when_live(self, client):
+        page = client.get("/jobs/movers/confirm", headers=auth()).text
+        assert "will make changes" in page
+        assert 'action="/jobs/movers?dry_run=false"' in page
+
+    def test_unknown_job_is_404(self, client):
+        assert client.post("/jobs/nope", headers={**auth(), **ORIGIN}).status_code == 404
+        assert client.get("/jobs/nope/confirm", headers=auth()).status_code == 404
+        assert client.post("/api/jobs/nope", json={}, headers={**auth(), **ORIGIN}).status_code == 404
+
+    def test_job_post_needs_same_origin(self, client):
+        assert client.post("/jobs/movers?dry_run=true", headers=auth()).status_code == 403
+
+    def test_api_defaults_to_dry_run(self, client):
+        response = client.post("/api/jobs/empty_trash", json={}, headers={**auth(), **ORIGIN})
+        assert response.status_code == 202
+        wait(client)
+        run = client.get(f"/api/runs/{response.json()['id']}", headers=auth()).json()
+        assert run["dry_run"] is True
+        assert run["trigger"] == "api"
+
+    def test_api_conflict_when_already_active(self, settings):
+        release = threading.Event()
+
+        def slow_job(job, s):
+            release.wait(5)
+            return JobResult(job)
+
+        app = create_app(settings, keys=FakeKeys(), run_job=slow_job, load_config=live_config)
+        with TestClient(app) as client:
+            headers = {**auth(), **ORIGIN}
+            first = client.post("/api/jobs/movers", json={}, headers=headers).json()["id"]
+            second = client.post("/api/jobs/movers", json={}, headers=headers)
+            assert second.status_code == 409
+            assert second.json()["id"] == first
+            # the page button goes to the active run instead of failing
+            page = client.post("/jobs/movers?dry_run=true", headers=headers, follow_redirects=False)
+            assert page.headers["location"] == f"/runs/{first}"
+            release.set()
+            wait(client)
+
+    def test_missing_run_is_404(self, client):
+        assert client.get("/runs/999", headers=auth()).status_code == 404
+        assert client.get("/api/runs/999", headers=auth()).status_code == 404
+
+    def test_result_text_is_escaped(self, settings):
+        def xss_job(job, s):
+            return JobResult(job, changes=[Change("SONARR", "remove", "<script>x</script>", [], "dry_run")])
+
+        app = create_app(settings, keys=FakeKeys(), run_job=xss_job, load_config=live_config)
+        with TestClient(app) as client:
+            client.post("/jobs/removers?dry_run=true", headers={**auth(), **ORIGIN})
+            wait(client)
+            page = client.get("/runs/1", headers=auth()).text
+        assert "<script>x</script>" not in page
+        assert "&lt;script&gt;x&lt;/script&gt;" in page
+
+    def test_broken_config_shown_on_index(self, settings):
+        def broken():
+            raise ValueError("bad toml")
+
+        app = create_app(settings, keys=FakeKeys(), run_job=fake_run_job, load_config=broken)
+        with TestClient(app) as client:
+            page = client.get("/", headers=auth()).text
+        assert "bad toml" in page

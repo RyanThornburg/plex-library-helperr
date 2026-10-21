@@ -6,7 +6,7 @@ from typing import Any
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import JSON, Engine, String, Text, create_engine, event
+from sqlalchemy import JSON, Engine, String, Text, create_engine, event, false
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 MIGRATIONS_DIR = pathlib.Path(__file__).parent / "migrations"
@@ -25,6 +25,8 @@ class JobRun(Base):
     job: Mapped[str] = mapped_column(String(32))
     trigger: Mapped[str] = mapped_column(String(16))  # manual, schedule, api
     requested_by: Mapped[str | None] = mapped_column(String(320))
+    # true when the run was asked to be dry, false means config.toml's dry_run settings applied
+    dry_run: Mapped[bool] = mapped_column(server_default=false())
     # queued, running, succeeded, failed
     status: Mapped[str] = mapped_column(String(16), index=True)
     created_at: Mapped[datetime]  # naive utc, like the rest of the app

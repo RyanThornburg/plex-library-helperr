@@ -101,7 +101,16 @@ docker image prune -f --filter "label=org.opencontainers.image.title=plex-librar
 
 ## Web app (in progress)
 
-`--serve` runs a web app for running and reviewing jobs. It only accepts requests that come through [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/): every route except `/healthz` requires a valid Access token, checked against your team's signing keys, the application's audience tag and an email allowlist. It refuses to start without those settings.
+`--serve` runs a web app for running and reviewing jobs:
+
+- Each job has a **Dry run** button, which forces every `dry_run` setting on, and a **Run…** button, which uses `config.toml` as-is. Run… always goes to a confirmation page that says whether the run will make changes. The UI can't make a run live that `config.toml` has as dry run.
+- Jobs run one at a time in the order queued. A job that's already queued or running can't be queued again.
+- Every run is kept with who started it, what it changed (or would change), errors and its log. Runs interrupted by a restart are marked failed and never re-run automatically.
+- The same actions are available as JSON: `POST /api/jobs/<movers|removers|empty_trash>` (body `{"dry_run": false}` for a config run, dry by default), `GET /api/runs`, `GET /api/runs/<id>`.
+
+The web app logs to `logs/web.log`, separate from the CLI's `logs/log.log`.
+
+ It only accepts requests that come through [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/): every route except `/healthz` requires a valid Access token, checked against your team's signing keys, the application's audience tag and an email allowlist. It refuses to start without those settings.
 
 It is reached through a Cloudflare Tunnel, so the container publishes **no port**. Nothing on your network or router points at it.
 

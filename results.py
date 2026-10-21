@@ -1,8 +1,8 @@
 """results.py - what a job changed, or would have changed in a dry run"""
 
 import logging
-from dataclasses import dataclass, field
-from typing import Literal
+from dataclasses import asdict, dataclass, field
+from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,20 @@ class JobResult:
     scan_dirs: set[str] = field(default_factory=set[str])
     plex_libraries: set[str] = field(default_factory=set[str])
     errors: list[str] = field(default_factory=list[str])
+
+    @property
+    def failed(self) -> bool:
+        return bool(self.errors) or any(c.status == "failed" for c in self.changes)
+
+    def to_dict(self) -> dict[str, Any]:
+        """json-safe, for storing with a job run"""
+        return {
+            "job": self.job,
+            "changes": [asdict(c) for c in self.changes],
+            "scan_dirs": sorted(self.scan_dirs),
+            "plex_libraries": sorted(self.plex_libraries),
+            "errors": list(self.errors),
+        }
 
     def log_summary(self) -> None:
         logger.info(
