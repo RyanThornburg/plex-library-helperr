@@ -12,6 +12,10 @@ I used **Movers** for moving files to different library. I use **Profilers** pri
 - **Time filter**  -  only evaluate media added within a recent window
 - **Movers**  -  moves movies (radarr)/series (sonarr) to a different root folder based on genre, studio, network, certification, or a combination
 - **Profilers**  -  assigns a quality profile to movies/series matched by title or studio/network
+- **Removers**  -  (Sonarr only) unmonitors and deletes old seasons/episodes from tagged series, keeping the latest ones
+- **Empty trash**  -  empties Plex library trash on demand, skipping libraries that are scanning or have a suspiciously full trash
+
+**Removers delete files.** They default to `dry_run = true` on their own. Check the `--remove` log before setting `[sonarr.remover_settings] dry_run = false`.
 
 ## Requirements
 
@@ -24,9 +28,19 @@ I used **Movers** for moving files to different library. I use **Profilers** pri
 # Install dependencies
 uv sync
 
-# Run
+# Run movers and profilers
 uv run main.py
+
+# Run Sonarr removers only (movers and profilers are skipped)
+uv run main.py --remove
+
+# Empty Plex library trash only
+uv run main.py --empty-trash
 ```
+
+`--remove` is a separate run so you can schedule it on its own, less often than the movers. It ignores `filter_time` and has its own `dry_run` setting in `[sonarr.remover_settings]`.
+
+`--empty-trash` is for Plex servers with "Empty trash automatically after every scan" turned off. Removers and movers only trigger a scan, which moves deleted files to the trash. Schedule `--empty-trash` to run after those scans have finished (with Autoscan, the scan happens after its `minimum-age`).
 
 1. Before running copy `config.toml.example` to `config.toml`.
     - If you run `main.py` before doing this, it will create `config.toml` from `config.toml.example`.
@@ -49,6 +63,25 @@ uv run main.py
 |-----      |-------------                                                  |
 | `baseurl` | URL to your Plex instance (e.g. `http://192.168.1.1:32400/`)  |
 | `token`   | Plex token                                                    |
+
+### `[plex.empty_trash]` (optional)
+
+Only used by `--empty-trash`. A library is skipped while it is scanning, and when its trash holds more than `max_items` items, since a missing mount or share makes Plex trash everything in it. Items are counted as movies or episodes with a deleted file, which includes old versions left behind by upgrades.
+
+| Key         | Description                                                                                    |
+|-----        |-------------                                                                                   |
+| `libraries` | Plex libraries to empty the trash of. Omit for every movie and TV library.                     |
+| `max_items` | Skip a library if its trash holds more items than this (default: `100`)                        |
+| `dry_run`   | `true` to log trash counts without emptying (default: `[settings]` `dry_run`)                  |
+
+### `[tautulli]` (optional)
+
+Watch history for remover watch protection (`skip_if_watched_within`). Tautulli is preferred because it records partial plays from every user. Without it, Plex server history is used, which only records completed plays. If neither is configured or the history can't be read, removers that use `skip_if_watched_within` are skipped for that run.
+
+| Key      | Description                                                   |
+|-----     |-------------                                                  |
+| `url`    | URL to your Tautulli instance (e.g. `http://192.168.1.1:8181`) |
+| `apikey` | Tautulli API key                                              |
 
 ### `[autoscan]` (optional)
 
@@ -111,6 +144,42 @@ Assigns a quality profile to movies matched by title or studio/network.
 | `studios`     | List of studios to match **(Radarr only)**                                |
 | `networks`    | List of networks to match **(Sonarr only)**                               |
 | `monitored`   | Set the monitored state (`true`/`false`), or omit to leave unchanged      |
+
+### `[sonarr.remover_settings]`
+
+Only used by `--remove`.
+
+| Key           | Description                                                                                                                |
+|-----          |-------------                                                                                                               |
+| `dry_run`     | `true` to log what would be removed without removing it (default: `true`). Separate from `[settings]` and `[sonarr]` `dry_run`. |
+| `max_deletes` | If a run would delete more files than this, nothing is removed. Omit for no limit.                                         |
+
+### `[[sonarr.removers]]`
+
+Unmonitors and then deletes the files of old seasons or episodes in series that have one of the remover's `tags`. Episodes are unmonitored first so Sonarr doesn't download them again. If unmonitoring fails, the files aren't deleted. Every series is planned before anything is removed. `max_deletes` applies to the whole run, so if the run is over the limit nothing is removed.
+
+| Key                      | Description                                                                                                  |
+|-----                     |-------------                                                                                                 |
+| `type`                   | `"seasons"` removes whole seasons, `"episodes"` removes individual episode files                             |
+| `keep`                   | Number of latest seasons/episodes to always keep (integer >= 1). Only numbered seasons/episodes with files count. |
+| `tags`                   | Series with any of these Sonarr tags use this remover. A tag can only belong to one remover.                 |
+| `exclude_tags`           | Skip series with any of these tags                                                                           |
+| `min_age`                | **Required.** Only remove files added to Sonarr longer ago than this (`180d`, `12h`, `30m`). An invalid value is a config error. |
+| `include_specials`       | `true` to also remove specials (season 0). Specials never count toward `keep` (default: `false`)             |
+| `skip_if_watched_within` | Protect content that was watched within this window (`30d`, ...). Needs `[tautulli]` or `[plex]`.            |
+| `plex_library`           | Plex library to refresh after removing (if Plex is configured and Autoscan is not)                           |
+
+How rules are applied:
+
+- Everything outside the `keep` window is a candidate. Seasons/episodes without files don't count toward `keep`.
+- `seasons` mode is all or nothing: a season is removed only if **every** file in it is older than `min_age`.
+- `episodes` mode works per file. A multi-episode file that holds a kept episode is kept.
+- `skip_if_watched_within` only looks at plays of removal candidates, so watching the latest episodes never blocks removal. A recent play protects that season/episode and everything after it. It is checked before `min_age`, so someone watching a new season still protects the older seasons after it. A watched special protects only specials.
+- A whole series is skipped if it was added to Sonarr within `min_age`, has anything in the download queue, or Sonarr returns missing/invalid episode data.
+- A series tagged for two removers is logged as an error and skipped.
+- After removing, the folders are scanned by Autoscan, or `plex_library` is refreshed if Autoscan isn't configured.
+
+Example: `type = "seasons"`, `keep = 2`, `min_age = "90d"` on a series with seasons 1-5 removes seasons 1-3 once all their files are older than 90 days.
 
 ### Example config
 

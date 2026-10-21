@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 from arrapi import ConnectionFailure
 
 import main
@@ -13,9 +14,9 @@ from config.models import (
     ProfileRule,
 )
 from main import (
-    get_moved_dirs,
     get_matches_based_on_mover_rules,
     get_media_matching_profile_rules,
+    get_moved_dirs,
     is_path_valid,
     is_profile_valid,
 )
@@ -622,7 +623,6 @@ class TestRunArr:
         assert arr.edit_multiple_movies.call_count == 2
         assert arr.edit_multiple_movies.call_args.kwargs["ids"] == [kids]
 
-
     def test_moved_folders_added_to_scan_dirs(self):
         movie = make_movie(
             id=1,
@@ -670,8 +670,9 @@ class TestMainErrorHandling:
                 main, "run_arr", side_effect=[ConnectionFailure("down"), None]
             ) as run_arr,
         ):
-            main.main()
+            main.main([])
         assert run_arr.call_count == 2
+
 
 class TestGetMovedDirs:
     def test_uses_updated_path_from_arr(self):
@@ -703,7 +704,7 @@ class TestMainScanDispatch:
             patch.object(main, "trigger_autoscan") as autoscan,
             patch.object(main, "refresh_plex_libraries") as plex,
         ):
-            main.main()
+            main.main([])
         return autoscan, plex
 
     def _settings(self, autoscan):
@@ -724,3 +725,56 @@ class TestMainScanDispatch:
         autoscan, plex = self._main(self._settings(None), {"/a"}, {"Movies"})
         autoscan.assert_not_called()
         plex.assert_called_once()
+
+
+class TestMainRemove:
+    def _main(self, argv):
+        arr_config = ArrConfig(baseurl="http://arr", apikey="key", tag=None)
+        settings = ConfigSettings(plex=None, radarr=arr_config, sonarr=arr_config)
+        with (
+            patch.object(main.config, "load_config", return_value=settings),
+            patch.object(main.logging.config, "dictConfig"),
+            patch.object(main, "run_arr") as run_arr,
+            patch.object(main, "run_removers") as run_removers,
+        ):
+            main.main(argv)
+        return run_arr, run_removers
+
+    def test_remove_flag_runs_only_removers(self):
+        run_arr, run_removers = self._main(["--remove"])
+        run_arr.assert_not_called()
+        run_removers.assert_called_once()
+
+    def test_default_does_not_run_removers(self):
+        run_arr, run_removers = self._main([])
+        assert run_arr.call_count == 2
+        run_removers.assert_not_called()
+
+
+class TestMainEmptyTrash:
+    def _main(self, argv):
+        arr_config = ArrConfig(baseurl="http://arr", apikey="key", tag=None)
+        settings = ConfigSettings(plex=None, radarr=arr_config, sonarr=arr_config)
+        with (
+            patch.object(main.config, "load_config", return_value=settings),
+            patch.object(main.logging.config, "dictConfig"),
+            patch.object(main, "run_arr") as run_arr,
+            patch.object(main, "run_removers") as run_removers,
+            patch.object(main, "empty_plex_trash") as empty_trash,
+        ):
+            main.main(argv)
+        return run_arr, run_removers, empty_trash, settings
+
+    def test_empty_trash_flag_runs_only_empty_trash(self):
+        run_arr, run_removers, empty_trash, settings = self._main(["--empty-trash"])
+        run_arr.assert_not_called()
+        run_removers.assert_not_called()
+        empty_trash.assert_called_once_with(settings.plex, settings.empty_trash)
+
+    def test_default_does_not_empty_trash(self):
+        _, _, empty_trash, _ = self._main([])
+        empty_trash.assert_not_called()
+
+    def test_remove_and_empty_trash_are_exclusive(self):
+        with pytest.raises(SystemExit):
+            main.parse_args(["--remove", "--empty-trash"])

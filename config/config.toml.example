@@ -13,6 +13,14 @@ filter_time = "1d"
 baseurl = ''
 token = ''
 
+# empty trash (only runs with: main.py --empty-trash)
+#   Schedule it after removers/scans have finished. Old versions left by
+#   upgrades are in the trash too.
+[plex.empty_trash]
+libraries = ['TV Shows']  # omit or [] for every movie/show library
+max_items = 100  # skip a library if its trash holds more items than this (protects against a missing mount)
+# dry_run = true  # defaults to [settings] dry_run
+
 #############################################################
 # AUTOSCAN (optional)
 #   When url is set, moved folders (old and new location) are sent to
@@ -24,6 +32,16 @@ token = ''
 url = ''
 username = ''
 password = ''
+
+#############################################################
+# TAUTULLI (optional)
+#   Watch history for sonarr removers using skip_if_watched_within.
+#   Includes partial plays from all users. Without it, Plex history
+#   is used (completed plays only).
+#############################################################
+# [tautulli]
+# url = ''
+# apikey = ''
 
 #############################################################
 # RADARR
@@ -84,3 +102,30 @@ networks = [
     "Nickelodeon",
     "Nick Jr.",
 ]
+
+#############################################################
+# SONARR REMOVERS (only run with: main.py --remove)
+#   Unmonitor then DELETE files of old seasons/episodes from series
+#   tagged in sonarr. filter_time is not used.
+#############################################################
+[sonarr.remover_settings]
+dry_run = true  # separate from [settings] dry_run, defaults to true if omitted
+max_deletes = 200  # remove nothing if a run would delete more files than this
+
+# keep the latest 2 seasons of series tagged rm-keep-2-seasons
+[[sonarr.removers]]
+type = 'seasons'
+keep = 2
+tags = ['rm-keep-2-seasons']
+exclude_tags = ['rm-never']
+min_age = '90d'  # every file in a season must be older than this (required)
+skip_if_watched_within = '30d'  # needs [tautulli] or [plex]
+plex_library = 'TV Shows'
+
+# keep the latest 10 episodes (daily/talk shows)
+[[sonarr.removers]]
+type = 'episodes'
+keep = 10
+tags = ['rm-keep-10-episodes']
+min_age = '14d'
+include_specials = true  # specials never count toward keep

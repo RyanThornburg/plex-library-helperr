@@ -15,3 +15,4 @@ config.toml
 typings/
 .vscode/
 .notes
+CLAUDE.local.md

@@ -1,0 +1,409 @@
+"""remover.py - unmonitor and delete stale seasons/episodes from tagged sonarr series"""
+
+import logging
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from pathlib import PurePosixPath
+from typing import Any
+
+import requests
+from arrapi import Series, SonarrAPI
+
+from config.models import ArrConfig, PlexConfig, RemoverRule, TautulliConfig
+from watch_history import WatchEvent, get_watch_history
+
+logger = logging.getLogger(__name__)
+
+LOG_NAME = "SONARR"
+
+
+class SonarrEpisodes:
+    """episode endpoints arrapi does not cover"""
+
+    def __init__(self, baseurl: str, apikey: str):
+        self.url = f"{baseurl.rstrip('/')}/api/v3"
+        self.session = requests.Session()
+        self.session.headers["X-Api-Key"] = apikey
+
+    def _request(self, method: str, path: str, **kwargs: Any) -> Any:
+        response = self.session.request(method, f"{self.url}/{path}", timeout=60, **kwargs)
+        response.raise_for_status()
+        return response.json() if response.content else None
+
+    def episodes(self, series_id: int) -> list[dict[str, Any]]:
+        return self._request("GET", "episode", params={"seriesId": series_id})
+
+    def episode_files(self, series_id: int) -> list[dict[str, Any]]:
+        return self._request("GET", "episodefile", params={"seriesId": series_id})
+
+    def queued_series_ids(self) -> set[int]:
+        return {
+            q["seriesId"]
+            for q in self._request("GET", "queue/details")
+            if q.get("seriesId") is not None
+        }
+
+    def unmonitor_episodes(self, episode_ids: list[int]) -> None:
+        self._request(
+            "PUT", "episode/monitor", json={"episodeIds": episode_ids, "monitored": False}
+        )
+
+    def delete_episode_files(self, file_ids: list[int]) -> None:
+        self._request("DELETE", "episodefile/bulk", json={"episodeFileIds": file_ids})
+
+
+class InvalidSeriesData(Exception):
+    """sonarr returned missing/invalid data for a series, it is skipped"""
+
+
+@dataclass
+class EpisodeFile:
+    id: int
+    season: int
+    date_added: datetime
+    path: str
+
+
+@dataclass
+class Episode:
+    id: int
+    season: int
+    episode: int
+    file_id: int | None
+
+
+@dataclass
+class RemovalPlan:
+    series: Series
+    rule: RemoverRule
+    labels: list[str]
+    file_ids: list[int]
+    episode_ids: list[int]
+    dirs: set[str] = field(default_factory=set[str])
+
+
+def utc_now() -> datetime:
+    """naive utc, matching arrapi's series.added"""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _utc_naive(value: object) -> datetime:
+    if not isinstance(value, str):
+        raise InvalidSeriesData(f"invalid date '{value}'")
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as e:
+        raise InvalidSeriesData(f"invalid date '{value}'") from e
+    if parsed.tzinfo:
+        parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed
+
+
+def _int(raw: dict[str, Any], key: str) -> int:
+    value = raw.get(key)
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise InvalidSeriesData(f"missing/invalid '{key}': {value!r}")
+    return value
+
+
+def parse_series_data(
+    raw_episodes: list[dict[str, Any]], raw_files: list[dict[str, Any]]
+) -> tuple[list[Episode], dict[int, EpisodeFile]]:
+    """validate sonarr episode/file data, raises InvalidSeriesData rather than guessing"""
+    files: dict[int, EpisodeFile] = {}
+    for f in raw_files:
+        file = EpisodeFile(
+            id=_int(f, "id"),
+            season=_int(f, "seasonNumber"),
+            date_added=_utc_naive(f.get("dateAdded")),
+            path=f.get("path") or "",
+        )
+        if not file.path:
+            raise InvalidSeriesData(f"episode file {file.id} has no path")
+        files[file.id] = file
+
+    episodes: list[Episode] = []
+    for e in raw_episodes:
+        file_id = _int(e, "episodeFileId") if e.get("hasFile") else None
+        if file_id is not None and file_id not in files:
+            raise InvalidSeriesData(f"episode {e.get('id')} references missing file {file_id}")
+        episodes.append(
+            Episode(
+                id=_int(e, "id"),
+                season=_int(e, "seasonNumber"),
+                episode=_int(e, "episodeNumber"),
+                file_id=file_id,
+            )
+        )
+    return episodes, files
+
+
+def code(season: int, episode: int | None = None) -> str:
+    return f"S{season:02d}" + (f"E{episode:02d}" if episode is not None else "")
+
+
+@dataclass
+class Unit:
+    """the smallest thing removed as a whole: a season, or an episode file"""
+
+    label: str
+    position: tuple[int, int]
+    special: bool
+    file_ids: set[int]
+    episodes: list[Episode]
+
+
+def _candidate_units(
+    rule: RemoverRule, episodes: list[Episode], files: dict[int, EpisodeFile]
+) -> list[Unit]:
+    """everything outside the keep window, specials never count toward keep"""
+    with_files = sorted(
+        (e for e in episodes if e.file_id is not None),
+        key=lambda e: (e.season, e.episode),
+    )
+    numbered = [e for e in with_files if e.season > 0]
+    specials = [e for e in with_files if e.season == 0] if rule.include_specials else []
+    units: list[Unit] = []
+
+    if rule.type == "seasons":
+        seasons = sorted({e.season for e in numbered})
+        candidate_seasons = seasons[: -rule.keep] if len(seasons) > rule.keep else []
+        if specials:
+            candidate_seasons = [0, *candidate_seasons]
+        for s in candidate_seasons:
+            season_eps = [e for e in with_files if e.season == s]
+            units.append(
+                Unit(
+                    label=code(s),
+                    position=(s, 0),
+                    special=s == 0,
+                    file_ids={e.file_id for e in season_eps if e.file_id is not None},
+                    episodes=season_eps,
+                )
+            )
+        return units
+
+    # episodes: a file holding any kept episode (multi-episode files) is kept
+    kept_file_ids = {e.file_id for e in numbered[-rule.keep :]}
+    by_file: dict[int, list[Episode]] = {}
+    for e in specials + numbered:
+        if e.file_id is not None and e.file_id not in kept_file_ids:
+            by_file.setdefault(e.file_id, []).append(e)
+    for file_id, eps in by_file.items():
+        first = eps[0]
+        units.append(
+            Unit(
+                label=code(first.season, first.episode),
+                position=(first.season, first.episode),
+                special=first.season == 0,
+                file_ids={file_id},
+                episodes=eps,
+            )
+        )
+    return units
+
+
+def plan_series_removal(
+    rule: RemoverRule,
+    series: Series,
+    episodes: list[Episode],
+    files: dict[int, EpisodeFile],
+    watches: list[WatchEvent] | None,
+    now: datetime,
+) -> RemovalPlan | None:
+    """pure: decide which seasons/episode files of one series are stale"""
+    candidates = _candidate_units(rule, episodes, files)
+
+    # watch protection looks at every candidate, a viewer on a new season still protects
+    # the older seasons after it
+    protected: set[str] = set()
+    if rule.skip_if_watched_within and candidates:
+        watch_cutoff = now - rule.skip_if_watched_within
+        recent = {
+            (w.season, w.episode) for w in watches or [] if w.watched_at >= watch_cutoff
+        }
+        # only watches of removal candidates count, watching the latest episodes never blocks
+        watched = [
+            u
+            for u in candidates
+            if any((e.season, e.episode) in recent for e in u.episodes)
+        ]
+        watched_numbered = [u.position for u in watched if not u.special]
+        earliest = min(watched_numbered) if watched_numbered else None
+        specials_watched = any(u.special for u in watched)
+        protected = {
+            u.label
+            for u in candidates
+            if (u.special and specials_watched)
+            or (not u.special and earliest is not None and u.position >= earliest)
+        }
+
+    # every file in the unit must be old enough (seasons are all or nothing)
+    age_cutoff = now - rule.min_age
+    old_enough = [
+        u
+        for u in candidates
+        if all(files[f].date_added <= age_cutoff for f in u.file_ids)
+    ]
+    held = [u.label for u in old_enough if u.label in protected]
+    if held:
+        logger.info(
+            "%s\t %s: recently watched, protecting %s",
+            LOG_NAME,
+            series.title,
+            ", ".join(held),
+        )
+    units = [u for u in old_enough if u.label not in protected]
+
+    if not units:
+        return None
+
+    file_ids = sorted({f for u in units for f in u.file_ids})
+    return RemovalPlan(
+        series=series,
+        rule=rule,
+        labels=[u.label for u in units],
+        file_ids=file_ids,
+        episode_ids=sorted({e.id for u in units for e in u.episodes}),
+        dirs={str(PurePosixPath(files[f].path).parent) for f in file_ids},
+    )
+
+
+def match_remover(
+    series: Series, removers: list[RemoverRule]
+) -> RemoverRule | None:
+    """the single remover for a series, more than one is a config error"""
+    series_tags = {t.label.casefold() for t in series.tags}
+    matches = [
+        r
+        for r in removers
+        if series_tags & {t.casefold() for t in r.tags}
+        and not series_tags & {t.casefold() for t in r.exclude_tags}
+    ]
+    if len(matches) > 1:
+        logger.error(
+            "%s\t %s: tagged for %s removers, fix the series tags. Skipping",
+            LOG_NAME,
+            series.title,
+            len(matches),
+        )
+        return None
+    return matches[0] if matches else None
+
+
+def series_watches(series: Series, watches: list[WatchEvent]) -> list[WatchEvent]:
+    """match by tvdb id, title only when the history had no tvdb id"""
+    title = series.title.casefold()
+    return [
+        w
+        for w in watches
+        if (series.tvdbId and w.tvdb_id == series.tvdbId)
+        or (w.tvdb_id is None and w.title.casefold() == title)
+    ]
+
+
+def run_removers(
+    arr_config: ArrConfig,
+    tautulli: TautulliConfig | None,
+    plex: PlexConfig | None,
+    plex_libraries: set[str],
+    scan_dirs: set[str],
+) -> None:
+    """plan every removal first, then unmonitor and delete"""
+    if not arr_config.apikey or not arr_config.baseurl:
+        logger.warning("%s not configured. Skipping...", LOG_NAME)
+        return
+    if not arr_config.removers:
+        logger.info("%s\t No removers configured", LOG_NAME)
+        return
+
+    settings = arr_config.remover_settings
+    now = utc_now()
+    arr = SonarrAPI(arr_config.baseurl, arr_config.apikey)
+    client = SonarrEpisodes(arr_config.baseurl, arr_config.apikey)
+
+    logger.info("%s\t Reading all media...", LOG_NAME)
+    all_series: list[Series] = arr.all_series()
+    tagged = [(s, r) for s in all_series if (r := match_remover(s, arr_config.removers))]
+    logger.info("%s\t %s series tagged for removers", LOG_NAME, len(tagged))
+    if not tagged:
+        return
+
+    watches: list[WatchEvent] | None = None
+    windows = [r.skip_if_watched_within for _, r in tagged if r.skip_if_watched_within]
+    if windows:
+        watches = get_watch_history(tautulli, plex, now - max(windows))
+        if watches is None:
+            logger.error(
+                "%s\t No watch history, skipping series with skip_if_watched_within",
+                LOG_NAME,
+            )
+
+    queued = client.queued_series_ids()
+
+    plans: list[RemovalPlan] = []
+    for series, rule in tagged:
+        if rule.skip_if_watched_within and watches is None:
+            continue
+        if series.added is None:
+            logger.warning("%s\t %s: no added date, skipping", LOG_NAME, series.title)
+            continue
+        if series.added > now - rule.min_age:
+            logger.info("%s\t %s: added recently, skipping", LOG_NAME, series.title)
+            continue
+        if series.id in queued:
+            logger.info("%s\t %s: downloads in queue, skipping", LOG_NAME, series.title)
+            continue
+        try:
+            episodes, files = parse_series_data(
+                client.episodes(series.id), client.episode_files(series.id)
+            )
+        except InvalidSeriesData as e:
+            logger.warning("%s\t %s: invalid data, skipping (%s)", LOG_NAME, series.title, e)
+            continue
+
+        plan = plan_series_removal(
+            rule,
+            series,
+            episodes,
+            files,
+            series_watches(series, watches) if watches else [],
+            now,
+        )
+        if plan:
+            logger.info(
+                "%s\t %s: removing %s (%s files)",
+                LOG_NAME,
+                series.title,
+                ", ".join(plan.labels),
+                len(plan.file_ids),
+            )
+            plans.append(plan)
+
+    total = sum(len(p.file_ids) for p in plans)
+    logger.info("%s\t %s files to remove from %s series", LOG_NAME, total, len(plans))
+    if not plans:
+        return
+    if settings.max_deletes is not None and total > settings.max_deletes:
+        logger.error(
+            "%s\t %s files exceeds max_deletes (%s), not removing anything",
+            LOG_NAME,
+            total,
+            settings.max_deletes,
+        )
+        return
+    if settings.dry_run:
+        logger.info("%s\t DRY RUN - not actually removing", LOG_NAME)
+        return
+
+    for plan in plans:
+        try:
+            # unmonitor first so sonarr does not grab the deleted files again
+            client.unmonitor_episodes(plan.episode_ids)
+            client.delete_episode_files(plan.file_ids)
+        except requests.exceptions.RequestException as e:
+            logger.error("%s\t %s: failed to remove (%s)", LOG_NAME, plan.series.title, e)
+            continue
+        scan_dirs.update(plan.dirs)
+        if plan.rule.plex_library:
+            plex_libraries.add(plan.rule.plex_library)

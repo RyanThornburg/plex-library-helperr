@@ -2,11 +2,13 @@
 Helper script for organizing sonarr/radarr libraries with plex
 """
 
+import argparse
 import logging.config
 from datetime import datetime, timedelta, timezone
 from pathlib import PurePosixPath
 from typing import Callable, Iterable
 
+import requests
 from arrapi import (
     ArrException,
     Movie,
@@ -19,9 +21,16 @@ from arrapi import (
 
 import config
 from autoscan import trigger_autoscan
-from config.models import ArrConfig, MoverRule, PlexConfig, ProfileRule
+from config.models import (
+    ArrConfig,
+    ConfigSettings,
+    MoverRule,
+    PlexConfig,
+    ProfileRule,
+)
 from logging_config import LOGGING_CONFIG
-from plex import refresh_plex_libraries
+from plex import empty_plex_trash, refresh_plex_libraries
+from remover import run_removers
 
 MATCH_FN: dict[str, Callable[[Iterable[object]], bool]] = {"any": any, "all": all}
 
@@ -315,16 +324,61 @@ def run_arr(
                 )
 
 
-def main() -> None:
+def parse_args(argv: list[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    jobs = parser.add_mutually_exclusive_group()
+    jobs.add_argument(
+        "--remove",
+        action="store_true",
+        help="run sonarr removers (unmonitor and delete stale seasons/episodes) instead of movers/profilers",
+    )
+    jobs.add_argument(
+        "--empty-trash",
+        action="store_true",
+        help="empty plex library trash instead of running movers/profilers",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> None:
     """Update radarr/sonarr library"""
 
+    args = parse_args(argv)
     logging.config.dictConfig(LOGGING_CONFIG)
     logger.info("Loading config settings")
     settings = config.load_config()
     logger.info(settings)
 
+    if args.empty_trash:
+        logger.info("-" * 90)
+        logger.info("STARTING PLEX EMPTY TRASH")
+        empty_plex_trash(settings.plex, settings.empty_trash)
+        logger.info("-" * 90)
+        logger.info("FINISHED")
+        logger.info("=" * 90)
+        return
+
     plex_libraries: set[str] = set()
     scan_dirs: set[str] = set()
+
+    if args.remove:
+        logger.info("-" * 90)
+        logger.info("STARTING SONARR REMOVERS")
+        if settings.sonarr is None:
+            logger.warning("SONARR not configured. Skipping...")
+        else:
+            try:
+                run_removers(
+                    settings.sonarr,
+                    settings.tautulli,
+                    settings.plex,
+                    plex_libraries,
+                    scan_dirs,
+                )
+            except (ArrException, requests.exceptions.RequestException):
+                logger.exception("SONARR\t Removers failed")
+        scan_changed(settings, plex_libraries, scan_dirs)
+        return
 
     arr_dispatch: list[
         tuple[ArrConfig | None, type[RadarrAPI | SonarrAPI], str, str, str]
@@ -353,8 +407,14 @@ def main() -> None:
         except ArrException:
             logger.exception("%s\t Failed, skipping remaining rules", log_name)
 
+    scan_changed(settings, plex_libraries, scan_dirs)
+
+
+def scan_changed(
+    settings: ConfigSettings, plex_libraries: set[str], scan_dirs: set[str]
+) -> None:
+    """scan changed folders with autoscan, or refresh plex libraries without it"""
     logger.info("-" * 90)
-    # SCAN MOVED FOLDERS
     if settings.autoscan:
         if scan_dirs:
             trigger_autoscan(settings.autoscan, scan_dirs)

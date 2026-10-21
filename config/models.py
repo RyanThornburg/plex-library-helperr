@@ -111,6 +111,128 @@ class MoverRule:
         return f"MoverRule({','.join(f'{k}={v}' for k, v in fields if v is not None)})"
 
 
+REMOVER_TYPES = ("seasons", "episodes")
+
+
+@dataclass
+class RemoverRule:
+    """
+    type: (str) "seasons" removes whole seasons, "episodes" removes episode files
+    keep: (int) Number of latest seasons/episodes (with files) to always keep
+    tags: (list[str]) Series with any of these tags are checked by this rule
+    min_age: (timedelta) Every file in a season (or the episode file) must be older than this
+    exclude_tags: (list[str]) Skip series with any of these tags
+    include_specials: (bool) Specials (season 0) are eligible for removal, never count toward keep
+    skip_if_watched_within: (timedelta) Protect content from the earliest recently watched
+        removal candidate onward
+    plex_library: (str) Plex library to refresh after removing (if autoscan is not setup)
+    """
+
+    type: str
+    keep: int
+    tags: list[str]
+    min_age: timedelta
+    exclude_tags: list[str] = field(default_factory=list[str])
+    include_specials: bool = False
+    skip_if_watched_within: timedelta | None = None
+    plex_library: str | None = None
+
+    def __post_init__(self):
+        if self.type not in REMOVER_TYPES:
+            raise ValueError(
+                f"RemoverRule.type must be 'seasons' or 'episodes', got '{self.type}'"
+            )
+        if (
+            not isinstance(self.keep, int)
+            or isinstance(self.keep, bool)
+            or self.keep < 1
+        ):
+            raise ValueError(
+                f"RemoverRule.keep must be an integer >= 1, got '{self.keep}'"
+            )
+        if not self.tags:
+            raise ValueError("RemoverRule requires at least one tag")
+        if not isinstance(self.min_age, timedelta) or self.min_age <= timedelta(0):
+            raise ValueError("RemoverRule.min_age must be greater than 0")
+        if (
+            self.skip_if_watched_within is not None
+            and self.skip_if_watched_within <= timedelta(0)
+        ):
+            raise ValueError(
+                "RemoverRule.skip_if_watched_within must be greater than 0"
+            )
+
+    def __repr__(self):
+        fields: list[tuple[str, str | int | bool | None | list[str] | timedelta]] = [
+            ("type", self.type),
+            ("keep", self.keep),
+            ("tags", self.tags),
+            ("exclude_tags", self.exclude_tags or None),
+            ("min_age", self.min_age),
+            ("include_specials", self.include_specials or None),
+            ("skip_if_watched_within", self.skip_if_watched_within),
+            ("plex_library", self.plex_library or None),
+        ]
+        return (
+            f"RemoverRule({','.join(f'{k}={v}' for k, v in fields if v is not None)})"
+        )
+
+
+@dataclass
+class RemoverSettings:
+    """
+    dry_run: (bool) Separate from the movers dry_run, defaults to true
+    max_deletes: (int) Skip all removals if a run would delete more files than this
+    """
+
+    dry_run: bool = True
+    max_deletes: int | None = None
+
+    def __post_init__(self):
+        if self.max_deletes is not None and (
+            not isinstance(self.max_deletes, int)
+            or isinstance(self.max_deletes, bool)
+            or self.max_deletes < 1
+        ):
+            raise ValueError(
+                f"remover_settings.max_deletes must be an integer >= 1, got '{self.max_deletes}'"
+            )
+
+
+@dataclass
+class EmptyTrashSettings:
+    """
+    libraries: (list[str]) Plex libraries to empty the trash of, empty means every movie/show library
+    max_items: (int) Skip a library if its trash holds more items than this (a missing mount trashes everything)
+    dry_run: (bool) Defaults to the [settings] dry_run
+    """
+
+    libraries: list[str] = field(default_factory=list[str])
+    max_items: int = 100
+    dry_run: bool = False
+
+    def __post_init__(self):
+        if (
+            not isinstance(self.max_items, int)
+            or isinstance(self.max_items, bool)
+            or self.max_items < 1
+        ):
+            raise ValueError(
+                f"plex.empty_trash.max_items must be an integer >= 1, got '{self.max_items}'"
+            )
+
+
+@dataclass
+class TautulliConfig:
+    """Tautulli watch history for remover watch protection"""
+
+    url: str
+    apikey: str
+
+    def __repr__(self):
+        return f"TautulliConfig(url={self.url},apikey={len(self.apikey) * '*'})"
+
+
 @dataclass
 class PlexConfig:
     """Plex class for refreshing library"""
@@ -152,16 +274,29 @@ class ArrConfig:
     tag: str | None
     movers: list[MoverRule] = field(default_factory=list[MoverRule])
     profilers: list[ProfileRule] = field(default_factory=list[ProfileRule])
+    removers: list[RemoverRule] = field(default_factory=list[RemoverRule])
+    remover_settings: RemoverSettings = field(default_factory=RemoverSettings)
     dry_run: bool = False
 
     def __repr__(self):
         fields: list[
-            tuple[str, str | bool | None | list[MoverRule] | list[ProfileRule]]
+            tuple[
+                str,
+                str
+                | bool
+                | None
+                | list[MoverRule]
+                | list[ProfileRule]
+                | list[RemoverRule]
+                | RemoverSettings,
+            ]
         ] = [
             ("baseurl", self.baseurl or None),
             ("apikey", len(self.apikey) * "*" if self.apikey else None),
             ("movers", self.movers or None),
             ("profilers", self.profilers or None),
+            ("removers", self.removers or None),
+            ("remover_settings", self.remover_settings if self.removers else None),
             ("dry_run", self.dry_run),
             ("tag", self.tag or None),
         ]
@@ -177,6 +312,8 @@ class ConfigSettings:
     sonarr: ArrConfig | None
     filter_time: timedelta | None = None
     autoscan: AutoscanConfig | None = None
+    tautulli: TautulliConfig | None = None
+    empty_trash: EmptyTrashSettings = field(default_factory=EmptyTrashSettings)
 
     def __repr__(self):
-        return f"ConfigSettings(filter_time={self.filter_time}, plex={self.plex}, autoscan={self.autoscan}, sonarr={self.sonarr}, radarr={self.radarr})"
+        return f"ConfigSettings(filter_time={self.filter_time}, plex={self.plex}, empty_trash={self.empty_trash}, tautulli={self.tautulli}, autoscan={self.autoscan}, sonarr={self.sonarr}, radarr={self.radarr})"
