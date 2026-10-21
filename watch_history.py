@@ -129,7 +129,9 @@ def get_tautulli_watches(
                 )
             )
     except (requests.exceptions.RequestException, KeyError, ValueError) as e:
-        logger.error("TAUTULLI\t Failed to read watch history: %s", e)
+        # requests errors include the url, and tautulli's apikey is a query param
+        message = str(e).replace(config.apikey, "***") if config.apikey else str(e)
+        logger.error("TAUTULLI\t Failed to read watch history: %s", message)
         return None
 
     logger.info("TAUTULLI\t %s episode plays since %s", len(events), since)

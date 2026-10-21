@@ -86,6 +86,17 @@ class TestTautulliWatches:
         ):
             assert get_tautulli_watches(TAUTULLI, SINCE) is None
 
+    def test_error_log_redacts_apikey(self, caplog):
+        config = TautulliConfig(url="http://t", apikey="s3cr3t0123")
+        error = requests.exceptions.HTTPError(
+            "500 Server Error for url: http://t/api/v2?apikey=s3cr3t0123&cmd=get_history"
+        )
+        with patch.object(watch_history.requests, "get", side_effect=error):
+            assert get_tautulli_watches(config, SINCE) is None
+        assert "Failed to read watch history" in caplog.text
+        assert "s3cr3t0123" not in caplog.text
+        assert "apikey=***" in caplog.text
+
     def test_api_error_returns_none(self):
         r = MagicMock()
         r.json.return_value = {"response": {"result": "error", "message": "bad key"}}
