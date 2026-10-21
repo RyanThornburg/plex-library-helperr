@@ -38,6 +38,8 @@ uv run main.py --remove
 uv run main.py --empty-trash
 ```
 
+Each run ends with a summary of what it changed (or would change in a dry run) and exits with status 1 if anything failed.
+
 `--remove` is a separate run so you can schedule it on its own, less often than the movers. It ignores `filter_time` and has its own `dry_run` setting in `[sonarr.remover_settings]`.
 
 `--empty-trash` is for Plex servers with "Empty trash automatically after every scan" turned off. Removers and movers only trigger a scan, which moves deleted files to the trash. Schedule `--empty-trash` to run after those scans have finished (with Autoscan, the scan happens after its `minimum-age`).

@@ -10,6 +10,7 @@ import requests
 from arrapi import Series, SonarrAPI
 
 from config.models import ArrConfig, PlexConfig, RemoverRule, TautulliConfig
+from results import Change, JobResult, Status
 from watch_history import WatchEvent, get_watch_history
 
 logger = logging.getLogger(__name__)
@@ -306,12 +307,12 @@ def run_removers(
     arr_config: ArrConfig,
     tautulli: TautulliConfig | None,
     plex: PlexConfig | None,
-    plex_libraries: set[str],
-    scan_dirs: set[str],
+    result: JobResult,
 ) -> None:
     """plan every removal first, then unmonitor and delete"""
     if not arr_config.apikey or not arr_config.baseurl:
         logger.warning("%s not configured. Skipping...", LOG_NAME)
+        result.errors.append(f"{LOG_NAME} not configured")
         return
     if not arr_config.removers:
         logger.info("%s\t No removers configured", LOG_NAME)
@@ -337,6 +338,9 @@ def run_removers(
             logger.error(
                 "%s\t No watch history, skipping series with skip_if_watched_within",
                 LOG_NAME,
+            )
+            result.errors.append(
+                "No watch history, skipped series with skip_if_watched_within"
             )
 
     queued = client.queued_series_ids()
@@ -384,6 +388,18 @@ def run_removers(
     logger.info("%s\t %s files to remove from %s series", LOG_NAME, total, len(plans))
     if not plans:
         return
+
+    def change(plan: RemovalPlan, status: Status, detail: str = "") -> Change:
+        files = f"{len(plan.file_ids)} files"
+        return Change(
+            LOG_NAME,
+            "remove",
+            plan.series.title,
+            plan.labels,
+            status,
+            f"{files}, {detail}" if detail else files,
+        )
+
     if settings.max_deletes is not None and total > settings.max_deletes:
         logger.error(
             "%s\t %s files exceeds max_deletes (%s), not removing anything",
@@ -391,19 +407,31 @@ def run_removers(
             total,
             settings.max_deletes,
         )
+        detail = f"run total of {total} files exceeds max_deletes ({settings.max_deletes})"
+        result.changes.extend(change(p, "blocked", detail) for p in plans)
         return
     if settings.dry_run:
         logger.info("%s\t DRY RUN - not actually removing", LOG_NAME)
+        result.changes.extend(change(p, "dry_run") for p in plans)
         return
 
     for plan in plans:
         try:
             # unmonitor first so sonarr does not grab the deleted files again
             client.unmonitor_episodes(plan.episode_ids)
+        except requests.exceptions.RequestException as e:
+            logger.error("%s\t %s: failed to unmonitor (%s)", LOG_NAME, plan.series.title, e)
+            result.changes.append(change(plan, "failed", f"unmonitor failed: {e}"))
+            continue
+        try:
             client.delete_episode_files(plan.file_ids)
         except requests.exceptions.RequestException as e:
-            logger.error("%s\t %s: failed to remove (%s)", LOG_NAME, plan.series.title, e)
+            logger.error("%s\t %s: failed to delete (%s)", LOG_NAME, plan.series.title, e)
+            result.changes.append(
+                change(plan, "failed", f"unmonitored, but delete failed: {e}")
+            )
             continue
-        scan_dirs.update(plan.dirs)
+        result.changes.append(change(plan, "done"))
+        result.scan_dirs.update(plan.dirs)
         if plan.rule.plex_library:
-            plex_libraries.add(plan.rule.plex_library)
+            result.plex_libraries.add(plan.rule.plex_library)

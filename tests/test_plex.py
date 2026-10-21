@@ -9,6 +9,7 @@ from plexapi import exceptions as plexapi_exceptions
 
 import plex
 from config.models import EmptyTrashSettings, PlexConfig
+from results import JobResult
 
 PLEX_CONFIG = PlexConfig(baseurl="http://plex:32400", token="token")
 
@@ -52,10 +53,16 @@ def make_server(sections: list[MagicMock], trash: dict[int, int | None]) -> Magi
     return server
 
 
-def run(server: MagicMock, **kwargs) -> None:
+def run(server: MagicMock, **kwargs) -> JobResult:
     settings = EmptyTrashSettings(**kwargs)
+    result = JobResult("empty_trash")
     with patch.object(plex, "setup_plex_server", return_value=server):
-        plex.empty_plex_trash(PLEX_CONFIG, settings)
+        plex.empty_plex_trash(PLEX_CONFIG, settings, result)
+    return result
+
+
+def statuses(result: JobResult) -> dict[str, str]:
+    return {c.target: c.status for c in result.changes}
 
 
 # ---------------------------------------------------------------------------
@@ -67,9 +74,11 @@ class TestEmptyPlexTrash:
     def test_empties_sections_with_trash(self):
         tv = make_section("TV Shows", key=1)
         movies = make_section("Movies", type="movie", key=2)
-        run(make_server([tv, movies], {1: 5, 2: 3}))
+        result = run(make_server([tv, movies], {1: 5, 2: 3}))
         tv.emptyTrash.assert_called_once()
         movies.emptyTrash.assert_called_once()
+        assert statuses(result) == {"TV Shows": "done", "Movies": "done"}
+        assert result.changes[0].detail == "5 items"
 
     def test_counts_episodes_in_show_libraries(self):
         tv = make_section("TV Shows", key=1)
@@ -88,32 +97,37 @@ class TestEmptyPlexTrash:
 
     def test_empty_trash_is_not_emptied(self):
         tv = make_section("TV Shows", key=1)
-        run(make_server([tv], {1: 0}))
+        result = run(make_server([tv], {1: 0}))
         tv.emptyTrash.assert_not_called()
+        assert result.changes == []
 
     def test_over_max_items_is_skipped(self):
         tv = make_section("TV Shows", key=1)
         movies = make_section("Movies", type="movie", key=2)
-        run(make_server([tv, movies], {1: 11, 2: 10}), max_items=10)
+        result = run(make_server([tv, movies], {1: 11, 2: 10}), max_items=10)
         tv.emptyTrash.assert_not_called()
         movies.emptyTrash.assert_called_once()
+        assert statuses(result) == {"TV Shows": "blocked", "Movies": "done"}
 
     def test_refreshing_section_is_skipped(self):
         tv = make_section("TV Shows", key=1, refreshing=True)
         server = make_server([tv], {1: 5})
-        run(server)
+        result = run(server)
         tv.emptyTrash.assert_not_called()
         server.query.assert_not_called()
+        assert statuses(result) == {"TV Shows": "blocked"}
 
     def test_missing_count_is_skipped(self):
         tv = make_section("TV Shows", key=1)
-        run(make_server([tv], {1: None}))
+        result = run(make_server([tv], {1: None}))
         tv.emptyTrash.assert_not_called()
+        assert statuses(result) == {"TV Shows": "failed"}
 
     def test_dry_run_does_not_empty(self):
         tv = make_section("TV Shows", key=1)
-        run(make_server([tv], {1: 5}), dry_run=True)
+        result = run(make_server([tv], {1: 5}), dry_run=True)
         tv.emptyTrash.assert_not_called()
+        assert statuses(result) == {"TV Shows": "dry_run"}
 
     def test_all_libraries_skips_unsupported_types(self):
         music = make_section("Music", type="artist", key=3)
@@ -139,8 +153,9 @@ class TestEmptyPlexTrash:
 
     def test_missing_library_does_not_stop_others(self):
         tv = make_section("TV Shows", key=1)
-        run(make_server([tv], {1: 5}), libraries=["Nope", "TV Shows"])
+        result = run(make_server([tv], {1: 5}), libraries=["Nope", "TV Shows"])
         tv.emptyTrash.assert_called_once()
+        assert result.errors == ["Plex library not found: Nope"]
 
     @pytest.mark.parametrize(
         "error",
@@ -153,15 +168,19 @@ class TestEmptyPlexTrash:
         tv = make_section("TV Shows", key=1)
         tv.emptyTrash.side_effect = error
         movies = make_section("Movies", type="movie", key=2)
-        run(make_server([tv, movies], {1: 5, 2: 5}))
+        result = run(make_server([tv, movies], {1: 5, 2: 5}))
         movies.emptyTrash.assert_called_once()
+        assert statuses(result) == {"TV Shows": "failed", "Movies": "done"}
 
     def test_failure_loading_sections_is_logged(self):
         server = make_server([], {})
         server.library.sections.side_effect = requests.exceptions.ConnectionError()
-        run(server)
+        result = run(server)
+        assert len(result.errors) == 1
 
     def test_plex_not_configured(self):
+        result = JobResult("empty_trash")
         with patch.object(plex, "setup_plex_server") as setup:
-            plex.empty_plex_trash(None, EmptyTrashSettings())
+            plex.empty_plex_trash(None, EmptyTrashSettings(), result)
         setup.assert_not_called()
+        assert result.errors == ["Plex server not configured"]

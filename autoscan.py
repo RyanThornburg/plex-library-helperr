@@ -9,8 +9,9 @@ from config.models import AutoscanConfig
 logger = logging.getLogger(__name__)
 
 
-def trigger_autoscan(autoscan_config: AutoscanConfig, scan_dirs: set[str]) -> None:
-    """send folders to autoscan's manual trigger, autoscan handles path rewrites and scan delay"""
+def trigger_autoscan(autoscan_config: AutoscanConfig, scan_dirs: set[str]) -> bool:
+    """send folders to autoscan's manual trigger, autoscan handles path rewrites and scan delay.
+    returns whether autoscan accepted them"""
     url = f"{autoscan_config.url.rstrip('/')}/triggers/manual"
     auth = (
         (autoscan_config.username, autoscan_config.password or "")
@@ -29,6 +30,7 @@ def trigger_autoscan(autoscan_config: AutoscanConfig, scan_dirs: set[str]) -> No
             timeout=30,
         )
         response.raise_for_status()
+        return True
     except requests.exceptions.HTTPError as e:
         status = e.response.status_code if e.response is not None else "error"
         hint = " - check autoscan username/password" if status == 401 else ""
@@ -41,3 +43,4 @@ def trigger_autoscan(autoscan_config: AutoscanConfig, scan_dirs: set[str]) -> No
         logger.error("AUTOSCAN Failed to trigger scan: could not connect (%s)", url)
     except requests.exceptions.RequestException as e:
         logger.error("AUTOSCAN Failed to trigger scan: %s (%s)", e, url)
+    return False

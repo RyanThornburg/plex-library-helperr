@@ -4,6 +4,7 @@ Helper script for organizing sonarr/radarr libraries with plex
 
 import argparse
 import logging.config
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import PurePosixPath
 from typing import Callable, Iterable
@@ -21,16 +22,11 @@ from arrapi import (
 
 import config
 from autoscan import trigger_autoscan
-from config.models import (
-    ArrConfig,
-    ConfigSettings,
-    MoverRule,
-    PlexConfig,
-    ProfileRule,
-)
+from config.models import ArrConfig, ConfigSettings, MoverRule, ProfileRule
 from logging_config import LOGGING_CONFIG
 from plex import empty_plex_trash, refresh_plex_libraries
 from remover import run_removers
+from results import JOBS, Change, JobResult
 
 MATCH_FN: dict[str, Callable[[Iterable[object]], bool]] = {"any": any, "all": all}
 
@@ -235,8 +231,7 @@ def run_arr(
     edit_fn: str,
     log_name: str,
     filter_time: timedelta | None,
-    plex_libraries: set[str],
-    scan_dirs: set[str],
+    result: JobResult,
 ) -> None:
     """Run movers and profilers against a single radarr/sonarr instance"""
     if not arr_config.apikey or not arr_config.baseurl:
@@ -274,9 +269,8 @@ def run_arr(
                     len(matches),
                     mover.path,
                 )
+                titles = [m.title for m in matches]
                 if not arr_config.dry_run:
-                    if mover.plex_library:
-                        plex_libraries.add(mover.plex_library)
                     updated, _ = getattr(arr, edit_fn)(
                         ids=matches,
                         root_folder=mover.path,
@@ -287,9 +281,17 @@ def run_arr(
                             else {}
                         ),
                     )
-                    scan_dirs.update(get_moved_dirs(matches, updated, mover.path))
+                    result.changes.append(
+                        Change(log_name, "move", mover.path, titles, "done")
+                    )
+                    if mover.plex_library:
+                        result.plex_libraries.add(mover.plex_library)
+                    result.scan_dirs.update(get_moved_dirs(matches, updated, mover.path))
                 else:
                     logger.info("%s\t DRY RUN - not actually moving", log_name)
+                    result.changes.append(
+                        Change(log_name, "move", mover.path, titles, "dry_run")
+                    )
             else:
                 logger.info(
                     "%s\t No media found matching rule",
@@ -309,14 +311,21 @@ def run_arr(
                     len(matches),
                     p.profile,
                 )
+                titles = [m.title for m in matches]
                 if not arr_config.dry_run:
                     getattr(arr, edit_fn)(
                         ids=matches,
                         quality_profile=p.profile,
                         monitored=p.monitored,
                     )
+                    result.changes.append(
+                        Change(log_name, "profile", p.profile, titles, "done")
+                    )
                 else:
                     logger.info("%s\t DRY RUN - not actually updating", log_name)
+                    result.changes.append(
+                        Change(log_name, "profile", p.profile, titles, "dry_run")
+                    )
             else:
                 logger.info(
                     "%s\t No matches found for profiler",
@@ -340,45 +349,32 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: list[str] | None = None) -> None:
-    """Update radarr/sonarr library"""
+def run_job(job: str, settings: ConfigSettings) -> JobResult:
+    """run one job (movers, removers or empty_trash) and return what it changed"""
+    if job not in JOBS:
+        raise ValueError(f"unknown job '{job}', expected one of {', '.join(JOBS)}")
+    result = JobResult(job)
 
-    args = parse_args(argv)
-    logging.config.dictConfig(LOGGING_CONFIG)
-    logger.info("Loading config settings")
-    settings = config.load_config()
-    logger.info(settings)
-
-    if args.empty_trash:
+    if job == "empty_trash":
         logger.info("-" * 90)
         logger.info("STARTING PLEX EMPTY TRASH")
-        empty_plex_trash(settings.plex, settings.empty_trash)
-        logger.info("-" * 90)
-        logger.info("FINISHED")
-        logger.info("=" * 90)
-        return
+        empty_plex_trash(settings.plex, settings.empty_trash, result)
+        return result
 
-    plex_libraries: set[str] = set()
-    scan_dirs: set[str] = set()
-
-    if args.remove:
+    if job == "removers":
         logger.info("-" * 90)
         logger.info("STARTING SONARR REMOVERS")
         if settings.sonarr is None:
             logger.warning("SONARR not configured. Skipping...")
+            result.errors.append("SONARR not configured")
         else:
             try:
-                run_removers(
-                    settings.sonarr,
-                    settings.tautulli,
-                    settings.plex,
-                    plex_libraries,
-                    scan_dirs,
-                )
-            except (ArrException, requests.exceptions.RequestException):
+                run_removers(settings.sonarr, settings.tautulli, settings.plex, result)
+            except (ArrException, requests.exceptions.RequestException) as e:
                 logger.exception("SONARR\t Removers failed")
-        scan_changed(settings, plex_libraries, scan_dirs)
-        return
+                result.errors.append(f"SONARR removers failed: {e}")
+        scan_changed(settings, result)
+        return result
 
     arr_dispatch: list[
         tuple[ArrConfig | None, type[RadarrAPI | SonarrAPI], str, str, str]
@@ -401,35 +397,67 @@ def main(argv: list[str] | None = None) -> None:
                 edit_fn,
                 log_name,
                 settings.filter_time,
-                plex_libraries,
-                scan_dirs,
+                result,
             )
-        except ArrException:
+        except ArrException as e:
             logger.exception("%s\t Failed, skipping remaining rules", log_name)
+            result.errors.append(f"{log_name} failed, skipped remaining rules: {e}")
 
-    scan_changed(settings, plex_libraries, scan_dirs)
+    scan_changed(settings, result)
+    return result
 
 
-def scan_changed(
-    settings: ConfigSettings, plex_libraries: set[str], scan_dirs: set[str]
-) -> None:
-    """scan changed folders with autoscan, or refresh plex libraries without it"""
+def main(argv: list[str] | None = None) -> JobResult:
+    """Update radarr/sonarr library"""
+
+    args = parse_args(argv)
+    logging.config.dictConfig(LOGGING_CONFIG)
+    logger.info("Loading config settings")
+    settings = config.load_config()
+    logger.info(settings)
+
+    job = "removers" if args.remove else "empty_trash" if args.empty_trash else "movers"
+    result = run_job(job, settings)
+
     logger.info("-" * 90)
-    if settings.autoscan:
-        if scan_dirs:
-            trigger_autoscan(settings.autoscan, scan_dirs)
-            logger.info("-" * 90)
-    elif plex_libraries:
-        plex_config: PlexConfig | None = settings.plex
-        refresh_plex_libraries(
-            plex_config,
-            plex_libraries,
-        )
-        logger.info("-" * 90)
-
+    result.log_summary()
+    logger.info("-" * 90)
     logger.info("FINISHED")
     logger.info("=" * 90)
+    return result
+
+
+def scan_changed(settings: ConfigSettings, result: JobResult) -> None:
+    """scan changed folders with autoscan, or refresh plex libraries without it"""
+    if settings.autoscan:
+        if result.scan_dirs:
+            logger.info("-" * 90)
+            ok = trigger_autoscan(settings.autoscan, result.scan_dirs)
+            result.changes.append(
+                Change(
+                    "AUTOSCAN",
+                    "scan",
+                    "autoscan",
+                    sorted(result.scan_dirs),
+                    "done" if ok else "failed",
+                )
+            )
+    elif result.plex_libraries:
+        logger.info("-" * 90)
+        refreshed = refresh_plex_libraries(settings.plex, result.plex_libraries)
+        for library in sorted(result.plex_libraries):
+            result.changes.append(
+                Change(
+                    "PLEX",
+                    "refresh",
+                    library,
+                    [],
+                    "done" if library in refreshed else "failed",
+                )
+            )
 
 
 if __name__ == "__main__":
-    main()
+    job_result = main()
+    failed = job_result.errors or any(c.status == "failed" for c in job_result.changes)
+    sys.exit(1 if failed else 0)

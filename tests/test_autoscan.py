@@ -11,7 +11,7 @@ from config.models import AutoscanConfig
 class TestTriggerAutoscan:
     def test_posts_all_dirs_to_manual_trigger(self):
         with patch("autoscan.requests.post") as post:
-            trigger_autoscan(
+            assert trigger_autoscan(
                 AutoscanConfig(url="http://autoscan:3030/"), {"/b", "/a"}
             )
         post.assert_called_once_with(
@@ -36,7 +36,7 @@ class TestTriggerAutoscan:
             response=response
         )
         with patch("autoscan.requests.post", return_value=response):
-            trigger_autoscan(AutoscanConfig(url="http://autoscan:3030"), {"/a"})
+            assert not trigger_autoscan(AutoscanConfig(url="http://autoscan:3030"), {"/a"})
         assert (
             "Failed to trigger scan: HTTP 401 (http://autoscan:3030/triggers/manual)"
             " - check autoscan username/password"

@@ -16,6 +16,7 @@ from remover import (
     run_removers,
     series_watches,
 )
+from results import Change, JobResult
 from watch_history import WatchEvent
 
 NOW = datetime(2026, 10, 1)
@@ -330,8 +331,7 @@ class TestSeriesWatches:
 
 class TestRunRemovers:
     def setup_method(self):
-        self.scan_dirs: set[str] = set()
-        self.plex_libraries: set[str] = set()
+        self.result = JobResult("removers")
         self.client = MagicMock()
         self.client.queued_series_ids.return_value = set()
         self.client.episodes.side_effect = lambda _id: build_raw({1: 1, 2: 1, 3: 1})[0]
@@ -353,7 +353,7 @@ class TestRunRemovers:
             patch.object(remover, "get_watch_history", return_value=watches) as wh,
             patch.object(remover, "utc_now", return_value=NOW),
         ):
-            run_removers(arr_config, None, None, self.plex_libraries, self.scan_dirs)
+            run_removers(arr_config, None, None, self.result)
         return wh
 
     def test_unmonitors_then_deletes(self):
@@ -362,19 +362,25 @@ class TestRunRemovers:
         self.client.delete_episode_files.side_effect = lambda ids: calls("delete", ids)
         self._run([make_series()])
         assert [c.args for c in calls.call_args_list] == [("unmonitor", [1]), ("delete", [1])]
-        assert self.scan_dirs == {"/tv/Show/Season 01"}
-        assert self.plex_libraries == {"Reality"}
+        assert self.result.scan_dirs == {"/tv/Show/Season 01"}
+        assert self.result.plex_libraries == {"Reality"}
+        assert self.result.changes == [
+            Change("SONARR", "remove", "Survivor", ["S01"], "done", "1 files")
+        ]
 
     def test_dry_run_changes_nothing(self):
         self._run([make_series()], settings=RemoverSettings(dry_run=True))
         self.client.unmonitor_episodes.assert_not_called()
         self.client.delete_episode_files.assert_not_called()
-        assert self.scan_dirs == set()
+        assert self.result.scan_dirs == set()
+        assert [c.status for c in self.result.changes] == ["dry_run"]
 
     def test_max_deletes_blocks_everything(self):
         series = [make_series(id=1), make_series(id=2)]
         self._run(series, settings=RemoverSettings(dry_run=False, max_deletes=1))
         self.client.delete_episode_files.assert_not_called()
+        assert [c.status for c in self.result.changes] == ["blocked", "blocked"]
+        assert "exceeds max_deletes (1)" in self.result.changes[0].detail
 
     def test_recently_added_series_skipped(self):
         self._run([make_series(added=NOW - timedelta(days=10))])
@@ -404,13 +410,23 @@ class TestRunRemovers:
         self.client.unmonitor_episodes.side_effect = requests.exceptions.HTTPError("500")
         self._run([make_series()])
         self.client.delete_episode_files.assert_not_called()
-        assert self.scan_dirs == set()
+        assert self.result.scan_dirs == set()
+        assert self.result.changes[0].status == "failed"
+        assert "unmonitor failed" in self.result.changes[0].detail
+
+    def test_delete_failure_records_unmonitored(self):
+        self.client.delete_episode_files.side_effect = requests.exceptions.HTTPError("500")
+        self._run([make_series()])
+        assert self.result.scan_dirs == set()
+        assert self.result.changes[0].status == "failed"
+        assert "unmonitored, but delete failed" in self.result.changes[0].detail
 
     def test_watch_rule_skipped_when_history_unavailable(self):
         rule = seasons_rule(skip_if_watched_within=timedelta(days=14))
         wh = self._run([make_series()], rule=rule, watches=None)
         wh.assert_called_once()
         self.client.episodes.assert_not_called()
+        assert len(self.result.errors) == 1
 
     def test_watch_history_fetched_for_longest_window(self):
         rule = seasons_rule(skip_if_watched_within=timedelta(days=14))

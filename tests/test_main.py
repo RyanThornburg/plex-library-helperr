@@ -1,6 +1,6 @@
 """Tests for main.py"""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 from arrapi import ConnectionFailure
@@ -20,6 +20,7 @@ from main import (
     is_path_valid,
     is_profile_valid,
 )
+from results import Change, JobResult
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -575,7 +576,7 @@ def make_arr(media, root_paths):
 
 class TestRunArr:
     def setup_method(self):
-        self.scan_dirs: set[str] = set()
+        self.result = JobResult("movers")
 
     def _run(self, arr, arr_config):
         main.run_arr(
@@ -585,8 +586,7 @@ class TestRunArr:
             "edit_multiple_movies",
             "RADARR",
             None,
-            set(),
-            self.scan_dirs,
+            self.result,
         )
 
     def test_first_matching_mover_wins(self):
@@ -639,10 +639,13 @@ class TestRunArr:
             movers=[MoverRule(path="/data/media/movies/docs", genres=["documentary"])],
         )
         self._run(arr, arr_config)
-        assert self.scan_dirs == {
+        assert self.result.scan_dirs == {
             "/data/media/movies/movies/Free Solo (2018)",
             "/data/media/movies/docs/Free Solo (2018)",
         }
+        assert self.result.changes == [
+            Change("RADARR", "move", "/data/media/movies/docs", ["Jurassic Park"], "done")
+        ]
 
     def test_dry_run_adds_no_scan_dirs(self):
         movie = make_movie(genres=["Documentary"])
@@ -656,7 +659,23 @@ class TestRunArr:
         )
         self._run(arr, arr_config)
         arr.edit_multiple_movies.assert_not_called()
-        assert self.scan_dirs == set()
+        assert self.result.scan_dirs == set()
+        assert [c.status for c in self.result.changes] == ["dry_run"]
+
+    def test_profiler_change_recorded(self):
+        movie = make_movie(studio="Pixar")
+        arr = make_arr([movie], [])
+        arr.quality_profile.return_value = [make_quality_profile("Kids")]
+        arr_config = ArrConfig(
+            baseurl="http://radarr",
+            apikey="key",
+            tag=None,
+            profilers=[ProfileRule(profile="Kids", studios=["pixar"])],
+        )
+        self._run(arr, arr_config)
+        assert self.result.changes == [
+            Change("RADARR", "profile", "Kids", ["Jurassic Park"], "done")
+        ]
 
 
 class TestMainErrorHandling:
@@ -670,8 +689,10 @@ class TestMainErrorHandling:
                 main, "run_arr", side_effect=[ConnectionFailure("down"), None]
             ) as run_arr,
         ):
-            main.main([])
+            result = main.main([])
         assert run_arr.call_count == 2
+        assert len(result.errors) == 1
+        assert result.errors[0].startswith("RADARR failed")
 
 
 class TestGetMovedDirs:
@@ -694,17 +715,17 @@ class TestGetMovedDirs:
 class TestMainScanDispatch:
     def _main(self, settings, scan_dirs, plex_libraries):
         def fake_run_arr(*args):
-            args[-2].update(plex_libraries)
-            args[-1].update(scan_dirs)
+            args[-1].plex_libraries.update(plex_libraries)
+            args[-1].scan_dirs.update(scan_dirs)
 
         with (
             patch.object(main.config, "load_config", return_value=settings),
             patch.object(main.logging.config, "dictConfig"),
             patch.object(main, "run_arr", side_effect=fake_run_arr),
-            patch.object(main, "trigger_autoscan") as autoscan,
-            patch.object(main, "refresh_plex_libraries") as plex,
+            patch.object(main, "trigger_autoscan", return_value=True) as autoscan,
+            patch.object(main, "refresh_plex_libraries", return_value=set()) as plex,
         ):
-            main.main([])
+            self.result = main.main([])
         return autoscan, plex
 
     def _settings(self, autoscan):
@@ -720,11 +741,23 @@ class TestMainScanDispatch:
         )
         autoscan.assert_called_once_with(autoscan_config, {"/a", "/b"})
         plex.assert_not_called()
+        assert self.result.changes == [
+            Change("AUTOSCAN", "scan", "autoscan", ["/a", "/b"], "done")
+        ]
+
+    def test_failed_autoscan_recorded(self):
+        autoscan_config = AutoscanConfig(url="http://autoscan:3030")
+        with patch.object(main, "trigger_autoscan", return_value=False):
+            result = JobResult("movers", scan_dirs={"/a"})
+            main.scan_changed(self._settings(autoscan_config), result)
+        assert [c.status for c in result.changes] == ["failed"]
 
     def test_plex_refresh_when_autoscan_not_configured(self):
         autoscan, plex = self._main(self._settings(None), {"/a"}, {"Movies"})
         autoscan.assert_not_called()
         plex.assert_called_once()
+        # the mock refreshed nothing, so the library is recorded as failed
+        assert self.result.changes == [Change("PLEX", "refresh", "Movies", [], "failed")]
 
 
 class TestMainRemove:
@@ -769,7 +802,7 @@ class TestMainEmptyTrash:
         run_arr, run_removers, empty_trash, settings = self._main(["--empty-trash"])
         run_arr.assert_not_called()
         run_removers.assert_not_called()
-        empty_trash.assert_called_once_with(settings.plex, settings.empty_trash)
+        empty_trash.assert_called_once_with(settings.plex, settings.empty_trash, ANY)
 
     def test_default_does_not_empty_trash(self):
         _, _, empty_trash, _ = self._main([])
@@ -778,3 +811,19 @@ class TestMainEmptyTrash:
     def test_remove_and_empty_trash_are_exclusive(self):
         with pytest.raises(SystemExit):
             main.parse_args(["--remove", "--empty-trash"])
+
+
+class TestRunJob:
+    def test_unknown_job_raises(self):
+        with pytest.raises(ValueError, match="unknown job"):
+            main.run_job("nope", ConfigSettings(plex=None, radarr=None, sonarr=None))
+
+    def test_removers_without_sonarr_is_an_error(self):
+        result = main.run_job(
+            "removers", ConfigSettings(plex=None, radarr=None, sonarr=None)
+        )
+        assert result.errors == ["SONARR not configured"]
+
+    def test_movers_without_arrs_is_not_an_error(self):
+        result = main.run_job("movers", ConfigSettings(plex=None, radarr=None, sonarr=None))
+        assert result == JobResult("movers")
