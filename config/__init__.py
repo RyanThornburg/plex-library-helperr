@@ -1,6 +1,7 @@
 """__init__.py"""
 
 import logging
+import os
 import pathlib
 import re
 import shutil
@@ -136,9 +137,12 @@ def parse_duration(value: object) -> timedelta | None:
 
 def load_config() -> ConfigSettings:
     """load user config"""
-    path = pathlib.Path(__file__).parent / "config.toml"
+    package_dir = pathlib.Path(__file__).parent
+    # DATA_DIR keeps config out of the package dir, e.g. a docker volume
+    data_dir = os.environ.get("DATA_DIR")
+    path = (pathlib.Path(data_dir) if data_dir else package_dir) / "config.toml"
     if not path.exists():
-        example = path.parent / "config.toml.example"
+        example = package_dir / "config.toml.example"
         if not example.exists():
             raise FileNotFoundError(
                 f"Config file not found and no example to copy from: {example}"

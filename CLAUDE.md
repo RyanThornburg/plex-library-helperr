@@ -52,3 +52,5 @@ A one-shot script that reads every movie (Radarr) / series (Sonarr), applies use
 - Code uses Python 3.14 syntax, e.g. unparenthesized multi-exception `except A, B:` in `plex.py` (PEP 758) — this is intentional, not a bug.
 - `main()` takes `argv` (tests call `main.main([])` so pytest's argv isn't parsed).
 - `config/config.toml` holds real credentials and is gitignored; edit `config.toml.example` for documented defaults and keep the README config tables in sync when adding rule fields.
+- `DATA_DIR` (set to `/config` in the Dockerfile) moves `config.toml` and `logs/` out of the code dirs; unset, they stay at `config/config.toml` and `logs/`. Docker can't mount over `/app/config` because that's the config Python package.
+- `.dockerignore` is an allowlist so `config/config.toml` never reaches the build context. When adding a module outside the top level or `config/`, add it there and to the Dockerfile's `COPY` lines.

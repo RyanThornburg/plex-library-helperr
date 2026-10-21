@@ -48,6 +48,33 @@ uv run main.py --empty-trash
 
 `config.toml.example` has examples for movers and profiles. You should delete or modify those before running on your library.
 
+## Docker (Unraid)
+
+The image runs one job and exits. Config and logs live in the `/config` volume (`config.toml` and `logs/`), and the container runs as Unraid's `nobody:users` (99:100).
+
+```bash
+git clone https://github.com/RyanThornburg/plex-library-helperr.git /mnt/user/appdata/plex-library-helperr/src
+cd /mnt/user/appdata/plex-library-helperr/src
+docker build -t plex-library-helperr .
+
+# the container user must be able to write config.toml and logs/
+mkdir -p /mnt/user/appdata/plex-library-helperr/config
+chown 99:100 /mnt/user/appdata/plex-library-helperr/config
+
+# first run creates config/config.toml from the example, edit it before running again
+docker run --rm \
+  --network <your-docker-network> \
+  --read-only --cap-drop ALL --security-opt no-new-privileges \
+  -v /mnt/user/appdata/plex-library-helperr/config:/config \
+  plex-library-helperr            # or: plex-library-helperr --remove / --empty-trash
+```
+
+- `--network`: use the custom Docker network Radarr/Sonarr/Plex/Autoscan are on and refer to them by container name in `config.toml`. `localhost` inside the container is the container itself.
+- To update: `git pull` and `docker build` again.
+- Set `-e TZ=America/New_York` (or your zone) if you want log timestamps in local time.
+
+Outside Docker, set `DATA_DIR` to keep `config.toml` and `logs/` somewhere other than the repo.
+
 ## Configuration
 
 ### `[settings]`

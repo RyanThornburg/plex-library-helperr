@@ -1,0 +1,9 @@
+# allowlist: nothing reaches the build context unless listed here,
+# so config/config.toml (real credentials) can never end up in an image
+*
+!pyproject.toml
+!uv.lock
+!*.py
+!config/__init__.py
+!config/models.py
+!config/config.toml.example

@@ -1,10 +1,12 @@
 """logging_config.py"""
 
+import os
 import pathlib
 from typing import Any
 
-LOG_DIR = pathlib.Path(__file__).parent / "logs"
-LOG_DIR.mkdir(exist_ok=True)
+# DATA_DIR keeps logs out of the app dir, e.g. a docker volume
+LOG_DIR = pathlib.Path(os.environ.get("DATA_DIR") or pathlib.Path(__file__).parent) / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 LOGGING_CONFIG: dict[str, Any] = {
     "version": 1,

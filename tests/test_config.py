@@ -314,3 +314,22 @@ class TestTautulliConfig:
     def test_missing_apikey_is_none(self, tmp_path, monkeypatch):
         settings = self._load(tmp_path, monkeypatch, "[tautulli]\nurl = 'http://t'\n")
         assert settings.tautulli is None
+
+
+class TestDataDir:
+    def test_loads_from_data_dir(self, tmp_path, monkeypatch):
+        (tmp_path / "config.toml").write_text("[settings]\ndry_run = true\n")
+        monkeypatch.setenv("DATA_DIR", str(tmp_path))
+        assert config.load_config().empty_trash.dry_run is True
+
+    def test_copies_example_into_data_dir(self, tmp_path, monkeypatch):
+        package_dir = tmp_path / "package"
+        data_dir = tmp_path / "data"
+        package_dir.mkdir()
+        data_dir.mkdir()
+        (package_dir / "config.toml.example").write_text("[settings]\ndry_run = true\n")
+        monkeypatch.setattr(config, "__file__", str(package_dir / "__init__.py"))
+        monkeypatch.setenv("DATA_DIR", str(data_dir))
+        assert config.load_config().empty_trash.dry_run is True
+        assert (data_dir / "config.toml").exists()
+        assert not (package_dir / "config.toml").exists()
