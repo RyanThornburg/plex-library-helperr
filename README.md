@@ -68,16 +68,17 @@ Then a User Script (one per job, run on demand or on a schedule):
 ```bash
 #!/bin/bash
 IMAGE=ghcr.io/ryanthornburg/plex-library-helperr:latest
+# set only when config.toml uses container names, see below
+NETWORK_ARGS=()  # e.g. NETWORK_ARGS=(--network my-docker-network)
 docker pull -q "$IMAGE"
-docker run --rm \
-  --network <your-docker-network> \
+docker run --rm "${NETWORK_ARGS[@]}" \
   --read-only --cap-drop ALL --security-opt no-new-privileges \
   -v /mnt/user/appdata/plex-library-helperr/config:/config \
   "$IMAGE"            # add --remove or --empty-trash for those jobs
 docker image prune -f --filter "label=org.opencontainers.image.title=plex-library-helperr"
 ```
 
-- `--network`: use the custom Docker network Radarr/Sonarr/Plex/Autoscan are on and refer to them by container name in `config.toml`. `localhost` inside the container is the container itself.
+- URLs in `config.toml` can't use `localhost`, which inside the container is the container itself. The server's IP works as it would from any other machine. To use container names instead (e.g. `http://sonarr:8989`), set `NETWORK_ARGS` to the custom Docker network those containers are on. Plex in host network mode has no container name to use, so give it the server's IP.
 - `docker pull` picks up the latest image each run; the `prune` line removes the old ones it replaces.
 - Set `-e TZ=America/New_York` (or your zone) if you want log timestamps in local time.
 - To build locally instead: `docker build -t plex-library-helperr .` in a clone of this repo.
