@@ -11,6 +11,7 @@ uv sync                                   # install deps (incl. dev group: pytes
 uv run main.py                            # run movers/profilers
 uv run main.py --remove                   # run sonarr removers only
 uv run main.py --empty-trash              # empty plex library trash only
+uv run main.py --serve                    # web app (needs CF_ACCESS_* and ALLOWED_EMAILS env)
 uv run pytest tests/ -v                   # all tests
 uv run pytest tests/test_main.py::TestRunArr -v   # single test class
 ```
@@ -46,6 +47,13 @@ A one-shot script that reads every movie (Radarr) / series (Sonarr), applies use
 - `watch_history.py` — `WatchEvent`s (naive UTC) from Tautulli `get_history` (includes partial plays and all users, show TVDB id from `get_metadata` guids), falling back to Plex server history (completed plays only). Returns `None` on failure, and removers with `skip_if_watched_within` are then skipped. Events are matched to series by TVDB id, and by title only when the history has no TVDB id. Tautulli's `apikey` is a query param, so `requests` error text contains it: redact it before logging or storing any Tautulli error.
 - `autoscan.py` — POSTs the old and new folders of moved media to Autoscan's `/triggers/manual`. Paths are sent as the *arr sees them; the rewrite on Autoscan's Plex target maps them to Plex paths and its `minimum-age` covers the async move.
 - `plex.py` — fallback when Autoscan isn't configured: connects via plexapi and refreshes each library section collected from executed (non-dry-run) movers. Also `empty_plex_trash()` for `--empty-trash`: counts each movie/show section's trash via `/library/sections/{key}/all?type=<movie|episode>&trash=1` (includes old versions left by upgrades) and skips a section that is `refreshing` or over `[plex.empty_trash].max_items`, which guards against a missing mount trashing a whole library. Its `dry_run` defaults to `[settings].dry_run`.
+- `web/` — FastAPI app run by `main.py --serve` (one uvicorn worker on purpose: the scheduler will live in-process, no Redis). `create_app(settings, keys)` is a factory; tests pass `keys` to replace the team's signing keys.
+  - `settings.py` reads `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` and `ALLOWED_EMAILS` and refuses to start if any is missing or malformed, so auth can never be half configured.
+  - `auth.py` is pure ASGI middleware that wraps every route (static files and 404s too) except `PUBLIC_PATHS` (`/healthz`). It verifies `Cf-Access-Jwt-Assertion` (RS256 only, keys from `https://<team>/cdn-cgi/access/certs`, issuer, audience, exp), then the email against `ALLOWED_EMAILS`. Denial reasons are logged, never returned. Fails closed, including when Cloudflare's keys can't be fetched.
+  - `security.py` adds a strict CSP (no inline scripts/styles, no third-party content, so self-host any JS such as htmx) and other headers, and rejects non-GET requests whose `Origin` doesn't match `Host` (CSRF). It runs before auth.
+  - `db.py` uses SQLite at `$DATA_DIR/helperr.db` (WAL, foreign keys, busy timeout). Schema changes go through Alembic migrations in `web/migrations/versions`, applied at startup. Generate new ones with autogenerate against a scratch db, then tidy them.
+  - Templates link assets root-relative (`/static/...`). Never use `url_for` for URLs: behind cloudflared the app sees `http`, so absolute URLs would be mixed content.
+  - No interactive API docs (`/docs`, `/openapi.json`); they would be one more surface to protect.
 - `logging_config.py` — dictConfig with a Rich console handler (`markup=False`, so titles with brackets render literally) and a rotating plain-text file at `logs/log.log`. Log lines are prefixed with `log_name` and a tab.
 
 ## Notes

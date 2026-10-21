@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Job runs</h1>
+{% if runs %}
+<table>
+  <thead>
+    <tr><th>Job</th><th>Status</th><th>Trigger</th><th>Started (UTC)</th></tr>
+  </thead>
+  <tbody>
+    {% for run in runs %}
+    <tr>
+      <td>{{ run.job }}</td>
+      <td><span class="status status-{{ run.status }}">{{ run.status }}</span></td>
+      <td>{{ run.trigger }}</td>
+      <td>{{ run.started_at.strftime("%Y-%m-%d %H:%M") if run.started_at else "-" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">No job runs yet.</p>
+{% endif %}
+{% endblock %}

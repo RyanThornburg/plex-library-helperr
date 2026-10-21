@@ -35,4 +35,6 @@ LOGGING_CONFIG: dict[str, Any] = {
         },
     },
     "root": {"level": "DEBUG", "handlers": ["rich", "logfile"]},
+    # alembic logs every plugin and migration step at INFO on each start
+    "loggers": {"alembic": {"level": "WARNING"}},
 }

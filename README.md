@@ -99,6 +99,44 @@ docker image prune -f --filter "label=org.opencontainers.image.title=plex-librar
 - To build locally: `docker build -t plex-library-helperr .` in a clone of this repo.
 - Outside Docker, set `DATA_DIR` to keep `config.toml` and `logs/` somewhere other than the repo.
 
+## Web app (in progress)
+
+`--serve` runs a web app for running and reviewing jobs. It only accepts requests that come through [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/): every route except `/healthz` requires a valid Access token, checked against your team's signing keys, the application's audience tag and an email allowlist. It refuses to start without those settings.
+
+It is reached through a Cloudflare Tunnel, so the container publishes **no port**. Nothing on your network or router points at it.
+
+### Cloudflare setup
+
+1. **Tunnel:** Zero Trust → Networks → Tunnels → Create a tunnel (Cloudflared), named e.g. `helperr`. Choose Docker and copy the token from the command it shows.
+2. **cloudflared container** (Unraid Docker tab):
+
+    | Field | Value |
+    |---|---|
+    | Repository | `cloudflare/cloudflared:2026.10.1` (pin a version, update it deliberately) |
+    | Network Type | `rattproxy` (the same network as the web app) |
+    | Post Arguments | `tunnel --no-autoupdate run` |
+    | Variable | `TUNNEL_TOKEN` = the token from step 1 |
+
+3. **Public hostname** on the tunnel: e.g. `helperr.<your domain>` → service `http://plex-library-helperr:8080`.
+4. **Access application:** Zero Trust → Access → Applications → Add → Self-hosted, for the same hostname. Add an Allow policy that includes only your email. Copy the application's **Audience (AUD) tag** from its overview.
+
+### Web container
+
+| Field | Value |
+|---|---|
+| Name | `plex-library-helperr` (the tunnel's public hostname points at this name) |
+| Repository | `ghcr.io/ryanthornburg/plex-library-helperr:latest` |
+| Network Type | `rattproxy` |
+| Extra Parameters | `--read-only --cap-drop ALL --security-opt no-new-privileges` |
+| Post Arguments | `--serve` |
+| Path | `/config` → `/mnt/user/appdata/plex-library-helperr/config` |
+| Ports | none |
+| Variable `CF_ACCESS_TEAM_DOMAIN` | `<team>.cloudflareaccess.com` |
+| Variable `CF_ACCESS_AUD` | the AUD tag from step 4 |
+| Variable `ALLOWED_EMAILS` | your Access email (comma separate more than one) |
+
+The database is `helperr.db` in `/config`, next to `config.toml`. Keep `/config` on a cache pool (not the array), since SQLite and Unraid's FUSE layer don't mix.
+
 ## Configuration
 
 ### `[settings]`

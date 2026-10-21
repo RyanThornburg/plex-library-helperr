@@ -26,9 +26,12 @@ WORKDIR /app
 COPY --from=build /app/.venv /app/.venv
 COPY *.py ./
 COPY config/__init__.py config/models.py config/config.toml.example ./config/
+COPY web ./web
 # unraid's nobody:users, so files written to /config match other appdata.
 # a new named volume copies this ownership; a bind mount needs chown on the host
 RUN mkdir /config && chown 99:100 /config
 USER 99:100
 VOLUME /config
+# only used with --serve, and never published: cloudflared reaches it over the docker network
+EXPOSE 8080
 ENTRYPOINT ["python", "main.py"]
