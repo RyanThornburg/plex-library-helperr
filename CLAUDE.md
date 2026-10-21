@@ -53,4 +53,5 @@ A one-shot script that reads every movie (Radarr) / series (Sonarr), applies use
 - `main()` takes `argv` (tests call `main.main([])` so pytest's argv isn't parsed).
 - `config/config.toml` holds real credentials and is gitignored; edit `config.toml.example` for documented defaults and keep the README config tables in sync when adding rule fields.
 - `DATA_DIR` (set to `/config` in the Dockerfile) moves `config.toml` and `logs/` out of the code dirs; unset, they stay at `config/config.toml` and `logs/`. Docker can't mount over `/app/config` because that's the config Python package.
+- `.github/workflows/docker.yml` runs the tests, then builds the image; pushes to `mainline` publish `ghcr.io/ryanthornburg/plex-library-helperr` (`latest` and `sha-<commit>`), which Unraid pulls. Actions are pinned to commit SHAs (with the version in a comment) and Dependabot updates them along with uv and the base images.
 - `.dockerignore` is an allowlist so `config/config.toml` never reaches the build context. When adding a module outside the top level or `config/`, add it there and to the Dockerfile's `COPY` lines.

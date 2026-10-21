@@ -52,26 +52,35 @@ uv run main.py --empty-trash
 
 The image runs one job and exits. Config and logs live in the `/config` volume (`config.toml` and `logs/`), and the container runs as Unraid's `nobody:users` (99:100).
 
-```bash
-git clone https://github.com/RyanThornburg/plex-library-helperr.git /mnt/user/appdata/plex-library-helperr/src
-cd /mnt/user/appdata/plex-library-helperr/src
-docker build -t plex-library-helperr .
+Every push to `mainline` runs the tests and publishes `ghcr.io/ryanthornburg/plex-library-helperr:latest` (plus a `sha-<commit>` tag to pin or roll back to).
 
+One-time setup, from the Unraid terminal:
+
+```bash
 # the container user must be able to write config.toml and logs/
 mkdir -p /mnt/user/appdata/plex-library-helperr/config
 chown 99:100 /mnt/user/appdata/plex-library-helperr/config
+# copy your config.toml in, or let the first run create it from the example
+```
 
-# first run creates config/config.toml from the example, edit it before running again
+Then a User Script (one per job, run on demand or on a schedule):
+
+```bash
+#!/bin/bash
+IMAGE=ghcr.io/ryanthornburg/plex-library-helperr:latest
+docker pull -q "$IMAGE"
 docker run --rm \
   --network <your-docker-network> \
   --read-only --cap-drop ALL --security-opt no-new-privileges \
   -v /mnt/user/appdata/plex-library-helperr/config:/config \
-  plex-library-helperr            # or: plex-library-helperr --remove / --empty-trash
+  "$IMAGE"            # add --remove or --empty-trash for those jobs
+docker image prune -f --filter "label=org.opencontainers.image.title=plex-library-helperr"
 ```
 
 - `--network`: use the custom Docker network Radarr/Sonarr/Plex/Autoscan are on and refer to them by container name in `config.toml`. `localhost` inside the container is the container itself.
-- To update: `git pull` and `docker build` again.
+- `docker pull` picks up the latest image each run; the `prune` line removes the old ones it replaces.
 - Set `-e TZ=America/New_York` (or your zone) if you want log timestamps in local time.
+- To build locally instead: `docker build -t plex-library-helperr .` in a clone of this repo.
 
 Outside Docker, set `DATA_DIR` to keep `config.toml` and `logs/` somewhere other than the repo.
 
