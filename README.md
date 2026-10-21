@@ -54,21 +54,35 @@ The image runs one job and exits. Config and logs live in the `/config` volume (
 
 Every push to `mainline` runs the tests and publishes `ghcr.io/ryanthornburg/plex-library-helperr:latest` (plus a `sha-<commit>` tag to pin or roll back to).
 
-One-time setup, from the Unraid terminal:
+### Docker tab
 
-```bash
-# the container user must be able to write config.toml and logs/
-mkdir -p /mnt/user/appdata/plex-library-helperr/config
-chown 99:100 /mnt/user/appdata/plex-library-helperr/config
-# copy your config.toml in, or let the first run create it from the example
-```
+Add Container, one per job:
 
-Then a User Script (one per job, run on demand or on a schedule):
+| Field | Value |
+|---|---|
+| Repository | `ghcr.io/ryanthornburg/plex-library-helperr:latest` |
+| Network Type | The custom network your *arr containers are on, if `config.toml` uses container names (see below) |
+| Extra Parameters | `--read-only --cap-drop ALL --security-opt no-new-privileges` |
+| Post Arguments | Empty for movers/profilers, `--remove`, or `--empty-trash` |
+| Path | Container path `/config`, host path `/mnt/user/appdata/plex-library-helperr/config` |
+| Variable (optional) | `TZ` = your zone, e.g. `America/New_York`, for local log timestamps |
+
+- **Apply starts the container right away**, so set `dry_run = true` in `config.toml` first. With an empty `/config`, the first run creates `config.toml` from the example, which has no server URLs, so that run changes nothing.
+- **Turn Autostart off** on the Docker tab, or the job runs every time the array starts.
+- Run a job with **Start**; the container stops when the job finishes. Its log icon shows the output, and `logs/log.log` in the config folder keeps it.
+- Updates show on the Docker tab like any other container (or let the CA Auto Update plugin apply them).
+- If the run fails with `Permission denied: '/config/logs'`, the container user can't write the config folder: `chown 99:100 /mnt/user/appdata/plex-library-helperr/config`.
+
+URLs in `config.toml` can't use `localhost`, which inside the container is the container itself. The server's IP works as it would from any other machine. Container names (e.g. `http://sonarr:8989`) work when this container is on the same custom network as those containers. Plex in host network mode has no container name to use, so give it the server's IP.
+
+### User Script (alternative)
+
+For running jobs from a schedule before the web UI exists:
 
 ```bash
 #!/bin/bash
 IMAGE=ghcr.io/ryanthornburg/plex-library-helperr:latest
-# set only when config.toml uses container names, see below
+# set only when config.toml uses container names
 NETWORK_ARGS=()  # e.g. NETWORK_ARGS=(--network my-docker-network)
 docker pull -q "$IMAGE"
 docker run --rm "${NETWORK_ARGS[@]}" \
@@ -78,12 +92,10 @@ docker run --rm "${NETWORK_ARGS[@]}" \
 docker image prune -f --filter "label=org.opencontainers.image.title=plex-library-helperr"
 ```
 
-- URLs in `config.toml` can't use `localhost`, which inside the container is the container itself. The server's IP works as it would from any other machine. To use container names instead (e.g. `http://sonarr:8989`), set `NETWORK_ARGS` to the custom Docker network those containers are on. Plex in host network mode has no container name to use, so give it the server's IP.
-- `docker pull` picks up the latest image each run; the `prune` line removes the old ones it replaces.
-- Set `-e TZ=America/New_York` (or your zone) if you want log timestamps in local time.
-- To build locally instead: `docker build -t plex-library-helperr .` in a clone of this repo.
+### Other
 
-Outside Docker, set `DATA_DIR` to keep `config.toml` and `logs/` somewhere other than the repo.
+- To build locally: `docker build -t plex-library-helperr .` in a clone of this repo.
+- Outside Docker, set `DATA_DIR` to keep `config.toml` and `logs/` somewhere other than the repo.
 
 ## Configuration
 
