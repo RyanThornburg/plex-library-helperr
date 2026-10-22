@@ -13,6 +13,7 @@ from web.auth import AccessMiddleware, AccessVerifier, SigningKeyClient
 from web.db import make_engine, migrate
 from web.jobs import JobRunner, LoadConfig, RunJob
 from web.routes import router
+from web.scheduler import Scheduler
 from web.security import SecurityMiddleware
 from web.settings import WebSettings, load_web_settings
 
@@ -26,23 +27,29 @@ def create_app(
     keys: SigningKeyClient | None = None,
     run_job: RunJob | None = None,
     load_config: LoadConfig = config.load_config,
+    run_scheduler: bool = True,
 ) -> FastAPI:
     """keys, run_job and load_config replace the team's signing keys, the real jobs and
-    config.toml in tests"""
+    config.toml in tests, which also leave the scheduler off and call its tick()"""
     settings = settings or load_web_settings()
     engine = make_engine(settings.database_path)
     runner = JobRunner(engine, run_job, load_config)
+    scheduler = Scheduler(engine, runner)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         migrate(engine)
         runner.start()
+        if run_scheduler:
+            scheduler.start()
         logger.info(
             "WEB\t Started, access team %s, %s allowed emails",
             settings.team_domain,
             len(settings.allowed_emails),
         )
         yield
+        if run_scheduler:
+            scheduler.stop()
         runner.stop()
         engine.dispose()
 
@@ -50,6 +57,7 @@ def create_app(
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.engine = engine
     app.state.runner = runner
+    app.state.scheduler = scheduler
     app.state.load_config = load_config
     app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
     app.include_router(router)

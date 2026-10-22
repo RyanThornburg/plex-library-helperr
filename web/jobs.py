@@ -112,7 +112,12 @@ class JobRunner:
         self._queue.join()
 
     def submit(
-        self, job: str, dry_run: bool, trigger: str, requested_by: str | None
+        self,
+        job: str,
+        dry_run: bool,
+        trigger: str,
+        requested_by: str | None,
+        schedule_id: int | None = None,
     ) -> int:
         """queue a run and return its id, AlreadyActive if the job is queued/running"""
         if job not in JOBS:
@@ -128,6 +133,7 @@ class JobRunner:
                 trigger=trigger,
                 requested_by=requested_by,
                 dry_run=dry_run,
+                schedule_id=schedule_id,
                 status="queued",
                 created_at=utc_now(),
             )

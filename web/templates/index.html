@@ -19,6 +19,10 @@
       {% elif mode %}<span class="tag">dry run</span>
       {% else %}<span class="tag tag-live">live</span>{% endif %}
     </p>
+    {% if job in next_runs %}
+    {% set next_run, schedule = next_runs[job] %}
+    <p class="muted">Next: {{ next_run | localtime }}, <a href="/schedules/{{ schedule.id }}">{{ schedule.name }}</a>{% if schedule.dry_run %} (dry run){% endif %}</p>
+    {% endif %}
     {% if job in active_jobs %}
     <p class="muted">Queued or running…</p>
     {% else %}
@@ -49,7 +53,7 @@
       <td>{{ run.result.changes | length if run.result else "-" }}</td>
       <td>{{ run.started_at | localtime }}</td>
       <td>{{ duration(run) }}</td>
-      <td class="muted">{{ run.requested_by or run.trigger }}</td>
+      <td class="muted">{{ run_source(run) }}</td>
     </tr>
     {% endfor %}
   </tbody>

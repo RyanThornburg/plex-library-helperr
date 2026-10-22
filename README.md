@@ -79,7 +79,7 @@ URLs in `config.toml` can't use `localhost`, which inside the container is the c
 
 ### User Script (alternative)
 
-For running jobs from a schedule before the web UI exists:
+For running jobs from a schedule without the web app (with the web app, use its Schedules page instead):
 
 ```bash
 #!/bin/bash
@@ -106,7 +106,8 @@ docker image prune -f --filter "label=org.opencontainers.image.title=plex-librar
 - Each job has a **Dry run** button, which forces every `dry_run` setting on, and a **Run…** button, which uses `config.toml` as-is. Run… always goes to a confirmation page that says whether the run will make changes. The UI can't make a run live that `config.toml` has as dry run.
 - Jobs run one at a time in the order queued. A job that's already queued or running can't be queued again.
 - Every run is kept with who started it, what it changed (or would change), errors and its log. Runs interrupted by a restart are marked failed and never re-run automatically.
-- The same actions are available as JSON: `POST /api/jobs/<movers|removers|empty_trash>` (body `{"dry_run": false}` for a config run, dry by default), `GET /api/runs`, `GET /api/runs/<id>`.
+- **Schedules** run a job on a cron expression (`minute hour day month weekday`, or `@hourly`/`@daily`/`@weekly`/`@monthly`) in the container's time zone; set `TZ` on the container (e.g. `America/New_York`) for local times, it's UTC otherwise. They're created and edited on the Schedules page and stored in the app's database, not `config.toml`. Like the buttons, a schedule either forces dry run (the default) or uses `config.toml`'s settings. A schedule whose job is still queued or running skips that time, and times missed while the app was down are skipped rather than caught up.
+- The same actions are available as JSON: `POST /api/jobs/<movers|removers|empty_trash>` (body `{"dry_run": false}` for a config run, dry by default), `GET /api/runs`, `GET /api/runs/<id>`, and `GET`/`POST /api/schedules`, `GET`/`PUT`/`DELETE /api/schedules/<id>` (body `{"name", "job", "cron", "dry_run": true, "enabled": true}`).
 
 The web app logs to `logs/web.log`, separate from the CLI's `logs/log.log`.
 

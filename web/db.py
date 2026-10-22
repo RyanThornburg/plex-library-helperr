@@ -6,14 +6,42 @@ from typing import Any
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import JSON, Engine, String, Text, create_engine, event, false
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import (
+    JSON,
+    Engine,
+    ForeignKey,
+    String,
+    Text,
+    create_engine,
+    event,
+    false,
+    true,
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 MIGRATIONS_DIR = pathlib.Path(__file__).parent / "migrations"
 
 
 class Base(DeclarativeBase):
     pass
+
+
+class Schedule(Base):
+    """runs a job whenever its cron expression matches, in the container's TZ"""
+
+    __tablename__ = "schedules"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    job: Mapped[str] = mapped_column(String(32))
+    cron: Mapped[str] = mapped_column(String(100))
+    # like JobRun.dry_run: true forces dry run, false uses config.toml's dry_run settings
+    dry_run: Mapped[bool] = mapped_column(server_default=true())
+    enabled: Mapped[bool] = mapped_column(server_default=true())
+    created_at: Mapped[datetime]
+    # any edit counts as a fresh start, so a schedule never fires for times before it
+    updated_at: Mapped[datetime]
+    last_fired_at: Mapped[datetime | None]
 
 
 class JobRun(Base):
@@ -34,6 +62,12 @@ class JobRun(Base):
     finished_at: Mapped[datetime | None]
     result: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     log: Mapped[str | None] = mapped_column(Text)
+    # the schedule that queued it, null for manual/api runs or a deleted schedule
+    schedule_id: Mapped[int | None] = mapped_column(
+        ForeignKey("schedules.id", ondelete="SET NULL"), index=True
+    )
+    # joined: runs are shown after their session has closed
+    schedule: Mapped[Schedule | None] = relationship(lazy="joined")
 
 
 def make_engine(path: pathlib.Path) -> Engine:

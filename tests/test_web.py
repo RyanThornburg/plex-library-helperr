@@ -68,7 +68,9 @@ def fake_run_job(job: str, settings: ConfigSettings) -> JobResult:
 
 @pytest.fixture
 def client(settings):
-    app = create_app(settings, keys=FakeKeys(), run_job=fake_run_job, load_config=live_config)
+    app = create_app(
+        settings, keys=FakeKeys(), run_job=fake_run_job, load_config=live_config, run_scheduler=False
+    )
     with TestClient(app) as c:
         yield c
 
@@ -214,11 +216,11 @@ class TestSettings:
 
 
 class TestDatabase:
-    def test_migrations_create_job_runs(self, tmp_path):
+    def test_migrations_create_tables(self, tmp_path):
         engine = make_engine(tmp_path / "helperr.db")
         migrate(engine)
         migrate(engine)  # running again at the next start is a no-op
-        assert "job_runs" in inspect(engine).get_table_names()
+        assert {"job_runs", "schedules"} <= set(inspect(engine).get_table_names())
 
     def test_wal_mode(self, tmp_path):
         engine = make_engine(tmp_path / "helperr.db")
@@ -320,3 +322,119 @@ class TestJobRoutes:
         with TestClient(app) as client:
             page = client.get("/", headers=auth()).text
         assert "bad toml" in page
+
+
+# ---------------------------------------------------------------------------
+# schedules pages / api
+# ---------------------------------------------------------------------------
+
+FORM = {**ORIGIN, "Content-Type": "application/x-www-form-urlencoded"}
+
+
+def post_form(client, url: str, body: str):
+    return client.post(url, content=body, headers={**auth(), **FORM}, follow_redirects=False)
+
+
+class TestScheduleRoutes:
+    def test_create_from_form(self, client):
+        response = post_form(
+            client, "/schedules", "name=Hourly+movers&job=movers&cron=47+*+*+*+*&enabled=on"
+        )
+        assert response.status_code == 303
+        [schedule] = client.get("/api/schedules", headers=auth()).json()
+        assert schedule["name"] == "Hourly movers"
+        assert schedule["cron"] == "47 * * * *"
+        # unchecked box: config.toml's settings
+        assert schedule["dry_run"] is False
+        assert schedule["enabled"] is True
+        assert schedule["next_run_at"]
+        page = client.get("/schedules", headers=auth()).text
+        assert "Hourly movers" in page and "47 * * * *" in page
+        # the job card shows when it runs next
+        assert "Next:" in client.get("/", headers=auth()).text
+
+    def test_invalid_form_shows_errors_and_keeps_values(self, client):
+        response = post_form(client, "/schedules", "name=Nightly&job=removers&cron=99+*+*+*+*&dry_run=on")
+        assert response.status_code == 400
+        assert "Schedule: minute" in response.text
+        assert 'value="Nightly"' in response.text
+        assert client.get("/api/schedules", headers=auth()).json() == []
+
+    def test_new_form_defaults_to_dry_run(self, client):
+        page = client.get("/schedules/new", headers=auth()).text
+        assert 'name="dry_run" checked' in page
+        # shows what an unchecked box would mean
+        assert "live" in page
+
+    def test_edit_toggle_and_delete(self, client):
+        post_form(client, "/schedules", "name=a&job=movers&cron=%40hourly&enabled=on&dry_run=on")
+        assert "@hourly" in client.get("/schedules/1", headers=auth()).text
+        post_form(client, "/schedules/1", "name=b&job=empty_trash&cron=0+4+*+*+*&enabled=on&dry_run=on")
+        schedule = client.get("/api/schedules/1", headers=auth()).json()
+        assert (schedule["name"], schedule["job"], schedule["cron"]) == ("b", "empty_trash", "0 4 * * *")
+        post_form(client, "/schedules/1/toggle", "")
+        assert client.get("/api/schedules/1", headers=auth()).json()["enabled"] is False
+        assert "paused" in client.get("/schedules", headers=auth()).text
+        assert post_form(client, "/schedules/1/delete", "").status_code == 303
+        assert client.get("/schedules/1", headers=auth()).status_code == 404
+
+    def test_scheduled_run_page_links_the_schedule(self, client):
+        post_form(client, "/schedules", "name=Nightly&job=movers&cron=0+4+*+*+*&enabled=on&dry_run=on")
+        client.app.state.runner.submit("movers", True, "schedule", None, 1)
+        wait(client)
+        assert 'href="/schedules/1">Nightly' in client.get("/runs/1", headers=auth()).text
+        assert "schedule: Nightly" in client.get("/", headers=auth()).text
+        assert "#1" in client.get("/schedules", headers=auth()).text
+        # deleting the schedule keeps its runs
+        post_form(client, "/schedules/1/delete", "")
+        assert client.get("/api/runs/1", headers=auth()).json()["schedule_id"] is None
+
+    def test_form_posts_need_same_origin(self, client):
+        response = client.post("/schedules", content="name=x", headers={**auth(), "Content-Type": FORM["Content-Type"]})
+        assert response.status_code == 403
+
+    def test_oversized_form_is_rejected(self, client):
+        assert post_form(client, "/schedules", "name=" + "x" * 20_000).status_code == 413
+
+    def test_missing_schedule_is_404(self, client):
+        assert client.get("/schedules/9", headers=auth()).status_code == 404
+        assert post_form(client, "/schedules/9", "name=x").status_code == 404
+        assert post_form(client, "/schedules/9/toggle", "").status_code == 404
+        assert client.get("/api/schedules/9", headers=auth()).status_code == 404
+        assert client.delete("/api/schedules/9", headers={**auth(), **ORIGIN}).status_code == 404
+
+    def test_names_are_escaped(self, client):
+        post_form(client, "/schedules", "name=%3Cscript%3Ex%3C%2Fscript%3E&job=movers&cron=%40daily")
+        page = client.get("/schedules", headers=auth()).text
+        assert "<script>x</script>" not in page
+        assert "&lt;script&gt;" in page
+
+
+class TestScheduleApi:
+    def test_create_update_delete(self, client):
+        headers = {**auth(), **ORIGIN}
+        created = client.post(
+            "/api/schedules", json={"name": " hourly ", "job": "movers", "cron": "47 * * * *"}, headers=headers
+        )
+        assert created.status_code == 201
+        schedule = created.json()
+        # dry and enabled unless asked otherwise
+        assert schedule["name"] == "hourly"
+        assert schedule["dry_run"] is True and schedule["enabled"] is True
+        updated = client.put(
+            f"/api/schedules/{schedule['id']}",
+            json={"name": "hourly", "job": "movers", "cron": "15 * * * *", "dry_run": False},
+            headers=headers,
+        )
+        assert updated.status_code == 200
+        assert updated.json()["cron"] == "15 * * * *"
+        assert updated.json()["dry_run"] is False
+        assert client.delete(f"/api/schedules/{schedule['id']}", headers=headers).status_code == 204
+        assert client.get("/api/schedules", headers=auth()).json() == []
+
+    def test_invalid_schedule_is_422_with_errors(self, client):
+        response = client.post(
+            "/api/schedules", json={"name": "", "job": "movers", "cron": "* *"}, headers={**auth(), **ORIGIN}
+        )
+        assert response.status_code == 422
+        assert len(response.json()["errors"]) == 2

@@ -9,7 +9,11 @@
 
 <dl class="facts">
   <dt>Mode</dt><dd>{{ "dry run (forced)" if run.dry_run else "config.toml settings" }}</dd>
+  {% if run.schedule %}
+  <dt>Requested by</dt><dd>schedule <a href="/schedules/{{ run.schedule.id }}">{{ run.schedule.name }}</a></dd>
+  {% else %}
   <dt>Requested by</dt><dd>{{ run.requested_by or "-" }} ({{ run.trigger }})</dd>
+  {% endif %}
   <dt>Queued</dt><dd>{{ run.created_at | localtime }}</dd>
   <dt>Started</dt><dd>{{ run.started_at | localtime }}</dd>
   <dt>Finished</dt><dd>{{ run.finished_at | localtime }}</dd>
