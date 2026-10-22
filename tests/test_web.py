@@ -1,5 +1,6 @@
 """Tests for the web app: access auth, security headers, database"""
 
+import re
 import threading
 import time
 from types import SimpleNamespace
@@ -338,12 +339,13 @@ def post_form(client, url: str, body: str):
 class TestScheduleRoutes:
     def test_create_from_form(self, client):
         response = post_form(
-            client, "/schedules", "name=Hourly+movers&job=movers&cron=47+*+*+*+*&enabled=on"
+            client, "/schedules", "name=Hourly+movers&job=movers&cron=47+*+*+*+*&timezone=America%2FNew_York&enabled=on"
         )
         assert response.status_code == 303
         [schedule] = client.get("/api/schedules", headers=auth()).json()
         assert schedule["name"] == "Hourly movers"
         assert schedule["cron"] == "47 * * * *"
+        assert schedule["timezone"] == "America/New_York"
         # unchecked box: config.toml's settings
         assert schedule["dry_run"] is False
         assert schedule["enabled"] is True
@@ -354,7 +356,7 @@ class TestScheduleRoutes:
         assert "Next:" in client.get("/", headers=auth()).text
 
     def test_invalid_form_shows_errors_and_keeps_values(self, client):
-        response = post_form(client, "/schedules", "name=Nightly&job=removers&cron=99+*+*+*+*&dry_run=on")
+        response = post_form(client, "/schedules", "name=Nightly&job=removers&timezone=UTC&cron=99+*+*+*+*&dry_run=on")
         assert response.status_code == 400
         assert "Schedule: minute" in response.text
         assert 'value="Nightly"' in response.text
@@ -363,13 +365,16 @@ class TestScheduleRoutes:
     def test_new_form_defaults_to_dry_run(self, client):
         page = client.get("/schedules/new", headers=auth()).text
         assert 'name="dry_run" checked' in page
+        # static/app.js swaps in the browser's zone
+        assert "data-browser-zone" in page
+        assert "<option selected>UTC</option>" in page
         # shows what an unchecked box would mean
         assert "live" in page
 
     def test_edit_toggle_and_delete(self, client):
-        post_form(client, "/schedules", "name=a&job=movers&cron=%40hourly&enabled=on&dry_run=on")
+        post_form(client, "/schedules", "name=a&job=movers&timezone=UTC&cron=%40hourly&enabled=on&dry_run=on")
         assert "@hourly" in client.get("/schedules/1", headers=auth()).text
-        post_form(client, "/schedules/1", "name=b&job=empty_trash&cron=0+4+*+*+*&enabled=on&dry_run=on")
+        post_form(client, "/schedules/1", "name=b&job=empty_trash&timezone=UTC&cron=0+4+*+*+*&enabled=on&dry_run=on")
         schedule = client.get("/api/schedules/1", headers=auth()).json()
         assert (schedule["name"], schedule["job"], schedule["cron"]) == ("b", "empty_trash", "0 4 * * *")
         post_form(client, "/schedules/1/toggle", "")
@@ -379,7 +384,7 @@ class TestScheduleRoutes:
         assert client.get("/schedules/1", headers=auth()).status_code == 404
 
     def test_scheduled_run_page_links_the_schedule(self, client):
-        post_form(client, "/schedules", "name=Nightly&job=movers&cron=0+4+*+*+*&enabled=on&dry_run=on")
+        post_form(client, "/schedules", "name=Nightly&job=movers&timezone=UTC&cron=0+4+*+*+*&enabled=on&dry_run=on")
         client.app.state.runner.submit("movers", True, "schedule", None, 1)
         wait(client)
         assert 'href="/schedules/1">Nightly' in client.get("/runs/1", headers=auth()).text
@@ -388,6 +393,17 @@ class TestScheduleRoutes:
         # deleting the schedule keeps its runs
         post_form(client, "/schedules/1/delete", "")
         assert client.get("/api/runs/1", headers=auth()).json()["schedule_id"] is None
+
+    def test_unknown_time_zone_is_rejected(self, client):
+        response = post_form(client, "/schedules", "name=a&job=movers&cron=%40daily&timezone=Mars%2FOlympus")
+        assert response.status_code == 400
+        assert "unknown time zone" in response.text
+
+    def test_times_are_utc_for_the_browser_to_convert(self, client):
+        post_form(client, "/schedules", "name=a&job=movers&cron=%40daily&timezone=UTC&enabled=on")
+        page = client.get("/schedules", headers=auth()).text
+        assert re.search(r'<time datetime="\d{4}-\d\d-\d\dT00:00:00Z">[^<]+ 00:00:00 UTC</time>', page)
+        assert '<script src="/static/app.js" defer>' in page
 
     def test_form_posts_need_same_origin(self, client):
         response = client.post("/schedules", content="name=x", headers={**auth(), "Content-Type": FORM["Content-Type"]})
@@ -404,7 +420,7 @@ class TestScheduleRoutes:
         assert client.delete("/api/schedules/9", headers={**auth(), **ORIGIN}).status_code == 404
 
     def test_names_are_escaped(self, client):
-        post_form(client, "/schedules", "name=%3Cscript%3Ex%3C%2Fscript%3E&job=movers&cron=%40daily")
+        post_form(client, "/schedules", "name=%3Cscript%3Ex%3C%2Fscript%3E&job=movers&timezone=UTC&cron=%40daily")
         page = client.get("/schedules", headers=auth()).text
         assert "<script>x</script>" not in page
         assert "&lt;script&gt;" in page
@@ -421,6 +437,7 @@ class TestScheduleApi:
         # dry and enabled unless asked otherwise
         assert schedule["name"] == "hourly"
         assert schedule["dry_run"] is True and schedule["enabled"] is True
+        assert schedule["timezone"] == "UTC"
         updated = client.put(
             f"/api/schedules/{schedule['id']}",
             json={"name": "hourly", "job": "movers", "cron": "15 * * * *", "dry_run": False},

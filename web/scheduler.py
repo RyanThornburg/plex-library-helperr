@@ -2,6 +2,7 @@
 
 import logging
 import threading
+import zoneinfo
 from datetime import datetime
 
 from sqlalchemy import Engine, select, update
@@ -18,8 +19,10 @@ logger = logging.getLogger(__name__)
 MAX_NAME = 100
 MAX_CRON = 100
 
+ZONES = sorted(zoneinfo.available_timezones())
 
-def schedule_errors(name: str, job: str, expression: str) -> list[str]:
+
+def schedule_errors(name: str, job: str, expression: str, zone: str) -> list[str]:
     """what's wrong with a schedule from the ui or api, empty when it can be saved"""
     errors = []
     if not name.strip():
@@ -28,6 +31,10 @@ def schedule_errors(name: str, job: str, expression: str) -> list[str]:
         errors.append(f"Name can be at most {MAX_NAME} characters")
     if job not in JOBS:
         errors.append(f"Unknown job '{job}'")
+    try:
+        cron.parse_zone(zone)
+    except ValueError as e:
+        errors.append(f"Time zone: {e}")
     if len(expression) > MAX_CRON:
         errors.append(f"Schedule can be at most {MAX_CRON} characters")
         return errors
@@ -43,7 +50,8 @@ def next_run_at(schedule: Schedule, now: datetime) -> datetime | None:
     if not schedule.enabled:
         return None
     try:
-        return cron.parse(schedule.cron).next_after_utc(now)
+        zone = cron.parse_zone(schedule.timezone)
+        return cron.parse(schedule.cron).next_after_utc(now, zone)
     except ValueError:
         return None
 
@@ -88,9 +96,10 @@ class Scheduler:
                 t for t in (schedule.last_fired_at, schedule.updated_at, self.started_at) if t
             )
             try:
-                due = cron.parse(schedule.cron).next_after_utc(since)
+                zone = cron.parse_zone(schedule.timezone)
+                due = cron.parse(schedule.cron).next_after_utc(since, zone)
             except ValueError as e:
-                logger.error("WEB\t Schedule %s has a bad cron: %s", schedule.id, e)
+                logger.error("WEB\t Schedule %s can't be checked: %s", schedule.id, e)
                 continue
             if due is None or due > now:
                 continue

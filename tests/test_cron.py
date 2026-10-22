@@ -1,8 +1,7 @@
 """Tests for the cron parser schedules use"""
 
-import os
-import time
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -78,25 +77,27 @@ class TestNextAfter:
         assert next_after("0 0 29 2 *", "2026-10-22 00:00") == datetime(2028, 2, 29, 0, 0)
 
 
-class TestTimeZone:
-    @pytest.fixture
-    def new_york(self):
-        old = os.environ.get("TZ")
-        os.environ["TZ"] = "America/New_York"
-        time.tzset()
-        yield
-        if old is None:
-            del os.environ["TZ"]
-        else:
-            os.environ["TZ"] = old
-        time.tzset()
+NEW_YORK = ZoneInfo("America/New_York")
 
-    def test_cron_matches_local_time(self, new_york):
+
+class TestTimeZone:
+    def test_cron_matches_the_zones_wall_time(self):
         # 04:00 in new york (edt, utc-4) is 08:00 utc
-        found = cron.parse("0 4 * * *").next_after_utc(datetime(2026, 10, 22, 0, 0))
+        found = cron.parse("0 4 * * *").next_after_utc(datetime(2026, 10, 22, 0, 0), NEW_YORK)
         assert found == datetime(2026, 10, 22, 8, 0)
 
-    def test_after_dst_ends(self, new_york):
+    def test_after_dst_ends(self):
         # est, utc-5
-        found = cron.parse("0 4 * * *").next_after_utc(datetime(2026, 11, 2, 0, 0))
+        found = cron.parse("0 4 * * *").next_after_utc(datetime(2026, 11, 2, 0, 0), NEW_YORK)
         assert found == datetime(2026, 11, 2, 9, 0)
+
+    def test_after_is_converted_to_the_zone(self):
+        # 03:00 utc is 23:00 the day before in new york, so 04:00 is still to come that day
+        found = cron.parse("0 23 * * *").next_after_utc(datetime(2026, 10, 22, 2, 0), NEW_YORK)
+        assert found == datetime(2026, 10, 22, 3, 0)
+
+    def test_parse_zone(self):
+        assert cron.parse_zone("America/New_York") == NEW_YORK
+        for bad in ("Mars/Olympus", "", "../etc/passwd"):
+            with pytest.raises(ValueError, match="unknown time zone"):
+                cron.parse_zone(bad)

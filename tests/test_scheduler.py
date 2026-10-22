@@ -12,21 +12,7 @@ from web.db import JobRun, Schedule, make_engine, migrate
 from web.jobs import JobRunner
 from web.scheduler import Scheduler, next_run_at, schedule_errors
 
-# the scheduler compares naive utc times, run these tests in utc
-pytestmark = pytest.mark.usefixtures("utc")
-
 START = datetime(2026, 10, 22, 13, 0)
-
-
-@pytest.fixture
-def utc(monkeypatch):
-    import time
-
-    monkeypatch.setenv("TZ", "UTC")
-    time.tzset()
-    yield
-    monkeypatch.undo()
-    time.tzset()
 
 
 @pytest.fixture
@@ -64,6 +50,7 @@ def add_schedule(engine, cron="47 * * * *", job="movers", **values) -> int:
             name=values.pop("name", "hourly movers"),
             job=job,
             cron=cron,
+            timezone=values.pop("timezone", "UTC"),
             dry_run=values.pop("dry_run", True),
             enabled=values.pop("enabled", True),
             created_at=START,
@@ -116,6 +103,12 @@ class TestTick:
         assert scheduler.tick(START + timedelta(minutes=55)) == []
         assert len(scheduler.tick(START + timedelta(hours=1, minutes=47))) == 1
 
+    def test_uses_the_schedules_time_zone(self, engine, scheduler):
+        # 09:00 in new york is 13:00 utc, so 10:00 there is 14:00 utc
+        add_schedule(engine, "0 10 * * *", timezone="America/New_York")
+        assert scheduler.tick(START + timedelta(minutes=59)) == []
+        assert len(scheduler.tick(START + timedelta(hours=1))) == 1
+
     def test_disabled_never_fires(self, engine, scheduler):
         add_schedule(engine, "* * * * *", enabled=False)
         assert scheduler.tick(START + timedelta(hours=1)) == []
@@ -133,23 +126,25 @@ class TestTick:
 
     def test_one_bad_schedule_doesnt_stop_the_others(self, engine, scheduler):
         add_schedule(engine, "not cron", name="broken")
+        add_schedule(engine, "* * * * *", name="bad zone", timezone="Mars/Olympus")
         add_schedule(engine, "* * * * *", job="removers", name="ok")
         assert len(scheduler.tick(START + timedelta(minutes=5))) == 1
 
 
 class TestValidation:
     def test_valid(self):
-        assert schedule_errors("hourly", "movers", "47 * * * *") == []
+        assert schedule_errors("hourly", "movers", "47 * * * *", "America/New_York") == []
 
     def test_every_problem_is_reported(self):
-        errors = schedule_errors(" ", "nope", "61 * * * *")
-        assert len(errors) == 3
+        errors = schedule_errors(" ", "nope", "61 * * * *", "Mars/Olympus")
+        assert len(errors) == 4
+        assert "Time zone: unknown time zone 'Mars/Olympus'" in errors
         assert "Name is required" in errors
         assert any("nope" in e for e in errors)
         assert any(e.startswith("Schedule: minute") for e in errors)
 
     def test_next_run_at(self):
-        schedule = Schedule(cron="47 * * * *", enabled=True)
+        schedule = Schedule(cron="47 * * * *", timezone="UTC", enabled=True)
         assert next_run_at(schedule, START) == START + timedelta(minutes=47)
         schedule.enabled = False
         assert next_run_at(schedule, START) is None

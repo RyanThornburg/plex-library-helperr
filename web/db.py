@@ -27,7 +27,7 @@ class Base(DeclarativeBase):
 
 
 class Schedule(Base):
-    """runs a job whenever its cron expression matches, in the container's TZ"""
+    """runs a job whenever its cron expression matches, in its own time zone"""
 
     __tablename__ = "schedules"
 
@@ -35,6 +35,8 @@ class Schedule(Base):
     name: Mapped[str] = mapped_column(String(100))
     job: Mapped[str] = mapped_column(String(32))
     cron: Mapped[str] = mapped_column(String(100))
+    # IANA name, so the cron doesn't depend on the container's TZ
+    timezone: Mapped[str] = mapped_column(String(64), server_default="UTC")
     # like JobRun.dry_run: true forces dry run, false uses config.toml's dry_run settings
     dry_run: Mapped[bool] = mapped_column(server_default=true())
     enabled: Mapped[bool] = mapped_column(server_default=true())

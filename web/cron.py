@@ -1,7 +1,9 @@
-"""cron.py - five field cron expressions (minute hour day month weekday) for schedules"""
+"""cron.py - five field cron expressions (minute hour day month weekday) for schedules,
+matched in each schedule's time zone"""
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, tzinfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 MACROS = {
     "@hourly": "0 * * * *",
@@ -57,13 +59,21 @@ class Cron:
             day += timedelta(days=1)
         return None
 
-    def next_after_utc(self, after: datetime) -> datetime | None:
-        """next_after for naive utc times, matching the cron in the container's TZ"""
-        local = after.replace(tzinfo=timezone.utc).astimezone().replace(tzinfo=None)
+    def next_after_utc(self, after: datetime, zone: tzinfo) -> datetime | None:
+        """next_after for naive utc times, matching the cron's wall time in `zone`"""
+        local = after.replace(tzinfo=timezone.utc).astimezone(zone).replace(tzinfo=None)
         found = self.next_after(local)
         if found is None:
             return None
-        return found.astimezone(timezone.utc).replace(tzinfo=None)
+        return found.replace(tzinfo=zone).astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def parse_zone(name: str) -> ZoneInfo:
+    """an IANA time zone like America/New_York, ValueError if unknown"""
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise ValueError(f"unknown time zone '{name}'") from None
 
 
 def parse_field(text: str, name: str, low: int, high: int) -> set[int]:

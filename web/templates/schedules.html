@@ -4,7 +4,7 @@
   <h1>Schedules</h1>
   <a class="button" href="/schedules/new">New schedule</a>
 </div>
-<p class="muted">Times are in the container's time zone ({{ tz_name() }}). A schedule whose job is still queued or running skips that time. Times missed while the app was down are skipped.</p>
+<p class="muted">A schedule whose job is still queued or running skips that time. Times missed while the app was down are skipped.</p>
 
 {% if schedules %}
 <table>
@@ -17,7 +17,7 @@
     <tr>
       <td><a href="/schedules/{{ schedule.id }}">{{ schedule.name }}</a></td>
       <td>{{ JOB_INFO[schedule.job][0] if schedule.job in JOB_INFO else schedule.job }}</td>
-      <td><code>{{ schedule.cron }}</code></td>
+      <td><code>{{ schedule.cron }}</code> <span class="muted">{{ schedule.timezone }}</span></td>
       <td>{% if schedule.dry_run %}dry run{% else %}<span class="tag tag-warn">config.toml</span>{% endif %}</td>
       <td>{% if schedule.enabled %}{{ next_runs[schedule.id] | localtime }}{% else %}<span class="tag">paused</span>{% endif %}</td>
       <td>

@@ -1,13 +1,14 @@
 """routes.py - pages and json api for running jobs, reviewing runs and scheduling jobs"""
 
 import pathlib
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 from urllib.parse import parse_qs
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -16,7 +17,7 @@ import config
 from results import JOBS
 from web.db import JobRun, Schedule
 from web.jobs import ACTIVE, AlreadyActive, JobRunner, utc_now
-from web.scheduler import next_run_at, schedule_errors
+from web.scheduler import ZONES, next_run_at, schedule_errors
 
 router = APIRouter()
 
@@ -39,10 +40,14 @@ JOB_INFO: dict[str, tuple[str, str]] = {
 
 
 def localtime(value: datetime | None) -> str:
-    """stored times are naive utc, shown in the container's TZ"""
+    """stored times are naive utc. Rendered as utc in a <time>, which static/app.js
+    rewrites in the browser's time zone"""
     if value is None:
         return "-"
-    return value.replace(tzinfo=timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    return Markup('<time datetime="{}Z">{} UTC</time>').format(
+        value.isoformat(timespec="seconds"),
+        value.strftime("%Y-%m-%d %H:%M:%S"),
+    )
 
 
 def duration(run: JobRun) -> str:
@@ -50,11 +55,6 @@ def duration(run: JobRun) -> str:
         return "-"
     seconds = int((run.finished_at - run.started_at).total_seconds())
     return f"{seconds // 60}m {seconds % 60}s" if seconds >= 60 else f"{seconds}s"
-
-
-def tz_name() -> str:
-    """the container's TZ, which schedules run in"""
-    return datetime.now().astimezone().tzname() or "local time"
 
 
 def run_source(run: JobRun) -> str:
@@ -68,7 +68,6 @@ def run_source(run: JobRun) -> str:
 templates.env.filters["localtime"] = localtime
 templates.env.globals["duration"] = duration
 templates.env.globals["run_source"] = run_source
-templates.env.globals["tz_name"] = tz_name
 templates.env.globals["JOB_INFO"] = JOB_INFO
 
 # a schedule form is a few short fields
@@ -188,6 +187,7 @@ def schedule_to_dict(schedule: Schedule, now: datetime) -> dict[str, Any]:
         "name": schedule.name,
         "job": schedule.job,
         "cron": schedule.cron,
+        "timezone": schedule.timezone,
         "dry_run": schedule.dry_run,
         "enabled": schedule.enabled,
         "created_at": schedule.created_at.isoformat() + "Z",
@@ -295,6 +295,7 @@ def schedule_form(
             "dry_runs": dry_runs,
             "config_error": config_error,
             "next_run": next_run,
+            "zones": ZONES,
         },
         status_code=400 if errors else 200,
     )
@@ -305,6 +306,7 @@ def form_values(fields: dict[str, str]) -> dict[str, Any]:
         "name": fields.get("name", "").strip(),
         "job": fields.get("job", ""),
         "cron": fields.get("cron", "").strip(),
+        "timezone": fields.get("timezone", "").strip(),
         "dry_run": "dry_run" in fields,
         "enabled": "enabled" in fields,
     }
@@ -315,6 +317,7 @@ def schedule_values(schedule: Schedule) -> dict[str, Any]:
         "name": schedule.name,
         "job": schedule.job,
         "cron": schedule.cron,
+        "timezone": schedule.timezone,
         "dry_run": schedule.dry_run,
         "enabled": schedule.enabled,
     }
@@ -338,15 +341,25 @@ def schedules_page(request: Request) -> HTMLResponse:
 
 @router.get("/schedules/new", response_class=HTMLResponse)
 def new_schedule_page(request: Request) -> HTMLResponse:
-    # dry by default, like the api: a live schedule has to be asked for
-    values = {"name": "", "job": JOBS[0], "cron": "", "dry_run": True, "enabled": True}
+    # dry by default, like the api: a live schedule has to be asked for. The time zone
+    # is replaced with the browser's by static/app.js
+    values = {
+        "name": "",
+        "job": JOBS[0],
+        "cron": "",
+        "timezone": "UTC",
+        "dry_run": True,
+        "enabled": True,
+    }
     return schedule_form(request, None, values)
 
 
 @router.post("/schedules")
 async def create_schedule_form(request: Request) -> Response:
     values = form_values(await form_fields(request))
-    if errors := schedule_errors(values["name"], values["job"], values["cron"]):
+    if errors := schedule_errors(
+        values["name"], values["job"], values["cron"], values["timezone"]
+    ):
         return schedule_form(request, None, values, errors)
     save_schedule(request, None, values)
     return RedirectResponse("/schedules", status_code=303)
@@ -362,7 +375,9 @@ def edit_schedule_page(request: Request, schedule_id: int) -> HTMLResponse:
 async def update_schedule_form(request: Request, schedule_id: int) -> Response:
     get_schedule(request, schedule_id)
     values = form_values(await form_fields(request))
-    if errors := schedule_errors(values["name"], values["job"], values["cron"]):
+    if errors := schedule_errors(
+        values["name"], values["job"], values["cron"], values["timezone"]
+    ):
         return schedule_form(request, schedule_id, values, errors)
     save_schedule(request, schedule_id, values)
     return RedirectResponse("/schedules", status_code=303)
@@ -415,6 +430,7 @@ class ScheduleRequest(BaseModel):
     name: str
     job: str
     cron: str
+    timezone: str = "UTC"
     # dry by default: a live schedule has to be asked for
     dry_run: bool = True
     enabled: bool = True
@@ -426,7 +442,10 @@ def api_save_schedule(
     values = body.model_dump()
     values["name"] = values["name"].strip()
     values["cron"] = values["cron"].strip()
-    if errors := schedule_errors(values["name"], values["job"], values["cron"]):
+    values["timezone"] = values["timezone"].strip()
+    if errors := schedule_errors(
+        values["name"], values["job"], values["cron"], values["timezone"]
+    ):
         return JSONResponse({"errors": errors}, status_code=422)
     saved_id = save_schedule(request, schedule_id, values)
     return JSONResponse(
