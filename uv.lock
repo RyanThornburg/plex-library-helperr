@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.14"
 
 [[package]]
@@ -150,14 +150,14 @@ dev = [{ name = "pytest", specifier = ">=9.0.2" }]
 
 [[package]]
 name = "plexapi"
-version = "4.18.1"
+version = "4.18.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e6/37/5b3d926db8f5cfe20bb8d9652df0272ca23fa028f3b2798038ec41218ca1/plexapi-4.18.1.tar.gz", hash = "sha256:deba96e94b8b51fc0b042334ebbd48a14e407efd33f281a5d8e9897f9e5dba5f", size = 161393, upload-time = "2026-03-22T22:14:14.356Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/68/69/e8b69e19998ddc91799ef1fa639380c60c3f1e92d018d1ca8702dca2b7bd/plexapi-4.18.3.tar.gz", hash = "sha256:6c34977ccf7057b204aa5d904f15ff41ea8831df05fedf51432adaa3124d7551", size = 163194, upload-time = "2026-09-28T06:08:56.404Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/17/a8/9f1c54ce351d681aa0eb2221f7deccbdd5a95421507eb59e6f7ec83931d7/plexapi-4.18.1-py3-none-any.whl", hash = "sha256:d8330cee337bc55dc006c392a58b3259239d787a32cbe4064b50a9b07a6e0b35", size = 176427, upload-time = "2026-03-22T22:14:12.563Z" },
+    { url = "https://files.pythonhosted.org/packages/79/bc/9e218dfda0a25fc16994ddfbf869503b80375a4d37bf2d8e7ee8d3e77390/plexapi-4.18.3-py3-none-any.whl", hash = "sha256:d59948f1f4b345a58a46e189bfccc7dadd86a6266ec2c97cd072a113a2d3c81d", size = 178421, upload-time = "2026-09-28T06:08:54.993Z" },
 ]
 
 [[package]]
