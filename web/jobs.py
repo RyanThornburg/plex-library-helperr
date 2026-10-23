@@ -109,6 +109,8 @@ class JobRunner:
         self.run_job = run_job
         self._queue: queue.Queue[int | None] = queue.Queue()
         self._submit_lock = threading.Lock()
+        # job -> (trigger, requested_by) to queue again when its running run finishes
+        self._rerun: dict[str, tuple[str, str | None]] = {}
         self._thread = threading.Thread(target=self._work, name="job-runner", daemon=True)
 
     def start(self) -> None:
@@ -191,6 +193,26 @@ class JobRunner:
                         for file in removal["files"]:
                             files[PurePosixPath(file["path"]).name] = run_id
         return files
+
+    def submit_soon(self, job: str, trigger: str, requested_by: str | None) -> int | None:
+        """queue a run with config.toml's settings unless one is already queued, which will
+        see whatever asked for this. While one is running, one more is queued when it
+        finishes. Returns the queued run's id, None when it'll follow the running one"""
+        with self._submit_lock, Session(self.engine) as session:
+            active = session.execute(
+                select(JobRun.id, JobRun.status).where(
+                    JobRun.job == job, JobRun.status.in_(ACTIVE)
+                )
+            ).first()
+            if active is not None and active.status == "queued":
+                return active.id
+            if active is not None:
+                self._rerun[job] = (trigger, requested_by)
+                return None
+            run = JobRun(job=job, trigger=trigger, requested_by=requested_by, dry_run=False)
+            run_id = self._queue_run(session, run)
+        logger.info("WEB\t Queued %s run %s for %s", job, run_id, requested_by or trigger)
+        return run_id
 
     def apply_problem(self, session: Session, plan: JobRun) -> str | None:
         """why a removers run's plan can't be applied, None when it can"""
@@ -276,11 +298,19 @@ class JobRunner:
             try:
                 if run_id is None:
                     return
-                self._execute(run_id)
+                job = self._execute(run_id)
+                with self._submit_lock:
+                    rerun = self._rerun.pop(job, None)
+                if rerun:
+                    try:
+                        self.submit(job, False, *rerun)
+                    except AlreadyActive:
+                        pass  # queued meanwhile, that run covers it
             finally:
                 self._queue.task_done()
 
-    def _execute(self, run_id: int) -> None:
+    def _execute(self, run_id: int) -> str:
+        """run it and store the result, returns the job"""
         with Session(self.engine) as session:
             run = session.get_one(JobRun, run_id)
             run.status = "running"
@@ -328,3 +358,4 @@ class JobRunner:
             run.result = result.to_dict() if result is not None else None
             run.log = capture.text()
             session.commit()
+        return job

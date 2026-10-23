@@ -13,6 +13,8 @@ from web.auth import AccessMiddleware, AccessVerifier, SigningKeyClient
 from web.db import make_engine, migrate
 from web.jobs import JobRunner, LoadConfig, RunJob
 from web.routes import router
+from web.webhooks import api_key
+from web.webhooks import router as webhook_router
 from web.scheduler import Scheduler
 from web.security import SecurityMiddleware
 from web.settings import WebSettings, load_web_settings
@@ -39,6 +41,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         migrate(engine)
+        api_key(engine)  # generated on the first start, like the *arrs
         runner.start()
         if run_scheduler:
             scheduler.start()
@@ -62,6 +65,7 @@ def create_app(
     app.state.load_config = load_config
     app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
     app.include_router(router)
+    app.include_router(webhook_router)
     # added last runs first: security headers wrap the access check, so 403s get them too
     app.add_middleware(AccessMiddleware, verifier=AccessVerifier(settings, keys))
     app.add_middleware(SecurityMiddleware)

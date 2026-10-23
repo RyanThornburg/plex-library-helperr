@@ -6,6 +6,8 @@ from starlette.datastructures import MutableHeaders
 from starlette.responses import PlainTextResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from web.auth import API_KEY_PATHS
+
 logger = logging.getLogger(__name__)
 
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
@@ -45,7 +47,9 @@ class SecurityMiddleware:
                     headers.setdefault(name, value)
             await send(message)
 
-        if scope["method"] not in SAFE_METHODS and not same_origin(scope):
+        # api key requests carry no browser cookies, so a cross-site request can't forge one
+        cross_site_matters = scope["path"] not in API_KEY_PATHS
+        if scope["method"] not in SAFE_METHODS and cross_site_matters and not same_origin(scope):
             logger.warning("WEB\t Rejected cross-site %s %s", scope["method"], scope["path"])
             response = PlainTextResponse("Cross-site request rejected", status_code=403)
             await response(scope, receive, send_with_headers)

@@ -197,3 +197,8 @@ input:not([type]), select {
 
 .table-actions { margin-top: 12px; }
 .files { font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all; }
+
+.key-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.key-row input { flex: 1 1 320px; max-width: 420px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.key-row form { margin: 0; }
+main h2 { margin-top: 24px; }

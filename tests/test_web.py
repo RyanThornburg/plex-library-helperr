@@ -717,3 +717,130 @@ class TestTrashPage:
         assert "/mnt/nfs/tv/lost.mkv" in page
         assert "&lt;b&gt;Lost&lt;/b&gt;" in page
         assert "121 old versions after upgrades" in page
+
+
+# ---------------------------------------------------------------------------
+# api key / webhooks
+# ---------------------------------------------------------------------------
+
+
+def key_of(client) -> str:
+    from web.webhooks import api_key
+
+    return api_key(client.app.state.engine)
+
+
+def basic(password: str, user: str = "helperr") -> dict[str, str]:
+    import base64
+
+    return {"Authorization": "Basic " + base64.b64encode(f"{user}:{password}".encode()).decode()}
+
+
+MOVIE_ADDED = {"eventType": "MovieAdded", "instanceName": "Radarr", "movie": {"title": "Frankenstein", "year": 2025}}
+
+
+class TestWebhooks:
+    def test_movie_added_queues_movers_without_access_or_origin(self, client):
+        response = client.post("/webhooks/arr", json=MOVIE_ADDED, headers=basic(key_of(client)))
+        assert response.status_code == 200
+        run_id = response.json()["queued"]
+        wait(client)
+        run = client.get(f"/api/runs/{run_id}", headers=auth()).json()
+        assert (run["job"], run["trigger"], run["dry_run"]) == ("movers", "webhook", False)
+        assert run["requested_by"] == "Radarr: Frankenstein (2025)"
+
+    def test_series_add_with_header_key(self, client):
+        body = {"eventType": "SeriesAdd", "series": {"title": "Survivor"}}
+        response = client.post("/webhooks/arr", json=body, headers={"X-Api-Key": key_of(client)})
+        wait(client)
+        run = client.get(f"/api/runs/{response.json()['queued']}", headers=auth()).json()
+        assert run["requested_by"] == "Sonarr: Survivor"
+
+    @pytest.mark.parametrize("event", ["Test", "Download", "Grab", ""])
+    def test_other_events_are_ignored(self, client, event):
+        response = client.post("/webhooks/arr", json={"eventType": event}, headers=basic(key_of(client)))
+        assert response.status_code == 200
+        assert response.json()["queued"] is None
+        assert client.get("/api/runs", headers=auth()).json() == []
+
+    @pytest.mark.parametrize(
+        "headers",
+        [{}, basic("wrong"), {"X-Api-Key": "wrong"}, {"Authorization": "Basic !!!"}, {"Authorization": "Bearer x"}],
+        ids=["none", "wrong-basic", "wrong-header", "garbled", "bearer"],
+    )
+    def test_needs_the_api_key(self, client, headers):
+        response = client.post("/webhooks/arr", json=MOVIE_ADDED, headers=headers)
+        assert response.status_code == 401
+        assert client.get("/api/runs", headers=auth()).json() == []
+
+    def test_key_in_the_url_isnt_accepted(self, client):
+        assert client.post(f"/webhooks/arr?apikey={key_of(client)}", json=MOVIE_ADDED).status_code == 401
+
+    def test_an_access_token_isnt_enough(self, client):
+        assert client.post("/webhooks/arr", json=MOVIE_ADDED, headers=auth()).status_code == 401
+
+    def test_only_the_exact_path_skips_access(self, client):
+        key = basic(key_of(client))
+        assert client.post("/webhooks/arr/", json=MOVIE_ADDED, headers=key).status_code == 403
+        assert client.post("/webhooks/other", json=MOVIE_ADDED, headers=key).status_code == 403
+        # the key doesn't open the rest of the api
+        assert client.post("/api/jobs/removers", json={}, headers={**key, **ORIGIN}).status_code == 403
+
+    def test_bad_bodies(self, client):
+        key = basic(key_of(client))
+        assert client.post("/webhooks/arr", content=b"not json", headers=key).status_code == 400
+        assert client.post("/webhooks/arr", json=[1], headers=key).status_code == 400
+        big = b'{"x": "' + b"a" * 1_100_000 + b'"}'
+        assert client.post("/webhooks/arr", content=big, headers=key).status_code == 413
+
+    def test_adds_close_together_share_a_queued_run(self, settings):
+        release = threading.Event()
+        started = threading.Event()
+        calls = []
+
+        def slow(job, s):
+            calls.append(job)
+            started.set()
+            release.wait(5)
+            return JobResult(job)
+
+        app = create_app(settings, keys=FakeKeys(), run_job=slow, load_config=live_config, run_scheduler=False)
+        with TestClient(app) as c:
+            key = basic(key_of(c))
+            first = c.post("/webhooks/arr", json=MOVIE_ADDED, headers=key).json()["queued"]
+            started.wait(5)
+            # running: the next add is remembered, not queued beside it
+            assert c.post("/webhooks/arr", json=MOVIE_ADDED, headers=key).json()["queued"] is None
+            assert c.post("/webhooks/arr", json=MOVIE_ADDED, headers=key).json()["queued"] is None
+            release.set()
+            wait(c)
+            wait(c)
+            runs = c.get("/api/runs", headers=auth()).json()
+        # the first run, then one more for the adds during it
+        assert len(calls) == 2
+        assert [r["id"] for r in runs][-1] == first
+
+    def test_regenerate_replaces_the_key(self, client):
+        old = key_of(client)
+        page = client.get("/settings", headers=auth()).text
+        assert f'value="{old}"' in page
+        assert "/webhooks/arr" in page
+        response = client.post("/settings/api-key", headers={**auth(), **ORIGIN}, follow_redirects=False)
+        assert response.status_code == 303
+        new = key_of(client)
+        assert new != old and len(new) == 32
+        assert client.post("/webhooks/arr", json=MOVIE_ADDED, headers=basic(old)).status_code == 401
+        assert client.post("/webhooks/arr", json=MOVIE_ADDED, headers=basic(new)).status_code == 200
+
+    def test_settings_need_access(self, client):
+        assert client.get("/settings").status_code == 403
+        assert client.post("/settings/api-key", headers=ORIGIN).status_code == 403
+        assert client.post("/settings/api-key", headers=auth()).status_code == 403  # no origin
+
+    def test_key_is_generated_once_and_kept(self, settings):
+        app = create_app(settings, keys=FakeKeys(), run_job=fake_run_job, load_config=live_config, run_scheduler=False)
+        with TestClient(app) as c:
+            first = key_of(c)
+        app = create_app(settings, keys=FakeKeys(), run_job=fake_run_job, load_config=live_config, run_scheduler=False)
+        with TestClient(app) as c:
+            assert key_of(c) == first

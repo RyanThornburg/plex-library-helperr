@@ -26,6 +26,16 @@ class Base(DeclarativeBase):
     pass
 
 
+class AppSetting(Base):
+    """a setting edited in the ui, by key (e.g. the webhook api key)"""
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime]
+
+
 class Schedule(Base):
     """runs a job whenever its cron expression matches, in its own time zone"""
 
@@ -66,7 +76,7 @@ class JobRun(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     job: Mapped[str] = mapped_column(String(32))
-    # manual, schedule, api, followup (empty trash after moves/removals)
+    # manual, schedule, api, followup (empty trash after moves/removals), webhook
     trigger: Mapped[str] = mapped_column(String(16))
     requested_by: Mapped[str | None] = mapped_column(String(320))
     # true when the run was asked to be dry, false means config.toml's dry_run settings applied

@@ -440,3 +440,23 @@ class TestRemovedFiles:
         runner.wait_idle()
         assert get(engine, run_id).status == "succeeded"
         runner.stop()
+
+
+class TestSubmitSoon:
+    def test_reuses_a_queued_run(self, engine):
+        release = threading.Event()
+
+        def slow(job, settings):
+            release.wait(5)
+            return JobResult(job)
+
+        runner = make_runner(engine, slow)
+        # removers occupies the worker, so movers stays queued
+        runner.submit("removers", True, "manual", None)
+        first = runner.submit_soon("movers", "webhook", "Radarr: A")
+        assert runner.submit_soon("movers", "webhook", "Radarr: B") == first
+        release.set()
+        runner.wait_idle()
+        run = get(engine, first)
+        assert (run.trigger, run.dry_run, run.requested_by) == ("webhook", False, "Radarr: A")
+        runner.stop()

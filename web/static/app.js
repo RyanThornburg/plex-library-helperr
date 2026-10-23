@@ -26,3 +26,16 @@ for (const all of document.querySelectorAll("input[data-select-all]")) {
     for (const box of boxes()) box.checked = all.checked;
   });
 }
+
+// a button with data-copy="<input id>" copies that input's value
+for (const button of document.querySelectorAll("button[data-copy]")) {
+  button.addEventListener("click", async () => {
+    const input = document.getElementById(button.dataset.copy);
+    try {
+      await navigator.clipboard.writeText(input.value);
+      button.textContent = "Copied";
+    } catch {
+      input.select();
+    }
+  });
+}

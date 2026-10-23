@@ -1,6 +1,7 @@
 """routes.py - pages and json api for running jobs, reviewing runs and scheduling jobs"""
 
 import logging
+import os
 import pathlib
 from datetime import datetime, timedelta
 from typing import Any
@@ -28,6 +29,7 @@ from web.jobs import (
     utc_now,
 )
 from web.scheduler import ZONES, next_run_at, schedule_errors, trash_followup_due
+from web.webhooks import api_key, regenerate_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -606,6 +608,25 @@ def auto_approve_confirm_page(request: Request, rule: str) -> HTMLResponse:
 def auto_approve_form(request: Request, rule: str, enabled: bool) -> RedirectResponse:
     set_auto_approve(request, rule, enabled)
     return RedirectResponse("/removers", status_code=303)
+
+
+@router.get("/settings", response_class=HTMLResponse)
+def settings_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "settings.html",
+        {
+            "user": request.state.user,
+            "api_key": api_key(request.app.state.engine),
+            "port": os.environ.get("PORT", "8080"),
+        },
+    )
+
+
+@router.post("/settings/api-key")
+def regenerate_api_key_form(request: Request) -> RedirectResponse:
+    regenerate_api_key(request.app.state.engine, request.state.user)
+    return RedirectResponse("/settings", status_code=303)
 
 
 # ---------------------------------------------------------------------------

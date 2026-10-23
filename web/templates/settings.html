@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Settings</h1>
+
+<h2>API key</h2>
+<p class="muted">Radarr and Sonarr send this with their webhooks. It's only accepted on the webhook, which starts movers; everything else needs your Cloudflare Access sign-in.</p>
+<div class="key-row">
+  <input id="api-key" value="{{ api_key }}" readonly spellcheck="false" aria-label="API key">
+  <button type="button" class="button-secondary" data-copy="api-key">Copy</button>
+  <form method="post" action="/settings/api-key">
+    <button type="submit" class="button-secondary">Regenerate</button>
+  </form>
+</div>
+<p class="hint">Regenerating stops the old key working right away, paste the new one into Radarr and Sonarr.</p>
+
+<h2>Radarr / Sonarr webhook</h2>
+<p class="muted">Movers run as soon as a movie or series is added, so it moves to its root folder before anything downloads. Keep a movers schedule (e.g. daily) as a safety net.</p>
+<p>In Radarr and Sonarr: Settings → Connect → + → Webhook.</p>
+<dl class="facts">
+  <dt>Triggers</dt><dd>Radarr: <strong>On Movie Added</strong>. Sonarr: <strong>On Series Add</strong>. Others are accepted and ignored.</dd>
+  <dt>URL</dt><dd><code>http://plex-library-helperr:{{ port }}/webhooks/arr</code> (this container's name on the shared Docker network)</dd>
+  <dt>Method</dt><dd>POST</dd>
+  <dt>Username</dt><dd>anything, e.g. <code>helperr</code></dd>
+  <dt>Password</dt><dd>the API key above</dd>
+</dl>
+<p class="hint">The Test button in Radarr/Sonarr should succeed without starting a run.</p>
+{% endblock %}

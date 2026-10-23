@@ -15,6 +15,9 @@ logger = logging.getLogger(__name__)
 TOKEN_HEADER = b"cf-access-jwt-assertion"
 # reachable without a token, they reveal nothing beyond the app being up
 PUBLIC_PATHS = frozenset({"/healthz"})
+# called by radarr/sonarr over the docker network, they check the app's api key instead
+# (web/webhooks.py). Exact paths, so nothing else slips past the access check
+API_KEY_PATHS = frozenset({"/webhooks/arr"})
 
 
 class SigningKeyClient(Protocol):
@@ -68,7 +71,7 @@ class AccessMiddleware:
         self.verifier = verifier
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http" or scope["path"] in PUBLIC_PATHS:
+        if scope["type"] != "http" or scope["path"] in PUBLIC_PATHS | API_KEY_PATHS:
             await self.app(scope, receive, send)
             return
 
