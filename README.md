@@ -54,7 +54,7 @@ Each run ends with a summary of what it changed (or would change in a dry run) a
 
 The image runs one job and exits. Config and logs live in the `/config` volume (`config.toml` and `logs/`), and the container runs as Unraid's `nobody:users` (99:100).
 
-Every push to `mainline` runs the tests and publishes `ghcr.io/ryanthornburg/plex-library-helperr:latest` (plus a `sha-<commit>` tag to pin or roll back to).
+Every push to `mainline` runs the tests and publishes `ghcr.io/ryanthornburg/plex-library-helperr:latest`, the script-only version; pushes to the `v2` branch, which adds the web app, publish `:v2`. Both also get a `sha-<commit>` tag to pin or roll back to.
 
 ### Docker tab
 
@@ -139,7 +139,7 @@ It is reached through a Cloudflare Tunnel, so the container publishes **no port*
 | Field | Value |
 |---|---|
 | Name | `plex-library-helperr` (the tunnel's public hostname points at this name) |
-| Repository | `ghcr.io/ryanthornburg/plex-library-helperr:latest` |
+| Repository | `ghcr.io/ryanthornburg/plex-library-helperr:v2` |
 | Network Type | `rattproxy` |
 | Extra Parameters | `--read-only --cap-drop ALL --security-opt no-new-privileges` |
 | Post Arguments | `--serve` |

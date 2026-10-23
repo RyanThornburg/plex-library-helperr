@@ -1,9 +1,10 @@
-# test, then build the image; pushes to mainline publish it to ghcr.io
+# test, then build the image; pushes publish it to ghcr.io: mainline (the script) as
+# latest, v2 (the web app) as v2
 name: docker
 
 on:
   push:
-    branches: [mainline]
+    branches: [mainline, v2]
   pull_request:
   workflow_dispatch:
 
@@ -54,6 +55,7 @@ jobs:
           images: ${{ env.IMAGE }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=v2,enable=${{ github.ref == 'refs/heads/v2' }}
             type=sha
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
