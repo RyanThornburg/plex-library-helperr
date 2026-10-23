@@ -236,6 +236,12 @@ class TestDatabase:
         with engine.connect() as conn:
             assert conn.exec_driver_sql("PRAGMA journal_mode").scalar() == "wal"
 
+    def test_temp_files_stay_in_memory(self, tmp_path):
+        # 2 = MEMORY: the container has no writable temp dir
+        engine = make_engine(tmp_path / "helperr.db")
+        with engine.connect() as conn:
+            assert conn.exec_driver_sql("PRAGMA temp_store").scalar() == 2
+
 
 # ---------------------------------------------------------------------------
 # jobs pages / api

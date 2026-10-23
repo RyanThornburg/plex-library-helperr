@@ -101,6 +101,9 @@ def make_engine(path: pathlib.Path) -> Engine:
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.execute("PRAGMA busy_timeout=5000")
+        # the container's filesystem is read-only, so temp files sqlite spills to (e.g.
+        # the statement journal of a migration's DROP TABLE) would fail with disk I/O error
+        cursor.execute("PRAGMA temp_store=MEMORY")
         cursor.close()
 
     return engine
