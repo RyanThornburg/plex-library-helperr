@@ -4,7 +4,6 @@ Helper script for organizing sonarr/radarr libraries with plex
 
 import argparse
 import logging.config
-import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import PurePosixPath
@@ -24,9 +23,9 @@ from arrapi import (
 import config
 from autoscan import trigger_autoscan
 from config.models import ArrConfig, ConfigSettings, MoverRule, ProfileRule
-from logging_config import logging_config
+from logging_config import LOGGING_CONFIG
 from plex import empty_plex_trash, refresh_plex_libraries
-from remover import Approved, run_removers
+from remover import run_removers
 from results import JOBS, Change, JobResult
 
 MATCH_FN: dict[str, Callable[[Iterable[object]], bool]] = {"any": any, "all": all}
@@ -347,50 +346,13 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         action="store_true",
         help="empty plex library trash instead of running movers/profilers",
     )
-    jobs.add_argument(
-        "--serve",
-        action="store_true",
-        help="run the web app instead of a job (port from PORT, default 8080)",
-    )
     return parser.parse_args(argv)
 
 
-def serve() -> None:
-    """one worker on purpose: the job scheduler lives in this process"""
-    import uvicorn
-
-    from web.settings import load_web_settings
-
-    try:
-        load_web_settings()
-    except ValueError as e:
-        logger.error("%s", e)
-        sys.exit(1)
-
-    uvicorn.run(
-        "web.app:create_app",
-        factory=True,
-        host="0.0.0.0",
-        port=int(os.environ.get("PORT", "8080")),
-        workers=1,
-        log_config=None,
-        server_header=False,
-    )
-
-
-def run_job(
-    job: str,
-    settings: ConfigSettings,
-    approved: Approved | None = None,
-    auto_approve: frozenset[str] = frozenset(),
-) -> JobResult:
-    """run one job (movers, removers or empty_trash) and return what it changed.
-    `approved` applies a reviewed removers plan and `auto_approve` holds the keys of
-    removers that delete without review, see remover.run_removers"""
+def run_job(job: str, settings: ConfigSettings) -> JobResult:
+    """run one job (movers, removers or empty_trash) and return what it changed"""
     if job not in JOBS:
         raise ValueError(f"unknown job '{job}', expected one of {', '.join(JOBS)}")
-    if approved is not None and job != "removers":
-        raise ValueError("only a removers plan can be approved")
     result = JobResult(job)
 
     if job == "empty_trash":
@@ -407,14 +369,7 @@ def run_job(
             result.errors.append("SONARR not configured")
         else:
             try:
-                run_removers(
-                    settings.sonarr,
-                    settings.tautulli,
-                    settings.plex,
-                    result,
-                    approved,
-                    auto_approve,
-                )
+                run_removers(settings.sonarr, settings.tautulli, settings.plex, result)
             except (ArrException, requests.exceptions.RequestException) as e:
                 logger.exception("SONARR\t Removers failed")
                 result.errors.append(f"SONARR removers failed: {e}")
@@ -452,14 +407,11 @@ def run_job(
     return result
 
 
-def main(argv: list[str] | None = None) -> JobResult | None:
-    """Run one job and return its result, or serve the web app"""
+def main(argv: list[str] | None = None) -> JobResult:
+    """Update radarr/sonarr library"""
 
     args = parse_args(argv)
-    logging.config.dictConfig(logging_config("web.log" if args.serve else "log.log"))
-    if args.serve:
-        serve()
-        return None
+    logging.config.dictConfig(LOGGING_CONFIG)
     logger.info("Loading config settings")
     settings = config.load_config()
     logger.info(settings)
@@ -507,4 +459,5 @@ def scan_changed(settings: ConfigSettings, result: JobResult) -> None:
 
 if __name__ == "__main__":
     job_result = main()
-    sys.exit(1 if job_result is not None and job_result.failed else 0)
+    failed = job_result.errors or any(c.status == "failed" for c in job_result.changes)
+    sys.exit(1 if failed else 0)

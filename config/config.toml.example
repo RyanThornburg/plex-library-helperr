@@ -110,7 +110,7 @@ networks = [
 #############################################################
 [sonarr.remover_settings]
 dry_run = true  # separate from [settings] dry_run, defaults to true if omitted
-max_deletes = 200  # remove nothing if a run would delete more files than this (plans for review don't count)
+max_deletes = 200  # remove nothing if a run would delete more files than this
 
 # keep the latest 2 seasons of series tagged rm-keep-2-seasons
 [[sonarr.removers]]

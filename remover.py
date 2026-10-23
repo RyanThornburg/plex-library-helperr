@@ -10,15 +10,12 @@ import requests
 from arrapi import Series, SonarrAPI
 
 from config.models import ArrConfig, PlexConfig, RemoverRule, TautulliConfig
-from results import Change, JobResult, PlannedFile, PlannedRemoval, Status
+from results import Change, JobResult, Status
 from watch_history import WatchEvent, get_watch_history
 
 logger = logging.getLogger(__name__)
 
 LOG_NAME = "SONARR"
-
-# an applied plan: series id -> the episode file ids approved for removal
-Approved = dict[int, set[int]]
 
 
 class SonarrEpisodes:
@@ -74,6 +71,16 @@ class Episode:
     season: int
     episode: int
     file_id: int | None
+
+
+@dataclass
+class RemovalPlan:
+    series: Series
+    rule: RemoverRule
+    labels: list[str]
+    file_ids: list[int]
+    episode_ids: list[int]
+    dirs: set[str] = field(default_factory=set[str])
 
 
 def utc_now() -> datetime:
@@ -197,48 +204,6 @@ def _candidate_units(
     return units
 
 
-@dataclass
-class RemovalPlan:
-    series: Series
-    rule: RemoverRule
-    units: list[Unit]
-    paths: dict[int, str] = field(default_factory=dict[int, str])  # file id -> path
-
-    @property
-    def labels(self) -> list[str]:
-        return [u.label for u in self.units]
-
-    @property
-    def file_ids(self) -> list[int]:
-        return sorted({f for u in self.units for f in u.file_ids})
-
-    @property
-    def episode_ids(self) -> list[int]:
-        return sorted({e.id for u in self.units for e in u.episodes})
-
-    @property
-    def dirs(self) -> set[str]:
-        return {str(PurePosixPath(self.paths[f]).parent) for f in self.file_ids}
-
-    def restricted_to(self, file_ids: set[int]) -> "RemovalPlan | None":
-        """only the units whose every file is in file_ids, so an approved season whose
-        files changed since is kept whole rather than partly removed"""
-        units = [u for u in self.units if u.file_ids <= file_ids]
-        return RemovalPlan(self.series, self.rule, units, self.paths) if units else None
-
-    def planned(self, status: Status, detail: str) -> PlannedRemoval:
-        rule = self.rule
-        return PlannedRemoval(
-            series_id=self.series.id,
-            title=self.series.title,
-            rule=f"{rule.type}, keep {rule.keep} ({', '.join(rule.tags)})",
-            labels=self.labels,
-            files=[PlannedFile(f, self.paths[f]) for f in self.file_ids],
-            status=status,
-            detail=detail,
-        )
-
-
 def plan_series_removal(
     rule: RemoverRule,
     series: Series,
@@ -294,11 +259,14 @@ def plan_series_removal(
     if not units:
         return None
 
+    file_ids = sorted({f for u in units for f in u.file_ids})
     return RemovalPlan(
         series=series,
         rule=rule,
-        units=units,
-        paths={f: files[f].path for u in units for f in u.file_ids},
+        labels=[u.label for u in units],
+        file_ids=file_ids,
+        episode_ids=sorted({e.id for u in units for e in u.episodes}),
+        dirs={str(PurePosixPath(files[f].path).parent) for f in file_ids},
     )
 
 
@@ -335,41 +303,13 @@ def series_watches(series: Series, watches: list[WatchEvent]) -> list[WatchEvent
     ]
 
 
-def skip_reason(
-    series: Series,
-    rule: RemoverRule,
-    watches: list[WatchEvent] | None,
-    queued: set[int],
-    now: datetime,
-) -> str | None:
-    """why a tagged series isn't planned this run, None when it is"""
-    if rule.skip_if_watched_within and watches is None:
-        return "no watch history"
-    if series.added is None:
-        return "no added date"
-    if series.added > now - rule.min_age:
-        return "added recently"
-    if series.id in queued:
-        return "downloads in queue"
-    return None
-
-
 def run_removers(
     arr_config: ArrConfig,
     tautulli: TautulliConfig | None,
     plex: PlexConfig | None,
     result: JobResult,
-    approved: Approved | None = None,
-    auto_approve: frozenset[str] = frozenset(),
 ) -> None:
-    """plan every removal first, then unmonitor and delete. With remover_settings.dry_run
-    on, only rules whose key is in `auto_approve` delete, the rest are planned for review.
-
-    With `approved` (applying a reviewed plan) only those series are planned again from
-    fresh data, and only units whose files were all approved and are still eligible are
-    removed. remover_settings.dry_run doesn't apply, approving was the decision to delete.
-
-    max_deletes caps the files a run deletes, planned-only removals don't count"""
+    """plan every removal first, then unmonitor and delete"""
     if not arr_config.apikey or not arr_config.baseurl:
         logger.warning("%s not configured. Skipping...", LOG_NAME)
         result.errors.append(f"{LOG_NAME} not configured")
@@ -383,22 +323,9 @@ def run_removers(
     arr = SonarrAPI(arr_config.baseurl, arr_config.apikey)
     client = SonarrEpisodes(arr_config.baseurl, arr_config.apikey)
 
-    def not_applied(title: str, reason: str, labels: list[str] | None = None) -> None:
-        logger.warning("%s\t %s: approved, but not removing (%s)", LOG_NAME, title, reason)
-        result.changes.append(Change(LOG_NAME, "remove", title, labels or [], "blocked", reason))
-
     logger.info("%s\t Reading all media...", LOG_NAME)
     all_series: list[Series] = arr.all_series()
     tagged = [(s, r) for s in all_series if (r := match_remover(s, arr_config.removers))]
-    if approved is not None:
-        logger.info("%s\t Applying an approved plan for %s series", LOG_NAME, len(approved))
-        tagged = [(s, r) for s, r in tagged if s.id in approved]
-        titles = {s.id: s.title for s in all_series}
-        for series_id in approved.keys() - {s.id for s, _ in tagged}:
-            if series_id in titles:
-                not_applied(titles[series_id], "no longer tagged for one remover")
-            else:
-                not_applied(f"series {series_id}", "no longer in Sonarr")
     logger.info("%s\t %s series tagged for removers", LOG_NAME, len(tagged))
     if not tagged:
         return
@@ -420,11 +347,16 @@ def run_removers(
 
     plans: list[RemovalPlan] = []
     for series, rule in tagged:
-        if reason := skip_reason(series, rule, watches, queued, now):
-            if approved is not None:
-                not_applied(series.title, reason)
-            elif reason != "no watch history":  # already logged once for the run
-                logger.info("%s\t %s: %s, skipping", LOG_NAME, series.title, reason)
+        if rule.skip_if_watched_within and watches is None:
+            continue
+        if series.added is None:
+            logger.warning("%s\t %s: no added date, skipping", LOG_NAME, series.title)
+            continue
+        if series.added > now - rule.min_age:
+            logger.info("%s\t %s: added recently, skipping", LOG_NAME, series.title)
+            continue
+        if series.id in queued:
+            logger.info("%s\t %s: downloads in queue, skipping", LOG_NAME, series.title)
             continue
         try:
             episodes, files = parse_series_data(
@@ -432,8 +364,6 @@ def run_removers(
             )
         except InvalidSeriesData as e:
             logger.warning("%s\t %s: invalid data, skipping (%s)", LOG_NAME, series.title, e)
-            if approved is not None:
-                not_applied(series.title, f"invalid Sonarr data: {e}")
             continue
 
         plan = plan_series_removal(
@@ -444,16 +374,6 @@ def run_removers(
             series_watches(series, watches) if watches else [],
             now,
         )
-        if approved is not None:
-            approved_files = approved[series.id]
-            plan = plan.restricted_to(approved_files) if plan else None
-            left = len(approved_files - set(plan.file_ids if plan else []))
-            if left:
-                not_applied(
-                    series.title,
-                    f"{left} of {len(approved_files)} approved files no longer eligible "
-                    "(watched, replaced or changed since the plan)",
-                )
         if plan:
             logger.info(
                 "%s\t %s: removing %s (%s files)",
@@ -469,61 +389,49 @@ def run_removers(
     if not plans:
         return
 
-    def record(plan: RemovalPlan, status: Status, detail: str = "") -> None:
+    def change(plan: RemovalPlan, status: Status, detail: str = "") -> Change:
         files = f"{len(plan.file_ids)} files"
-        detail = f"{files}, {detail}" if detail else files
-        result.changes.append(
-            Change(LOG_NAME, "remove", plan.series.title, plan.labels, status, detail)
-        )
-        result.removals.append(plan.planned(status, detail))
-
-    # approved and auto-approved removals delete, with dry_run on the rest wait for review
-    auto = approved is None and settings.dry_run
-    live = [p for p in plans if not auto or p.rule.key in auto_approve]
-    review = [p for p in plans if p not in live]
-    if review:
-        logger.info(
-            "%s\t DRY RUN - planning %s series for review, not removing",
+        return Change(
             LOG_NAME,
-            len(review),
+            "remove",
+            plan.series.title,
+            plan.labels,
+            status,
+            f"{files}, {detail}" if detail else files,
         )
-        for p in review:
-            record(p, "dry_run")
-    if not live:
-        return
-    if auto:
-        logger.info("%s\t Auto-approved: removing %s series", LOG_NAME, len(live))
 
-    live_total = sum(len(p.file_ids) for p in live)
-    if settings.max_deletes is not None and live_total > settings.max_deletes:
+    if settings.max_deletes is not None and total > settings.max_deletes:
         logger.error(
             "%s\t %s files exceeds max_deletes (%s), not removing anything",
             LOG_NAME,
-            live_total,
+            total,
             settings.max_deletes,
         )
-        detail = (
-            f"run total of {live_total} files exceeds max_deletes ({settings.max_deletes})"
-        )
-        for p in live:
-            record(p, "blocked", detail)
+        detail = f"run total of {total} files exceeds max_deletes ({settings.max_deletes})"
+        result.changes.extend(change(p, "blocked", detail) for p in plans)
+        return
+    if settings.dry_run:
+        logger.info("%s\t DRY RUN - not actually removing", LOG_NAME)
+        result.changes.extend(change(p, "dry_run") for p in plans)
         return
 
-    for plan in live:
+    for plan in plans:
         try:
             # unmonitor first so sonarr does not grab the deleted files again
             client.unmonitor_episodes(plan.episode_ids)
         except requests.exceptions.RequestException as e:
             logger.error("%s\t %s: failed to unmonitor (%s)", LOG_NAME, plan.series.title, e)
-            record(plan, "failed", f"unmonitor failed: {e}")
+            result.changes.append(change(plan, "failed", f"unmonitor failed: {e}"))
             continue
         try:
             client.delete_episode_files(plan.file_ids)
         except requests.exceptions.RequestException as e:
             logger.error("%s\t %s: failed to delete (%s)", LOG_NAME, plan.series.title, e)
-            record(plan, "failed", f"unmonitored, but delete failed: {e}")
+            result.changes.append(
+                change(plan, "failed", f"unmonitored, but delete failed: {e}")
+            )
             continue
-        record(plan, "done", "auto-approved" if auto else "")
+        result.changes.append(change(plan, "done"))
         result.scan_dirs.update(plan.dirs)
         if plan.rule.plex_library:
             result.plex_libraries.add(plan.rule.plex_library)

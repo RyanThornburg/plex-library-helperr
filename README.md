@@ -79,7 +79,7 @@ URLs in `config.toml` can't use `localhost`, which inside the container is the c
 
 ### User Script (alternative)
 
-For running jobs from a schedule without the web app (with the web app, use its Schedules page instead):
+For running jobs from a schedule before the web UI exists:
 
 ```bash
 #!/bin/bash
@@ -98,58 +98,6 @@ docker image prune -f --filter "label=org.opencontainers.image.title=plex-librar
 
 - To build locally: `docker build -t plex-library-helperr .` in a clone of this repo.
 - Outside Docker, set `DATA_DIR` to keep `config.toml` and `logs/` somewhere other than the repo.
-
-## Web app (in progress)
-
-`--serve` runs a web app for running and reviewing jobs:
-
-- Each job has a **Dry run** button, which forces every `dry_run` setting on, and a **Run…** button, which uses `config.toml` as-is. Run… always goes to a confirmation page that says whether the run will make changes. The UI can't make a run live that `config.toml` has as dry run, with one exception, approved remover plans:
-- **Remover plans:** every removers run saves its plan, the seasons/episodes it would remove from each series with their file paths. On a dry run's page, select series and review: the confirmation page shows how many files will be deleted, then an apply run removes them, even with `remover_settings.dry_run = true` (that setting keeps removers from deleting on their own; approving is the decision to delete). The apply run plans each approved series again from fresh Sonarr data and removes only seasons/episodes whose files were all approved and are still eligible: anything watched, replaced, downloading or no longer outside the keep window since is skipped and reported. `max_deletes` still applies. A plan can be applied once, within 7 days. Applying is off unless the container has `REMOVERS_ALLOW_APPLY=true`.
-- **Auto-approve:** the Removers page lists the remover rules in `config.toml`, each with an auto-approve switch (off by default, turning it on goes through a confirmation page). A removers run that uses `config.toml`'s settings (Run…, or a schedule without "Force dry run") deletes an auto-approved rule's removals without review, even with `remover_settings.dry_run = true`; other rules' removals are planned for review. Forced dry runs never delete, `max_deletes` applies, and it needs `REMOVERS_ALLOW_APPLY=true` like applying a plan. The switch is stored in the app's database by the rule's tags, so changing a rule's tags turns it back off.
-- Jobs run one at a time in the order queued. A job that's already queued or running can't be queued again.
-- Every run is kept with who started it, what it changed (or would change), errors and its log. Runs interrupted by a restart are marked failed and never re-run automatically.
-- **Schedules** run a job on a cron expression (`minute hour day month weekday`, or `@hourly`/`@daily`/`@weekly`/`@monthly`) in the schedule's own time zone, which a new schedule takes from your browser. They're created and edited on the Schedules page and stored in the app's database, not `config.toml`. Like the buttons, a schedule either forces dry run (the default) or uses `config.toml`'s settings. A schedule whose job is still queued or running skips that time, and times missed while the app was down are skipped rather than caught up.
-- The same actions are available as JSON: `POST /api/jobs/<movers|removers|empty_trash>` (body `{"dry_run": false}` for a config run, dry by default), `GET /api/runs`, `GET /api/runs/<id>`, and `GET`/`POST /api/schedules`, `GET`/`PUT`/`DELETE /api/schedules/<id>` (body `{"name", "job", "cron", "timezone": "UTC", "dry_run": true, "enabled": true}`), `POST /api/runs/<id>/apply` (body `{"series_ids": [...]}`) to apply a removers plan, and `GET /api/removers`, `POST /api/removers/auto-approve` (body `{"rule": "<tags, lowercased, sorted, comma joined>", "enabled": true}`).
-- Times on the pages are shown in your browser's time zone, so the container needs no `TZ`.
-
-The web app logs to `logs/web.log`, separate from the CLI's `logs/log.log`.
-
- It only accepts requests that come through [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/): every route except `/healthz` requires a valid Access token, checked against your team's signing keys, the application's audience tag and an email allowlist. It refuses to start without those settings.
-
-It is reached through a Cloudflare Tunnel, so the container publishes **no port**. Nothing on your network or router points at it.
-
-### Cloudflare setup
-
-1. **Tunnel:** Zero Trust → Networks → Tunnels → Create a tunnel (Cloudflared), named e.g. `helperr`. Choose Docker and copy the token from the command it shows.
-2. **cloudflared container** (Unraid Docker tab):
-
-    | Field | Value |
-    |---|---|
-    | Repository | `cloudflare/cloudflared:2026.10.1` (pin a version, update it deliberately) |
-    | Network Type | `rattproxy` (the same network as the web app) |
-    | Post Arguments | `tunnel --no-autoupdate run` |
-    | Variable | `TUNNEL_TOKEN` = the token from step 1 |
-
-3. **Public hostname** on the tunnel: e.g. `helperr.<your domain>` → service `http://plex-library-helperr:8080`.
-4. **Access application:** Zero Trust → Access → Applications → Add → Self-hosted, for the same hostname. Add an Allow policy that includes only your email. Copy the application's **Audience (AUD) tag** from its overview.
-
-### Web container
-
-| Field | Value |
-|---|---|
-| Name | `plex-library-helperr` (the tunnel's public hostname points at this name) |
-| Repository | `ghcr.io/ryanthornburg/plex-library-helperr:latest` |
-| Network Type | `rattproxy` |
-| Extra Parameters | `--read-only --cap-drop ALL --security-opt no-new-privileges` |
-| Post Arguments | `--serve` |
-| Path | `/config` → `/mnt/user/appdata/plex-library-helperr/config` |
-| Ports | none |
-| Variable `CF_ACCESS_TEAM_DOMAIN` | `<team>.cloudflareaccess.com` |
-| Variable `CF_ACCESS_AUD` | the AUD tag from step 4 |
-| Variable `ALLOWED_EMAILS` | your Access email (comma separate more than one) |
-| Variable `REMOVERS_ALLOW_APPLY` | `true` to allow applying approved remover plans from the UI (default off). An environment variable so nothing in the app can turn it on |
-
-The database is `helperr.db` in `/config`, next to `config.toml`. Keep `/config` on a cache pool (not the array), since SQLite and Unraid's FUSE layer don't mix.
 
 ## Configuration
 
@@ -255,11 +203,11 @@ Only used by `--remove`.
 | Key           | Description                                                                                                                |
 |-----          |-------------                                                                                                               |
 | `dry_run`     | `true` to log what would be removed without removing it (default: `true`). Separate from `[settings]` and `[sonarr]` `dry_run`. |
-| `max_deletes` | If a run would delete more files than this, nothing is removed. Removals only planned for review don't count. Omit for no limit. |
+| `max_deletes` | If a run would delete more files than this, nothing is removed. Omit for no limit.                                         |
 
 ### `[[sonarr.removers]]`
 
-Unmonitors and then deletes the files of old seasons or episodes in series that have one of the remover's `tags`. Episodes are unmonitored first so Sonarr doesn't download them again. If unmonitoring fails, the files aren't deleted. Every series is planned before anything is removed. `max_deletes` applies to the whole run, so if the files it would delete are over the limit nothing is removed.
+Unmonitors and then deletes the files of old seasons or episodes in series that have one of the remover's `tags`. Episodes are unmonitored first so Sonarr doesn't download them again. If unmonitoring fails, the files aren't deleted. Every series is planned before anything is removed. `max_deletes` applies to the whole run, so if the run is over the limit nothing is removed.
 
 | Key                      | Description                                                                                                  |
 |-----                     |-------------                                                                                                 |

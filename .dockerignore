@@ -7,6 +7,3 @@
 !config/__init__.py
 !config/models.py
 !config/config.toml.example
-!web/
-# later rules win: drop caches the allowlist above would pull back in
-**/__pycache__

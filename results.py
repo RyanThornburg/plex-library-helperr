@@ -1,8 +1,8 @@
 """results.py - what a job changed, or would have changed in a dry run"""
 
 import logging
-from dataclasses import asdict, dataclass, field
-from typing import Any, Literal
+from dataclasses import dataclass, field
+from typing import Literal
 
 logger = logging.getLogger(__name__)
 
@@ -25,26 +25,6 @@ class Change:
 
 
 @dataclass
-class PlannedFile:
-    id: int
-    path: str
-
-
-@dataclass
-class PlannedRemoval:
-    """one series' removal as planned, kept with the run so it can be reviewed and its
-    series approved (see remover.run_removers' `approved`)"""
-
-    series_id: int
-    title: str
-    rule: str
-    labels: list[str]
-    files: list[PlannedFile]
-    status: Status
-    detail: str = ""
-
-
-@dataclass
 class JobResult:
     """everything a job run changed, the folders/libraries left to scan, and errors that
     stopped part of the job early (details of skipped media stay in the log)"""
@@ -54,22 +34,6 @@ class JobResult:
     scan_dirs: set[str] = field(default_factory=set[str])
     plex_libraries: set[str] = field(default_factory=set[str])
     errors: list[str] = field(default_factory=list[str])
-    removals: list[PlannedRemoval] = field(default_factory=list[PlannedRemoval])
-
-    @property
-    def failed(self) -> bool:
-        return bool(self.errors) or any(c.status == "failed" for c in self.changes)
-
-    def to_dict(self) -> dict[str, Any]:
-        """json-safe, for storing with a job run"""
-        return {
-            "job": self.job,
-            "changes": [asdict(c) for c in self.changes],
-            "scan_dirs": sorted(self.scan_dirs),
-            "plex_libraries": sorted(self.plex_libraries),
-            "errors": list(self.errors),
-            "removals": [asdict(r) for r in self.removals],
-        }
 
     def log_summary(self) -> None:
         logger.info(
