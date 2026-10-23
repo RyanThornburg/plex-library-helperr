@@ -1,17 +1,17 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.14"
 
 [[package]]
 name = "arrapi"
-version = "1.4.14"
+version = "1.5.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/39/ac/e63b939dfbae528a656204adafb42c7d6b8c018511da958d1a54d9545c8c/arrapi-1.4.14.tar.gz", hash = "sha256:eef87d061c582b635d320a82e1bcbe2741cc952f75f37e74dfa4e2279a988d67", size = 28048, upload-time = "2025-08-15T18:27:07.958Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bf/b5/17593a81a631992e144ff38229385ada999a25f290757d681a0eb3cef6db/arrapi-1.5.1.tar.gz", hash = "sha256:0e21e96a943f61bda28ab66e6a5c11fd9ca0802bb7af1fe8782d705db018402a", size = 32859, upload-time = "2026-10-11T20:12:07.992Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d0/95/8b2a59cccf0c4c926e41904441b120bd13453a67a342188c7ac7f9224441/arrapi-1.4.14-py3-none-any.whl", hash = "sha256:132088972036c1eb7bb3597d3b16776263aa1939b088152560a49d93ed61caea", size = 30452, upload-time = "2025-08-15T18:27:06.65Z" },
+    { url = "https://files.pythonhosted.org/packages/f5/36/0ea46e501ae861b94e01b0d78a5cad36e98493598e78457622d22f787780/arrapi-1.5.1-py3-none-any.whl", hash = "sha256:3abc265492e4e8909d66a9cf7c359224224146438df443f0c4114fd7fc4d29fb", size = 33680, upload-time = "2026-10-11T20:12:06.713Z" },
 ]
 
 [[package]]
