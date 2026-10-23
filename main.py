@@ -26,7 +26,7 @@ from autoscan import trigger_autoscan
 from config.models import ArrConfig, ConfigSettings, MoverRule, ProfileRule
 from logging_config import logging_config
 from plex import empty_plex_trash, refresh_plex_libraries
-from remover import run_removers
+from remover import Approved, run_removers
 from results import JOBS, Change, JobResult
 
 MATCH_FN: dict[str, Callable[[Iterable[object]], bool]] = {"any": any, "all": all}
@@ -378,10 +378,19 @@ def serve() -> None:
     )
 
 
-def run_job(job: str, settings: ConfigSettings) -> JobResult:
-    """run one job (movers, removers or empty_trash) and return what it changed"""
+def run_job(
+    job: str,
+    settings: ConfigSettings,
+    approved: Approved | None = None,
+    auto_approve: frozenset[str] = frozenset(),
+) -> JobResult:
+    """run one job (movers, removers or empty_trash) and return what it changed.
+    `approved` applies a reviewed removers plan and `auto_approve` holds the keys of
+    removers that delete without review, see remover.run_removers"""
     if job not in JOBS:
         raise ValueError(f"unknown job '{job}', expected one of {', '.join(JOBS)}")
+    if approved is not None and job != "removers":
+        raise ValueError("only a removers plan can be approved")
     result = JobResult(job)
 
     if job == "empty_trash":
@@ -398,7 +407,14 @@ def run_job(job: str, settings: ConfigSettings) -> JobResult:
             result.errors.append("SONARR not configured")
         else:
             try:
-                run_removers(settings.sonarr, settings.tautulli, settings.plex, result)
+                run_removers(
+                    settings.sonarr,
+                    settings.tautulli,
+                    settings.plex,
+                    result,
+                    approved,
+                    auto_approve,
+                )
             except (ArrException, requests.exceptions.RequestException) as e:
                 logger.exception("SONARR\t Removers failed")
                 result.errors.append(f"SONARR removers failed: {e}")

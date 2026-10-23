@@ -1,11 +1,12 @@
 """routes.py - pages and json api for running jobs, reviewing runs and scheduling jobs"""
 
+import logging
 import pathlib
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlencode
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
@@ -14,10 +15,21 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 import config
+from config.models import ConfigSettings, RemoverRule
 from results import JOBS
-from web.db import JobRun, Schedule
-from web.jobs import ACTIVE, AlreadyActive, JobRunner, utc_now
+from web.db import JobRun, RemoverRuleSetting, Schedule
+from web.jobs import (
+    ACTIVE,
+    APPROVABLE,
+    AlreadyActive,
+    ApplyRefused,
+    JobRunner,
+    approvable,
+    utc_now,
+)
 from web.scheduler import ZONES, next_run_at, schedule_errors
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -69,6 +81,7 @@ templates.env.filters["localtime"] = localtime
 templates.env.globals["duration"] = duration
 templates.env.globals["run_source"] = run_source
 templates.env.globals["JOB_INFO"] = JOB_INFO
+templates.env.globals["APPROVABLE"] = APPROVABLE
 
 # a schedule form is a few short fields
 MAX_FORM_BYTES = 10_000
@@ -106,6 +119,8 @@ def run_to_dict(run: JobRun, include_log: bool = False) -> dict[str, Any]:
         "finished_at": run.finished_at.isoformat() + "Z" if run.finished_at else None,
         "result": run.result,
         "schedule_id": run.schedule_id,
+        "plan_run_id": run.plan_run_id,
+        "approved": run.approved,
     }
     if include_log:
         data["log"] = run.log
@@ -117,13 +132,43 @@ def check_job(job: str) -> None:
         raise HTTPException(status_code=404)
 
 
-def config_modes(request: Request) -> tuple[dict[str, bool | None], str | None]:
-    """each job's dry run state in config.toml, read fresh so edits show without a restart"""
+def auto_approved(request: Request, settings: ConfigSettings) -> list[RemoverRule]:
+    """the configured removers that delete without review"""
+    keys = runner(request).auto_approved_rules()
+    if not keys or not settings.sonarr:
+        return []
+    return [r for r in settings.sonarr.removers if r.key in keys]
+
+
+def config_modes(
+    request: Request,
+) -> tuple[dict[str, bool | None], str | None, list[RemoverRule]]:
+    """each job's dry run state as configured (None when partly live), any error loading
+    config.toml and the auto-approved removers. Read fresh so edits show without a restart"""
     try:
         settings = request.app.state.load_config()
-        return {job: config.config_dry_run(job, settings) for job in JOBS}, None
     except Exception as e:  # shown on the page, jobs would fail the same way
-        return {}, f"{type(e).__name__}: {e}"
+        return {}, f"{type(e).__name__}: {e}", []
+    modes = {job: config.config_dry_run(job, settings) for job in JOBS}
+    auto = auto_approved(request, settings)
+    if auto and modes["removers"]:
+        # auto-approved removers delete even with remover dry_run on
+        modes["removers"] = None
+    return modes, None, auto
+
+
+def span(value: timedelta | None) -> str:
+    """a duration the way config.toml writes it: 7d, 12h, 30m"""
+    if value is None:
+        return "-"
+    seconds = int(value.total_seconds())
+    for unit, size in (("d", 86400), ("h", 3600), ("m", 60)):
+        if seconds % size == 0:
+            return f"{seconds // size}{unit}"
+    return f"{seconds}s"
+
+
+templates.env.filters["span"] = span
 
 
 def all_schedules(request: Request) -> list[Schedule]:
@@ -217,7 +262,7 @@ async def form_fields(request: Request) -> dict[str, str]:
 
 @router.get("/", response_class=HTMLResponse)
 def index(request: Request) -> HTMLResponse:
-    dry_runs, config_error = config_modes(request)
+    dry_runs, config_error, auto_rules = config_modes(request)
     runs = recent_runs(request, 25)
     # each job's soonest scheduled run
     now = utc_now()
@@ -235,6 +280,7 @@ def index(request: Request) -> HTMLResponse:
             "jobs": JOBS,
             "dry_runs": dry_runs,
             "config_error": config_error,
+            "auto_rules": auto_rules,
             "active_jobs": {r.job for r in runs if r.status in ACTIVE},
             "next_runs": next_runs,
         },
@@ -245,12 +291,18 @@ def index(request: Request) -> HTMLResponse:
 def confirm_page(request: Request, job: str) -> HTMLResponse:
     """runs with config.toml's dry_run go through this page, it says whether they're live"""
     check_job(job)
-    dry_runs, config_error = config_modes(request)
+    dry_runs, config_error, auto_rules = config_modes(request)
     mode = dry_runs.get(job)
     return templates.TemplateResponse(
         request,
         "confirm.html",
-        {"user": request.state.user, "job": job, "mode": mode, "config_error": config_error},
+        {
+            "user": request.state.user,
+            "job": job,
+            "mode": mode,
+            "config_error": config_error,
+            "auto_rules": auto_rules if job == "removers" else [],
+        },
     )
 
 
@@ -268,11 +320,91 @@ def run_job_form(request: Request, job: str, dry_run: bool = True) -> RedirectRe
 @router.get("/runs/{run_id}", response_class=HTMLResponse)
 def run_page(request: Request, run_id: int) -> HTMLResponse:
     run = get_run(request, run_id)
+    result = run.result or {}
+    removals = result.get("removals", [])
+    # removals are shown in their own table with their files, so not again as changes
+    planned = {(r["title"], r["status"]) for r in removals}
+    changes = [
+        c
+        for c in result.get("changes", [])
+        if not (c["action"] == "remove" and (c["target"], c["status"]) in planned)
+    ]
+    with Session(request.app.state.engine) as session:
+        problem = runner(request).apply_problem(session, run) if approvable(run) else None
+        applied_by = list(session.scalars(select(JobRun.id).where(JobRun.plan_run_id == run.id)))
     return templates.TemplateResponse(
         request,
         "run.html",
-        {"user": request.state.user, "run": run, "active": run.status in ACTIVE},
+        {
+            "user": request.state.user,
+            "run": run,
+            "active": run.status in ACTIVE,
+            "removals": removals,
+            "changes": changes,
+            "selectable": bool(approvable(run)) and problem is None,
+            "apply_problem": problem,
+            "applied_by": applied_by,
+        },
     )
+
+
+def apply_confirm(
+    request: Request, run_id: int, series: list[int], error: str | None = None
+) -> HTMLResponse:
+    run = get_run(request, run_id)
+    selected = [r for r in approvable(run) if r["series_id"] in set(series)]
+    with Session(request.app.state.engine) as session:
+        problem = error or runner(request).apply_problem(session, run)
+    if problem is None and (not selected or len(selected) != len(set(series))):
+        problem = "Select at least one series from the plan."
+    max_deletes = remover_dry_run = None
+    try:
+        sonarr = request.app.state.load_config().sonarr
+        if sonarr:
+            max_deletes = sonarr.remover_settings.max_deletes
+            remover_dry_run = sonarr.remover_settings.dry_run
+    except Exception:  # the run would fail the same way, its log will say why
+        pass
+    total = sum(len(r["files"]) for r in selected)
+    return templates.TemplateResponse(
+        request,
+        "apply_confirm.html",
+        {
+            "user": request.state.user,
+            "run": run,
+            "selected": selected,
+            "total": total,
+            "problem": problem,
+            "over_max": max_deletes is not None and total > max_deletes,
+            "max_deletes": max_deletes,
+            "remover_dry_run": remover_dry_run,
+            "query": urlencode([("series", r["series_id"]) for r in selected]),
+        },
+        status_code=400 if error else 200,
+    )
+
+
+@router.get("/runs/{run_id}/apply", response_class=HTMLResponse)
+def apply_confirm_page(
+    request: Request, run_id: int, series: list[int] = Query(default=[])
+) -> HTMLResponse:
+    """the plan's form gets here with ?series=..., says exactly what will be deleted"""
+    return apply_confirm(request, run_id, series)
+
+
+@router.post("/runs/{run_id}/apply", response_model=None)
+def apply_plan_form(
+    request: Request, run_id: int, series: list[int] = Query(default=[])
+) -> Response:
+    try:
+        new_id = runner(request).submit_apply(run_id, series, "manual", request.state.user)
+    except LookupError:
+        raise HTTPException(status_code=404) from None
+    except ApplyRefused as e:
+        return apply_confirm(request, run_id, series, str(e))
+    except AlreadyActive as e:
+        new_id = e.run_id
+    return RedirectResponse(f"/runs/{new_id}", status_code=303)
 
 
 def schedule_form(
@@ -281,7 +413,7 @@ def schedule_form(
     values: dict[str, Any],
     errors: list[str] | None = None,
 ) -> HTMLResponse:
-    dry_runs, config_error = config_modes(request)
+    dry_runs, config_error, auto_rules = config_modes(request)
     next_run = None if errors else next_run_at(Schedule(**values), utc_now())
     return templates.TemplateResponse(
         request,
@@ -294,6 +426,7 @@ def schedule_form(
             "jobs": JOBS,
             "dry_runs": dry_runs,
             "config_error": config_error,
+            "auto_rules": auto_rules,
             "next_run": next_run,
             "zones": ZONES,
         },
@@ -396,6 +529,80 @@ def delete_schedule_form(request: Request, schedule_id: int) -> RedirectResponse
     return RedirectResponse("/schedules", status_code=303)
 
 
+def remover_rules(request: Request) -> tuple[list[RemoverRule], str | None]:
+    try:
+        settings = request.app.state.load_config()
+    except Exception as e:
+        return [], f"{type(e).__name__}: {e}"
+    return (settings.sonarr.removers if settings.sonarr else []), None
+
+
+def rule_settings(request: Request) -> dict[str, RemoverRuleSetting]:
+    with Session(request.app.state.engine) as session:
+        return {s.rule_key: s for s in session.scalars(select(RemoverRuleSetting))}
+
+
+def set_auto_approve(request: Request, rule_key: str, enabled: bool) -> None:
+    """turning on needs the rule in config.toml, off always works"""
+    if enabled and rule_key not in {r.key for r in remover_rules(request)[0]}:
+        raise HTTPException(status_code=404)
+    with Session(request.app.state.engine) as session:
+        setting = session.get(RemoverRuleSetting, rule_key) or RemoverRuleSetting(
+            rule_key=rule_key
+        )
+        setting.auto_approve = enabled
+        setting.updated_at = utc_now()
+        setting.updated_by = request.state.user
+        session.add(setting)
+        session.commit()
+    logger.info(
+        "WEB\t Auto-approve %s for remover %s by %s",
+        "on" if enabled else "off",
+        rule_key,
+        request.state.user,
+    )
+
+
+@router.get("/removers", response_class=HTMLResponse)
+def removers_page(request: Request) -> HTMLResponse:
+    rules, config_error = remover_rules(request)
+    return templates.TemplateResponse(
+        request,
+        "removers.html",
+        {
+            "user": request.state.user,
+            "rules": rules,
+            "config_error": config_error,
+            "settings": rule_settings(request),
+            "allow_apply": runner(request).allow_apply,
+        },
+    )
+
+
+@router.get("/removers/auto-approve", response_class=HTMLResponse)
+def auto_approve_confirm_page(request: Request, rule: str) -> HTMLResponse:
+    """turning auto-approve on always goes through this page"""
+    matching = [r for r in remover_rules(request)[0] if r.key == rule]
+    if not matching:
+        raise HTTPException(status_code=404)
+    return templates.TemplateResponse(
+        request,
+        "auto_approve_confirm.html",
+        {
+            "user": request.state.user,
+            "rule": matching[0],
+            "allow_apply": runner(request).allow_apply,
+            "query": urlencode({"rule": rule, "enabled": "true"}),
+        },
+    )
+
+
+@router.post("/removers/auto-approve")
+def auto_approve_form(request: Request, rule: str, enabled: bool) -> RedirectResponse:
+    set_auto_approve(request, rule, enabled)
+    return RedirectResponse("/removers", status_code=303)
+
+
 # ---------------------------------------------------------------------------
 # json api
 # ---------------------------------------------------------------------------
@@ -414,6 +621,56 @@ def api_run_job(request: Request, job: str, body: RunRequest) -> JSONResponse:
     except AlreadyActive as e:
         return JSONResponse({"error": "already active", "id": e.run_id}, status_code=409)
     return JSONResponse({"id": run_id}, status_code=202)
+
+
+class ApplyRequest(BaseModel):
+    series_ids: list[int]
+
+
+@router.post("/api/runs/{run_id}/apply", status_code=202)
+def api_apply_plan(request: Request, run_id: int, body: ApplyRequest) -> JSONResponse:
+    """removes the approved series of a removers run's plan"""
+    try:
+        new_id = runner(request).submit_apply(
+            run_id, body.series_ids, "api", request.state.user
+        )
+    except LookupError:
+        raise HTTPException(status_code=404) from None
+    except ApplyRefused as e:
+        return JSONResponse({"error": str(e)}, status_code=422)
+    except AlreadyActive as e:
+        return JSONResponse({"error": "already active", "id": e.run_id}, status_code=409)
+    return JSONResponse({"id": new_id}, status_code=202)
+
+
+class AutoApproveRequest(BaseModel):
+    rule: str  # RemoverRule.key, its tags casefolded, sorted and comma joined
+    enabled: bool
+
+
+@router.get("/api/removers")
+def api_removers(request: Request) -> list[dict[str, Any]]:
+    """config.toml's removers with their web app settings"""
+    rules, config_error = remover_rules(request)
+    if config_error:
+        raise HTTPException(status_code=500, detail=config_error)
+    settings = rule_settings(request)
+    return [
+        {
+            "rule": r.key,
+            "type": r.type,
+            "keep": r.keep,
+            "tags": r.tags,
+            "auto_approve": r.key in settings and settings[r.key].auto_approve,
+        }
+        for r in rules
+    ]
+
+
+@router.post("/api/removers/auto-approve")
+def api_auto_approve(request: Request, body: AutoApproveRequest) -> dict[str, Any]:
+    set_auto_approve(request, body.rule, body.enabled)
+    return {"rule": body.rule, "auto_approve": body.enabled}
 
 
 @router.get("/api/runs")

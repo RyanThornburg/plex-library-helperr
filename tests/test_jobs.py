@@ -3,15 +3,16 @@
 import dataclasses
 import logging
 import threading
+from datetime import timedelta
 
 import pytest
 from sqlalchemy.orm import Session
 
 import config
 from config.models import ArrConfig, ConfigSettings, EmptyTrashSettings, RemoverSettings
-from results import Change, JobResult
-from web.db import JobRun, make_engine, migrate
-from web.jobs import AlreadyActive, JobRunner, utc_now
+from results import Change, JobResult, PlannedFile, PlannedRemoval
+from web.db import JobRun, RemoverRuleSetting, make_engine, migrate
+from web.jobs import AlreadyActive, ApplyRefused, JobRunner, utc_now
 
 logger = logging.getLogger("tests.jobs")
 
@@ -102,8 +103,8 @@ def info_logs(caplog):
     caplog.set_level(logging.INFO)
 
 
-def make_runner(engine, run_job, load_config=live_settings) -> JobRunner:
-    runner = JobRunner(engine, run_job, load_config)
+def make_runner(engine, run_job, load_config=live_settings, allow_apply=False) -> JobRunner:
+    runner = JobRunner(engine, run_job, load_config, allow_apply)
     runner.start()
     return runner
 
@@ -236,4 +237,179 @@ class TestJobRunner:
         assert [r.status for r in runs] == ["failed", "failed", "succeeded"]
         assert "Interrupted" in runs[0].log
         assert calls == []
+        runner.stop()
+
+
+# ---------------------------------------------------------------------------
+# applying a removers plan
+# ---------------------------------------------------------------------------
+
+
+def removal(series_id: int, status="dry_run", files=(1,)) -> PlannedRemoval:
+    return PlannedRemoval(
+        series_id=series_id,
+        title=f"Show {series_id}",
+        rule="seasons, keep 2 (rm)",
+        labels=["S01"],
+        files=[PlannedFile(f, f"/tv/Show {series_id}/S01E{f:02d}.mkv") for f in files],
+        status=status,
+    )
+
+
+def add_plan(engine, *removals: PlannedRemoval, age=timedelta(0), **values) -> int:
+    with Session(engine) as session:
+        run = JobRun(
+            job=values.pop("job", "removers"),
+            trigger="manual",
+            status=values.pop("status", "succeeded"),
+            dry_run=True,
+            created_at=utc_now() - age,
+            result=JobResult("removers", removals=list(removals)).to_dict(),
+            **values,
+        )
+        session.add(run)
+        session.commit()
+        return run.id
+
+
+class TestApply:
+    def setup_method(self):
+        self.calls: list[tuple] = []
+
+    def run_job(self, job, settings, approved=None):
+        self.calls.append((job, approved, dry_run_fields(settings)))
+        return JobResult(job)
+
+    def test_queues_a_live_run_with_the_approved_files(self, engine):
+        plan_id = add_plan(engine, removal(1, files=(1, 2)), removal(2), removal(3, "blocked"))
+        runner = make_runner(engine, self.run_job, allow_apply=True)
+        run_id = runner.submit_apply(plan_id, [3, 1], "manual", "me@example.com")
+        runner.wait_idle()
+        run = get(engine, run_id)
+        assert run.plan_run_id == plan_id
+        assert run.dry_run is False
+        assert run.approved == [
+            {"series_id": 1, "title": "Show 1", "file_ids": [1, 2]},
+            {"series_id": 3, "title": "Show 3", "file_ids": [1]},
+        ]
+        [(job, approved, dry_runs)] = self.calls
+        assert job == "removers"
+        assert approved == {1: {1, 2}, 3: {1}}
+        # config.toml's settings, not forced dry
+        assert not any(dry_runs)
+        runner.stop()
+
+    def test_refused_when_turned_off(self, engine):
+        plan_id = add_plan(engine, removal(1))
+        runner = make_runner(engine, self.run_job, allow_apply=False)
+        with pytest.raises(ApplyRefused, match="REMOVERS_ALLOW_APPLY"):
+            runner.submit_apply(plan_id, [1], "manual", None)
+        runner.stop()
+
+    @pytest.mark.parametrize(
+        "plan, series, message",
+        [
+            ({"age": timedelta(days=8)}, [1], "more than 7 days old"),
+            ({"job": "movers"}, [1], "no planned removals"),
+            ({"status": "running"}, [1], "no planned removals"),
+            ({}, [], "Select at least one"),
+            ({}, [1, 9], "aren't in this plan"),
+        ],
+        ids=["expired", "not-removers", "still-running", "nothing-selected", "unknown-series"],
+    )
+    def test_refused(self, engine, plan, series, message):
+        # started first, or it would mark a running plan as interrupted
+        runner = make_runner(engine, self.run_job, allow_apply=True)
+        plan_id = add_plan(engine, removal(1), **plan)
+        with pytest.raises(ApplyRefused, match=message):
+            runner.submit_apply(plan_id, series, "manual", None)
+        runner.stop()
+
+    def test_done_removals_cant_be_approved(self, engine):
+        plan_id = add_plan(engine, removal(1, "done"))
+        runner = make_runner(engine, self.run_job, allow_apply=True)
+        with pytest.raises(ApplyRefused, match="no planned removals"):
+            runner.submit_apply(plan_id, [1], "manual", None)
+        runner.stop()
+
+    def test_applied_once(self, engine):
+        plan_id = add_plan(engine, removal(1), removal(2))
+        runner = make_runner(engine, self.run_job, allow_apply=True)
+        first = runner.submit_apply(plan_id, [1], "manual", None)
+        runner.wait_idle()
+        with pytest.raises(ApplyRefused, match=f"already applied by run {first}"):
+            runner.submit_apply(plan_id, [2], "manual", None)
+        runner.stop()
+
+    def test_an_apply_run_isnt_a_plan(self, engine):
+        plan_id = add_plan(engine, removal(1))
+        runner = make_runner(engine, self.run_job, allow_apply=True)
+        run_id = runner.submit_apply(plan_id, [1], "manual", None)
+        runner.wait_idle()
+        with Session(engine) as session:
+            run = session.get_one(JobRun, run_id)
+            run.result = JobResult("removers", removals=[removal(1)]).to_dict()
+            session.commit()
+        with pytest.raises(ApplyRefused, match="no planned removals"):
+            runner.submit_apply(run_id, [1], "manual", None)
+        runner.stop()
+
+    def test_missing_plan(self, engine):
+        runner = make_runner(engine, self.run_job, allow_apply=True)
+        with pytest.raises(LookupError):
+            runner.submit_apply(42, [1], "manual", None)
+        runner.stop()
+
+    def test_waits_for_an_active_removers_run(self, engine):
+        plan_id = add_plan(engine, removal(1))
+        release = threading.Event()
+
+        def slow(job, settings, approved=None):
+            release.wait(5)
+            return JobResult(job)
+
+        runner = make_runner(engine, slow, allow_apply=True)
+        active = runner.submit("removers", True, "manual", None)
+        with pytest.raises(AlreadyActive) as e:
+            runner.submit_apply(plan_id, [1], "manual", None)
+        assert e.value.run_id == active
+        release.set()
+        runner.wait_idle()
+        runner.stop()
+
+
+class TestAutoApproveRunner:
+    def setup_method(self):
+        self.calls: list[tuple] = []
+
+    def run_job(self, job, settings, approved=None, auto_approve=None):
+        self.calls.append((job, auto_approve))
+        return JobResult(job)
+
+    def turn_on(self, engine, *keys):
+        with Session(engine) as session:
+            for key in keys:
+                session.add(RemoverRuleSetting(rule_key=key, auto_approve=True, updated_at=utc_now()))
+            session.add(RemoverRuleSetting(rule_key="off", auto_approve=False, updated_at=utc_now()))
+            session.commit()
+
+    def test_config_run_passes_auto_approved_rules(self, engine):
+        self.turn_on(engine, "rm-housewives")
+        runner = make_runner(engine, self.run_job, allow_apply=True)
+        runner.submit("removers", False, "schedule", None)
+        runner.wait_idle()
+        assert self.calls == [("removers", frozenset({"rm-housewives"}))]
+        runner.stop()
+
+    @pytest.mark.parametrize(
+        "job, dry_run, allow_apply",
+        [("removers", True, True), ("removers", False, False), ("movers", False, True)],
+        ids=["forced-dry-run", "apply-off", "other-job"],
+    )
+    def test_not_passed(self, engine, job, dry_run, allow_apply):
+        self.turn_on(engine, "rm-housewives")
+        runner = make_runner(engine, self.run_job, allow_apply=allow_apply)
+        runner.submit(job, dry_run, "manual", None)
+        runner.wait_idle()
+        assert self.calls == [(job, None)]
         runner.stop()

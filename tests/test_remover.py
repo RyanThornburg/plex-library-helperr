@@ -329,7 +329,9 @@ class TestSeriesWatches:
 # ---------------------------------------------------------------------------
 
 
-class TestRunRemovers:
+class SonarrFakes:
+    """sonarr fakes for run_removers: series with S01-S03, one file each (ids 1-3)"""
+
     def setup_method(self):
         self.result = JobResult("removers")
         self.client = MagicMock()
@@ -356,6 +358,8 @@ class TestRunRemovers:
             run_removers(arr_config, None, None, self.result)
         return wh
 
+
+class TestRunRemovers(SonarrFakes):
     def test_unmonitors_then_deletes(self):
         calls = MagicMock()
         self.client.unmonitor_episodes.side_effect = lambda ids: calls("unmonitor", ids)
@@ -438,3 +442,181 @@ class TestRunRemovers:
     def test_no_watch_history_needed_without_window(self):
         wh = self._run([make_series()])
         wh.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# applying an approved plan
+# ---------------------------------------------------------------------------
+
+
+class TestApplyPlan(SonarrFakes):
+    """run_removers with `approved`. With keep 2, S01 (file 1) is planned"""
+
+    def _apply(self, series, approved, **kwargs):
+        arr = MagicMock()
+        arr.all_series.return_value = series
+        arr_config = ArrConfig(
+            baseurl="http://sonarr",
+            apikey="key",
+            tag=None,
+            removers=[kwargs.get("rule") or seasons_rule()],
+            remover_settings=kwargs.get("settings") or RemoverSettings(dry_run=True),
+        )
+        with (
+            patch.object(remover, "SonarrAPI", return_value=arr),
+            patch.object(remover, "SonarrEpisodes", return_value=self.client),
+            patch.object(remover, "get_watch_history", return_value=kwargs.get("watches")),
+            patch.object(remover, "utc_now", return_value=NOW),
+        ):
+            run_removers(arr_config, None, None, self.result, approved)
+
+    def test_removes_approved_even_when_dry_run_is_on(self):
+        self._apply([make_series()], {1: {1}})
+        self.client.unmonitor_episodes.assert_called_once_with([1])
+        self.client.delete_episode_files.assert_called_once_with([1])
+        assert [c.status for c in self.result.changes] == ["done"]
+
+    def test_records_removed_files(self):
+        self._apply([make_series()], {1: {1}})
+        [removal] = self.result.removals
+        assert removal.series_id == 1
+        assert removal.labels == ["S01"]
+        assert [(f.id, f.path) for f in removal.files] == [(1, "/tv/Show/Season 01/S01E01.mkv")]
+        assert removal.rule == "seasons, keep 2 (rm-seasons-2)"
+        assert removal.status == "done"
+
+    def test_only_approved_series_are_touched(self):
+        self._apply([make_series(id=1), make_series(id=2, title="Other")], {2: {1}})
+        self.client.episodes.assert_called_once_with(2)
+        assert [c.target for c in self.result.changes] == ["Other"]
+
+    def test_unapproved_newly_eligible_units_are_kept(self):
+        # S01 and S02 are planned now (keep 1), only S01's file was approved
+        self._apply([make_series()], {1: {1}}, rule=seasons_rule(keep=1))
+        self.client.delete_episode_files.assert_called_once_with([1])
+
+    def test_season_with_a_replaced_file_is_kept_whole(self):
+        # file 9 was approved but sonarr now has file 1 for that season (an upgrade)
+        self._apply([make_series()], {1: {9}})
+        self.client.delete_episode_files.assert_not_called()
+        [change] = self.result.changes
+        assert change.status == "blocked"
+        assert "1 of 1 approved files no longer eligible" in change.detail
+
+    def test_partly_eligible_series_removes_the_rest(self):
+        rule = episodes_rule(keep=1, tags=["rm-seasons-2"])
+        # files 1 and 2 are still eligible, 7 isn't (e.g. replaced)
+        self._apply([make_series()], {1: {1, 2, 7}}, rule=rule)
+        self.client.delete_episode_files.assert_called_once_with([1, 2])
+        statuses = sorted(c.status for c in self.result.changes)
+        assert statuses == ["blocked", "done"]
+
+    def test_watched_since_the_plan_is_not_removed(self):
+        rule = seasons_rule(skip_if_watched_within=timedelta(days=14))
+        self._apply([make_series()], {1: {1}}, rule=rule, watches=[watch(1, 1)])
+        self.client.delete_episode_files.assert_not_called()
+        assert self.result.changes[0].status == "blocked"
+
+    @pytest.mark.parametrize(
+        "series, queued, reason",
+        [
+            (make_series(), {1}, "downloads in queue"),
+            (make_series(added=NOW - timedelta(days=1)), set(), "added recently"),
+            (make_series(tags=["other"]), set(), "no longer tagged"),
+        ],
+        ids=["queued", "re-added", "untagged"],
+    )
+    def test_series_level_skips_are_reported(self, series, queued, reason):
+        self.client.queued_series_ids.return_value = queued
+        self._apply([series], {1: {1}})
+        self.client.delete_episode_files.assert_not_called()
+        [change] = self.result.changes
+        assert (change.target, change.status) == ("Survivor", "blocked")
+        assert reason in change.detail
+
+    def test_series_gone_from_sonarr_is_reported(self):
+        self._apply([], {5: {1}})
+        assert self.result.changes == [
+            Change("SONARR", "remove", "series 5", [], "blocked", "no longer in Sonarr")
+        ]
+
+    def test_max_deletes_still_applies(self):
+        series = [make_series(id=1), make_series(id=2)]
+        settings = RemoverSettings(dry_run=True, max_deletes=1)
+        self._apply(series, {1: {1}, 2: {1}}, settings=settings)
+        self.client.delete_episode_files.assert_not_called()
+        assert [c.status for c in self.result.changes] == ["blocked", "blocked"]
+
+
+class TestPlanRecorded(SonarrFakes):
+    def test_dry_run_records_the_plan(self):
+        self._run([make_series()], settings=RemoverSettings(dry_run=True))
+        [removal] = self.result.removals
+        assert removal.status == "dry_run"
+        assert removal.detail == "1 files"
+        assert self.result.to_dict()["removals"][0]["files"] == [
+            {"id": 1, "path": "/tv/Show/Season 01/S01E01.mkv"}
+        ]
+
+
+class TestAutoApprove(SonarrFakes):
+    def test_auto_approved_rule_deletes_with_dry_run_on(self):
+        rule = seasons_rule()
+        self._apply_auto([make_series()], rule, frozenset({rule.key}))
+        self.client.delete_episode_files.assert_called_once_with([1])
+        [change] = self.result.changes
+        assert (change.status, change.detail) == ("done", "1 files, auto-approved")
+
+    def test_other_rules_wait_for_review(self):
+        auto = seasons_rule()
+        review = seasons_rule(tags=["rm-review"])
+        series = [make_series(id=1), make_series(id=2, title="Other", tags=["rm-review"])]
+        self._apply_auto(series, [auto, review], frozenset({auto.key}))
+        self.client.episodes.assert_any_call(2)
+        self.client.delete_episode_files.assert_called_once_with([1])
+        assert {c.target: c.status for c in self.result.changes} == {
+            "Survivor": "done",
+            "Other": "dry_run",
+        }
+
+    def test_max_deletes_counts_only_deleted_files(self):
+        auto = seasons_rule()
+        review = seasons_rule(tags=["rm-review"])
+        series = [make_series(id=1), make_series(id=2, title="Other", tags=["rm-review"])]
+        settings = RemoverSettings(dry_run=True, max_deletes=1)
+        self._apply_auto(series, [auto, review], frozenset({auto.key}), settings)
+        self.client.delete_episode_files.assert_called_once_with([1])
+
+    def test_max_deletes_blocks_auto_approved(self):
+        rule = seasons_rule()
+        series = [make_series(id=1), make_series(id=2)]
+        settings = RemoverSettings(dry_run=True, max_deletes=1)
+        self._apply_auto(series, rule, frozenset({rule.key}), settings)
+        self.client.delete_episode_files.assert_not_called()
+        assert [c.status for c in self.result.changes] == ["blocked", "blocked"]
+
+    def test_dry_run_plan_over_max_deletes_is_still_a_plan(self):
+        # nothing is deleted, so it can still be reviewed and partly approved
+        settings = RemoverSettings(dry_run=True, max_deletes=1)
+        self._run([make_series(id=1), make_series(id=2)], settings=settings)
+        assert [c.status for c in self.result.changes] == ["dry_run", "dry_run"]
+
+    def test_rule_key_ignores_order_and_case(self):
+        assert seasons_rule(tags=["B", "a"]).key == seasons_rule(tags=["A", "b"]).key == "a,b"
+
+    def _apply_auto(self, series, rules, auto, settings=None):
+        arr = MagicMock()
+        arr.all_series.return_value = series
+        arr_config = ArrConfig(
+            baseurl="http://sonarr",
+            apikey="key",
+            tag=None,
+            removers=rules if isinstance(rules, list) else [rules],
+            remover_settings=settings or RemoverSettings(dry_run=True),
+        )
+        with (
+            patch.object(remover, "SonarrAPI", return_value=arr),
+            patch.object(remover, "SonarrEpisodes", return_value=self.client),
+            patch.object(remover, "utc_now", return_value=NOW),
+        ):
+            run_removers(arr_config, None, None, self.result, auto_approve=auto)

@@ -1,5 +1,6 @@
 """Tests for the web app: access auth, security headers, database"""
 
+import dataclasses
 import re
 import threading
 import time
@@ -12,7 +13,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import inspect
 
 from config.models import ArrConfig, ConfigSettings
-from results import Change, JobResult
+from results import Change, JobResult, PlannedFile, PlannedRemoval
 from web.app import create_app
 from web.db import make_engine, migrate
 from web.settings import WebSettings, load_web_settings
@@ -211,9 +212,16 @@ class TestSettings:
 
     def test_every_problem_is_reported(self):
         with pytest.raises(ValueError) as e:
-            load_web_settings({"CF_ACCESS_TEAM_DOMAIN": "example.com"})
-        for name in ("CF_ACCESS_TEAM_DOMAIN", "CF_ACCESS_AUD", "ALLOWED_EMAILS"):
+            load_web_settings({"CF_ACCESS_TEAM_DOMAIN": "example.com", "REMOVERS_ALLOW_APPLY": "yes"})
+        for name in ("CF_ACCESS_TEAM_DOMAIN", "CF_ACCESS_AUD", "ALLOWED_EMAILS", "REMOVERS_ALLOW_APPLY"):
             assert name in str(e.value)
+
+    @pytest.mark.parametrize("value, allowed", [(None, False), ("false", False), (" True ", True)])
+    def test_remover_apply_is_off_unless_set(self, value, allowed):
+        env = {"CF_ACCESS_TEAM_DOMAIN": TEAM, "CF_ACCESS_AUD": AUD, "ALLOWED_EMAILS": EMAIL}
+        if value is not None:
+            env["REMOVERS_ALLOW_APPLY"] = value
+        assert load_web_settings(env).allow_remover_apply is allowed
 
 
 class TestDatabase:
@@ -455,3 +463,224 @@ class TestScheduleApi:
         )
         assert response.status_code == 422
         assert len(response.json()["errors"]) == 2
+
+
+# ---------------------------------------------------------------------------
+# reviewing and applying a removers plan
+# ---------------------------------------------------------------------------
+
+
+def planning_job(job: str, settings: ConfigSettings, approved=None) -> JobResult:
+    """plans two series, or removes the approved ones"""
+    removals = [
+        PlannedRemoval(1, "Survivor", "seasons, keep 2 (rm)", ["S01"], [PlannedFile(11, "/tv/Survivor/S01E01.mkv")], "dry_run", "1 files"),
+        PlannedRemoval(2, "Big Brother", "seasons, keep 2 (rm)", ["S01", "S02"], [PlannedFile(21, "/tv/BB/a.mkv"), PlannedFile(22, "/tv/BB/b.mkv")], "dry_run", "2 files"),
+    ]
+    if approved is not None:
+        removals = [dataclasses.replace(r, status="done") for r in removals if r.series_id in approved]
+    changes = [Change("SONARR", "remove", r.title, r.labels, r.status, r.detail) for r in removals]
+    return JobResult(job, changes=changes, removals=removals)
+
+
+@pytest.fixture
+def plan_client(settings):
+    app = create_app(
+        dataclasses.replace(settings, allow_remover_apply=True),
+        keys=FakeKeys(),
+        run_job=planning_job,
+        load_config=live_config,
+        run_scheduler=False,
+    )
+    with TestClient(app) as c:
+        c.post("/jobs/removers?dry_run=true", headers={**auth(), **ORIGIN})
+        wait(c)
+        yield c
+
+
+class TestPlanReview:
+    def test_plan_page_lists_series_to_select(self, plan_client):
+        page = plan_client.get("/runs/1", headers=auth()).text
+        assert 'action="/runs/1/apply"' in page
+        assert 'name="series" value="1"' in page and 'name="series" value="2"' in page
+        assert "/tv/BB/b.mkv" in page
+        # removals aren't listed again as changes
+        assert "Other changes" not in page and "Nothing to change" not in page
+
+    def test_off_without_the_env_var(self, client):
+        client.app.state.runner.run_job = planning_job
+        client.post("/jobs/removers?dry_run=true", headers={**auth(), **ORIGIN})
+        wait(client)
+        page = client.get("/runs/1", headers=auth()).text
+        assert "REMOVERS_ALLOW_APPLY=true" in page
+        assert 'name="series"' not in page
+        response = client.post("/api/runs/1/apply", json={"series_ids": [1]}, headers={**auth(), **ORIGIN})
+        assert response.status_code == 422
+
+    def test_confirm_page_totals_the_selection(self, plan_client):
+        page = plan_client.get("/runs/1/apply?series=2", headers=auth()).text
+        assert "deletes up to 2 episode files" in page
+        assert "Big Brother" in page and "Survivor" not in page
+        assert 'action="/runs/1/apply?series=2"' in page
+
+    def test_confirm_page_needs_a_selection(self, plan_client):
+        page = plan_client.get("/runs/1/apply", headers=auth()).text
+        assert "Select at least one series" in page
+        assert "Delete" not in page
+
+    def test_confirm_page_warns_over_max_deletes(self, settings):
+        def config_with_max():
+            from config.models import RemoverSettings
+
+            arr = ArrConfig(baseurl="http://arr", apikey="key", tag=None, dry_run=False, remover_settings=RemoverSettings(max_deletes=2))
+            return ConfigSettings(plex=None, radarr=None, sonarr=arr)
+
+        app = create_app(
+            dataclasses.replace(settings, allow_remover_apply=True),
+            keys=FakeKeys(), run_job=planning_job, load_config=config_with_max, run_scheduler=False,
+        )
+        with TestClient(app) as c:
+            c.post("/jobs/removers?dry_run=true", headers={**auth(), **ORIGIN})
+            wait(c)
+            page = c.get("/runs/1/apply?series=1&series=2", headers=auth()).text
+        assert "more than max_deletes (2)" in page
+        assert "Delete 3 files" not in page
+
+    def test_apply_runs_the_approved_series(self, plan_client):
+        response = plan_client.post(
+            "/runs/1/apply?series=2", headers={**auth(), **ORIGIN}, follow_redirects=False
+        )
+        assert response.status_code == 303
+        assert response.headers["location"] == "/runs/2"
+        wait(plan_client)
+        run = plan_client.get("/api/runs/2", headers=auth()).json()
+        assert run["plan_run_id"] == 1
+        assert run["approved"] == [{"series_id": 2, "title": "Big Brother", "file_ids": [21, 22]}]
+        assert run["requested_by"] == EMAIL
+        assert [r["title"] for r in run["result"]["removals"]] == ["Big Brother"]
+        page = plan_client.get("/runs/2", headers=auth()).text
+        assert 'href="/runs/1">plan #1' in page
+        # an apply run isn't a plan to approve
+        assert 'name="series"' not in page
+        # the plan says it was applied and can't be applied again
+        plan_page = plan_client.get("/runs/1", headers=auth()).text
+        assert 'Applied by run <a href="/runs/2">#2</a>' in plan_page
+        assert 'name="series"' not in plan_page
+        again = plan_client.post("/runs/1/apply?series=1", headers={**auth(), **ORIGIN})
+        assert again.status_code == 400
+        assert "already applied by run 2" in again.text
+
+    def test_apply_needs_same_origin(self, plan_client):
+        assert plan_client.post("/runs/1/apply?series=1", headers=auth()).status_code == 403
+
+    def test_api_apply(self, plan_client):
+        headers = {**auth(), **ORIGIN}
+        response = plan_client.post("/api/runs/1/apply", json={"series_ids": [1, 2]}, headers=headers)
+        assert response.status_code == 202
+        wait(plan_client)
+        run = plan_client.get(f"/api/runs/{response.json()['id']}", headers=auth()).json()
+        assert run["status"] == "succeeded"
+        assert len(run["approved"]) == 2
+        assert plan_client.post("/api/runs/99/apply", json={"series_ids": [1]}, headers=headers).status_code == 404
+        refused = plan_client.post("/api/runs/1/apply", json={"series_ids": [1]}, headers=headers)
+        assert refused.status_code == 422
+        assert "already applied" in refused.json()["error"]
+
+    def test_paths_are_escaped(self, settings):
+        def xss_plan(job, s, approved=None):
+            r = PlannedRemoval(1, "<b>x</b>", "r", ["S01"], [PlannedFile(1, "<script>y</script>")], "dry_run")
+            return JobResult(job, removals=[r])
+
+        app = create_app(
+            dataclasses.replace(settings, allow_remover_apply=True),
+            keys=FakeKeys(), run_job=xss_plan, load_config=live_config, run_scheduler=False,
+        )
+        with TestClient(app) as c:
+            c.post("/jobs/removers?dry_run=true", headers={**auth(), **ORIGIN})
+            wait(c)
+            pages = [c.get(url, headers=auth()).text for url in ("/runs/1", "/runs/1/apply?series=1")]
+        for page in pages:
+            assert "<script>y</script>" not in page and "<b>x</b>" not in page
+            assert "&lt;script&gt;y&lt;/script&gt;" in page
+
+
+# ---------------------------------------------------------------------------
+# removers page / auto-approve
+# ---------------------------------------------------------------------------
+
+
+def remover_config() -> ConfigSettings:
+    from datetime import timedelta
+
+    from config.models import RemoverRule, RemoverSettings
+
+    rules = [
+        RemoverRule(type="seasons", keep=1, tags=["rm-Housewives"], min_age=timedelta(days=30)),
+        RemoverRule(type="episodes", keep=5, tags=["rm-keep-5"], min_age=timedelta(hours=12)),
+    ]
+    sonarr = ArrConfig(
+        baseurl="http://arr", apikey="key", tag=None, removers=rules, remover_settings=RemoverSettings()
+    )
+    return ConfigSettings(plex=None, radarr=None, sonarr=sonarr)
+
+
+def removers_app(settings, allow_apply=True):
+    return create_app(
+        dataclasses.replace(settings, allow_remover_apply=allow_apply),
+        keys=FakeKeys(), run_job=fake_run_job, load_config=remover_config, run_scheduler=False,
+    )
+
+
+class TestRemoversPage:
+    def test_lists_rules_off_by_default(self, settings):
+        with TestClient(removers_app(settings)) as c:
+            page = c.get("/removers", headers=auth()).text
+            assert "rm-Housewives" in page and "30d" in page and "12h" in page
+            assert 'href="/removers/auto-approve?rule=rm-housewives"' in page
+            assert [r["auto_approve"] for r in c.get("/api/removers", headers=auth()).json()] == [False, False]
+
+    def test_turn_on_through_the_confirm_page_then_off(self, settings):
+        with TestClient(removers_app(settings)) as c:
+            confirm = c.get("/removers/auto-approve?rule=rm-housewives", headers=auth()).text
+            assert "without review" in confirm
+            assert 'action="/removers/auto-approve?rule=rm-housewives&amp;enabled=true"' in confirm
+            response = c.post(
+                "/removers/auto-approve?rule=rm-housewives&enabled=true",
+                headers={**auth(), **ORIGIN},
+                follow_redirects=False,
+            )
+            assert response.status_code == 303
+            assert c.app.state.runner.auto_approved_rules() == {"rm-housewives"}
+            # every place that says what a config run does says so
+            assert "auto-approve on for 1" in c.get("/", headers=auth()).text
+            assert "will be deleted" in c.get("/jobs/removers/confirm", headers=auth()).text
+            assert "auto-approved removers delete" in c.get("/schedules/new", headers=auth()).text
+            assert "Turn off" in c.get("/removers", headers=auth()).text
+            c.post("/removers/auto-approve?rule=rm-housewives&enabled=false", headers={**auth(), **ORIGIN})
+            assert c.app.state.runner.auto_approved_rules() == frozenset()
+            assert "nothing will be changed" in c.get("/jobs/removers/confirm", headers=auth()).text
+
+    def test_unknown_rule_cant_be_turned_on(self, settings):
+        with TestClient(removers_app(settings)) as c:
+            assert c.get("/removers/auto-approve?rule=nope", headers=auth()).status_code == 404
+            headers = {**auth(), **ORIGIN}
+            assert c.post("/removers/auto-approve?rule=nope&enabled=true", headers=headers).status_code == 404
+            response = c.post("/api/removers/auto-approve", json={"rule": "nope", "enabled": True}, headers=headers)
+            assert response.status_code == 404
+
+    def test_api_toggle(self, settings):
+        with TestClient(removers_app(settings)) as c:
+            headers = {**auth(), **ORIGIN}
+            response = c.post("/api/removers/auto-approve", json={"rule": "rm-keep-5", "enabled": True}, headers=headers)
+            assert response.json() == {"rule": "rm-keep-5", "auto_approve": True}
+            assert [r["auto_approve"] for r in c.get("/api/removers", headers=auth()).json()] == [False, True]
+
+    def test_no_effect_while_apply_is_off(self, settings):
+        with TestClient(removers_app(settings, allow_apply=False)) as c:
+            c.post("/removers/auto-approve?rule=rm-housewives&enabled=true", headers={**auth(), **ORIGIN})
+            assert "REMOVERS_ALLOW_APPLY=true" in c.get("/removers", headers=auth()).text
+            assert c.app.state.runner.auto_approved_rules() == frozenset()
+            assert "nothing will be changed" in c.get("/jobs/removers/confirm", headers=auth()).text
+
+    def test_toggle_needs_same_origin(self, settings):
+        with TestClient(removers_app(settings)) as c:
+            assert c.post("/removers/auto-approve?rule=rm-housewives&enabled=true", headers=auth()).status_code == 403

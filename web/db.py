@@ -46,6 +46,19 @@ class Schedule(Base):
     last_fired_at: Mapped[datetime | None]
 
 
+class RemoverRuleSetting(Base):
+    """web app settings for a remover rule from config.toml, keyed by RemoverRule.key.
+    Editing a rule's tags changes its key, so its settings go back to the defaults"""
+
+    __tablename__ = "remover_rule_settings"
+
+    rule_key: Mapped[str] = mapped_column(String(1000), primary_key=True)
+    # delete this rule's removals without review, needs REMOVERS_ALLOW_APPLY
+    auto_approve: Mapped[bool] = mapped_column(server_default=false())
+    updated_at: Mapped[datetime]
+    updated_by: Mapped[str | None] = mapped_column(String(320))
+
+
 class JobRun(Base):
     """one run of a job, with its JobResult and captured log"""
 
@@ -70,6 +83,12 @@ class JobRun(Base):
     )
     # joined: runs are shown after their session has closed
     schedule: Mapped[Schedule | None] = relationship(lazy="joined")
+    # set on a run that applies a reviewed removers plan: the plan's run, and the
+    # approved series as [{"series_id", "title", "file_ids"}]
+    plan_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("job_runs.id", ondelete="SET NULL"), index=True
+    )
+    approved: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
 
 
 def make_engine(path: pathlib.Path) -> Engine:

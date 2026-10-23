@@ -194,3 +194,6 @@ input:not([type]), select {
   .form { grid-template-columns: 1fr; }
   .form > span:empty { display: none; }
 }
+
+.table-actions { margin-top: 12px; }
+.files { font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all; }

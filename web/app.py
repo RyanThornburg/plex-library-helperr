@@ -33,7 +33,7 @@ def create_app(
     config.toml in tests, which also leave the scheduler off and call its tick()"""
     settings = settings or load_web_settings()
     engine = make_engine(settings.database_path)
-    runner = JobRunner(engine, run_job, load_config)
+    runner = JobRunner(engine, run_job, load_config, settings.allow_remover_apply)
     scheduler = Scheduler(engine, runner)
 
     @asynccontextmanager
@@ -43,9 +43,10 @@ def create_app(
         if run_scheduler:
             scheduler.start()
         logger.info(
-            "WEB\t Started, access team %s, %s allowed emails",
+            "WEB\t Started, access team %s, %s allowed emails, applying remover plans %s",
             settings.team_domain,
             len(settings.allowed_emails),
+            "allowed" if settings.allow_remover_apply else "off",
         )
         yield
         if run_scheduler:

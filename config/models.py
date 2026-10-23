@@ -162,6 +162,12 @@ class RemoverRule:
                 "RemoverRule.skip_if_watched_within must be greater than 0"
             )
 
+    @property
+    def key(self) -> str:
+        """identifies the rule outside config.toml, e.g. its auto-approve setting in the web
+        app's database. Removers can't share a tag, so their tag sets are unique"""
+        return ",".join(sorted({t.casefold() for t in self.tags}))
+
     def __repr__(self):
         fields: list[tuple[str, str | int | bool | None | list[str] | timedelta]] = [
             ("type", self.type),

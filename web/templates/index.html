@@ -15,6 +15,7 @@
     <p class="mode">
       config.toml:
       {% if config_error %}<span class="tag">unknown</span>
+      {% elif mode is none and job == "removers" and auto_rules %}<a class="tag tag-warn" href="/removers">dry run, auto-approve on for {{ auto_rules | length }}</a>
       {% elif mode is none %}<span class="tag tag-warn">mixed: live for some *arrs</span>
       {% elif mode %}<span class="tag">dry run</span>
       {% else %}<span class="tag tag-live">live</span>{% endif %}
@@ -49,7 +50,7 @@
       <td><a href="/runs/{{ run.id }}">{{ run.id }}</a></td>
       <td>{{ JOB_INFO[run.job][0] }}</td>
       <td><span class="status status-{{ run.status }}">{{ run.status }}</span></td>
-      <td>{{ "dry run" if run.dry_run else "config" }}</td>
+      <td>{{ "apply plan" if run.plan_run_id else "dry run" if run.dry_run else "config" }}</td>
       <td>{{ run.result.changes | length if run.result else "-" }}</td>
       <td>{{ run.started_at | localtime }}</td>
       <td>{{ duration(run) }}</td>

@@ -18,3 +18,11 @@ if (zone) {
   const browser = Intl.DateTimeFormat().resolvedOptions().timeZone;
   if ([...zone.options].some((option) => option.value === browser)) zone.value = browser;
 }
+
+// a "select all" box in a table header toggles the named checkboxes in its form
+for (const all of document.querySelectorAll("input[data-select-all]")) {
+  const boxes = () => all.form.querySelectorAll(`input[name="${all.dataset.selectAll}"]`);
+  all.addEventListener("change", () => {
+    for (const box of boxes()) box.checked = all.checked;
+  });
+}

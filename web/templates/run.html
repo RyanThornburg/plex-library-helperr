@@ -8,7 +8,11 @@
 </h1>
 
 <dl class="facts">
+  {% if run.plan_run_id %}
+  <dt>Mode</dt><dd>applying the series approved from <a href="/runs/{{ run.plan_run_id }}">plan #{{ run.plan_run_id }}</a></dd>
+  {% else %}
   <dt>Mode</dt><dd>{{ "dry run (forced)" if run.dry_run else "config.toml settings" }}</dd>
+  {% endif %}
   {% if run.schedule %}
   <dt>Requested by</dt><dd>schedule <a href="/schedules/{{ run.schedule.id }}">{{ run.schedule.name }}</a></dd>
   {% else %}
@@ -32,14 +36,62 @@
 </ul>
 {% endif %}
 
-<h2>Changes</h2>
-{% if run.result.changes %}
+{% if removals %}
+<h2>{{ "Removed" if run.plan_run_id else "Planned removals" }}</h2>
+{% if applied_by %}
+<p class="banner">Applied by run {% for id in applied_by %}<a href="/runs/{{ id }}">#{{ id }}</a>{% endfor %}.</p>
+{% elif apply_problem %}
+<p class="banner banner-warn">{{ apply_problem }}</p>
+{% elif selectable %}
+<p class="muted">Select the series to remove, then review. Applying plans each selected series again from fresh Sonarr data and only removes what was approved and is still eligible.</p>
+{% endif %}
+{% if selectable %}<form method="get" action="/runs/{{ run.id }}/apply">{% endif %}
+<table>
+  <thead>
+    <tr>
+      {% if selectable %}<th><input type="checkbox" data-select-all="series" aria-label="Select all"></th>{% endif %}
+      <th>Series</th><th>Rule</th><th>Remove</th><th>Files</th><th>Status</th><th>Detail</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for removal in removals %}
+    <tr>
+      {% if selectable %}
+      <td>{% if removal.status in APPROVABLE %}<input type="checkbox" name="series" value="{{ removal.series_id }}" aria-label="Remove from {{ removal.title }}">{% endif %}</td>
+      {% endif %}
+      <td>{{ removal.title }}</td>
+      <td class="muted">{{ removal.rule }}</td>
+      <td>{{ removal.labels | join(", ") }}</td>
+      <td>
+        <details>
+          <summary>{{ removal.files | length }}</summary>
+          <ul class="items files">{% for file in removal.files %}<li>{{ file.path }}</li>{% endfor %}</ul>
+        </details>
+      </td>
+      <td><span class="status status-{{ removal.status }}">{{ removal.status }}</span></td>
+      <td class="muted">{{ removal.detail }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% if selectable %}
+<div class="actions table-actions">
+  <button type="submit">Review selected…</button>
+</div>
+</form>
+{% endif %}
+{% endif %}
+
+{% if changes or not removals %}
+<h2>{{ "Other changes" if removals else "Changes" }}</h2>
+{% endif %}
+{% if changes %}
 <table>
   <thead>
     <tr><th>Service</th><th>Action</th><th>Status</th><th>Target</th><th>Items</th><th>Detail</th></tr>
   </thead>
   <tbody>
-    {% for change in run.result.changes %}
+    {% for change in changes %}
     <tr>
       <td>{{ change.service }}</td>
       <td>{{ change.action }}</td>
@@ -58,7 +110,7 @@
     {% endfor %}
   </tbody>
 </table>
-{% else %}
+{% elif not removals %}
 <p class="empty">Nothing to change.</p>
 {% endif %}
 {% endif %}

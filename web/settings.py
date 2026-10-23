@@ -20,12 +20,15 @@ class WebSettings:
     allowed_emails: (frozenset[str]) Access identities allowed in, checked on top of the
         Access policy
     database_path: (pathlib.Path) SQLite database file
+    allow_remover_apply: (bool) REMOVERS_ALLOW_APPLY, whether a reviewed removers plan can
+        be applied from the ui. An env var so nothing in the app can turn it on
     """
 
     team_domain: str
     audience: str
     allowed_emails: frozenset[str]
     database_path: pathlib.Path
+    allow_remover_apply: bool = False
 
     @property
     def issuer(self) -> str:
@@ -56,6 +59,10 @@ def load_web_settings(env: Mapping[str, str] = os.environ) -> WebSettings:
     if not allowed_emails:
         problems.append("ALLOWED_EMAILS must list at least one email")
 
+    allow_apply = env.get("REMOVERS_ALLOW_APPLY", "").strip().lower()
+    if allow_apply not in ("", "true", "false"):
+        problems.append("REMOVERS_ALLOW_APPLY must be true or false")
+
     if problems:
         raise ValueError("Web settings invalid: " + "; ".join(problems))
 
@@ -65,4 +72,5 @@ def load_web_settings(env: Mapping[str, str] = os.environ) -> WebSettings:
         audience=audience,
         allowed_emails=allowed_emails,
         database_path=pathlib.Path(data_dir) / "helperr.db",
+        allow_remover_apply=allow_apply == "true",
     )
