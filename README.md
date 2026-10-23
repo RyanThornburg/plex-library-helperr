@@ -106,6 +106,7 @@ docker image prune -f --filter "label=org.opencontainers.image.title=plex-librar
 - Each job has a **Dry run** button, which forces every `dry_run` setting on, and a **Run…** button, which uses `config.toml` as-is. Run… always goes to a confirmation page that says whether the run will make changes. The UI can't make a run live that `config.toml` has as dry run, with one exception, approved remover plans:
 - **Remover plans:** every removers run saves its plan, the seasons/episodes it would remove from each series with their file paths. On a dry run's page, select series and review: the confirmation page shows how many files will be deleted, then an apply run removes them, even with `remover_settings.dry_run = true` (that setting keeps removers from deleting on their own; approving is the decision to delete). The apply run plans each approved series again from fresh Sonarr data and removes only seasons/episodes whose files were all approved and are still eligible: anything watched, replaced, downloading or no longer outside the keep window since is skipped and reported. `max_deletes` still applies. A plan can be applied once, within 7 days. Applying is off unless the container has `REMOVERS_ALLOW_APPLY=true`.
 - **Auto-approve:** the Removers page lists the remover rules in `config.toml`, each with an auto-approve switch (off by default, turning it on goes through a confirmation page). A removers run that uses `config.toml`'s settings (Run…, or a schedule without "Force dry run") deletes an auto-approved rule's removals without review, even with `remover_settings.dry_run = true`; other rules' removals are planned for review. Forced dry runs never delete, `max_deletes` applies, and it needs `REMOVERS_ALLOW_APPLY=true` like applying a plan. The switch is stored in the app's database by the rule's tags, so changing a rule's tags turns it back off.
+- **Follow-up empty trash:** 15 minutes after a live movers or removers run moves or removes files, the app queues an empty trash run with `config.toml`'s settings, so trash doesn't wait for a schedule. One that's blocked (e.g. a scan still running) is tried again, up to 3 runs per batch of changes. The empty trash card shows when the next follow-up is due.
 - Jobs run one at a time in the order queued. A job that's already queued or running can't be queued again.
 - Every run is kept with who started it, what it changed (or would change), errors and its log. Runs interrupted by a restart are marked failed and never re-run automatically.
 - **Schedules** run a job on a cron expression (`minute hour day month weekday`, or `@hourly`/`@daily`/`@weekly`/`@monthly`) in the schedule's own time zone, which a new schedule takes from your browser. They're created and edited on the Schedules page and stored in the app's database, not `config.toml`. Like the buttons, a schedule either forces dry run (the default) or uses `config.toml`'s settings. A schedule whose job is still queued or running skips that time, and times missed while the app was down are skipped rather than caught up.
@@ -169,12 +170,15 @@ The database is `helperr.db` in `/config`, next to `config.toml`. Keep `/config`
 
 ### `[plex.empty_trash]` (optional)
 
-Only used by `--empty-trash`. A library is skipped while it is scanning, and when its trash holds more than `max_items` items, since a missing mount or share makes Plex trash everything in it. Items are counted as movies or episodes with a deleted file, which includes old versions left behind by upgrades.
+Used by the empty trash job (`--empty-trash`, or the web app). Plex trashes each version of a movie or episode whose file is gone. Most trash is old versions left behind by upgrades: the item still has a version to play, and emptying only drops the old file's entry. An item with no version left is **fully deleted**: emptying removes it from the library, with its watch history. Each run lists the fully deleted items (on the run page and in the log) and only counts upgrade leftovers.
+
+A library is skipped while it is scanning, when its trash holds more than `max_items` items, and when more than `max_deleted_items` items are fully deleted without the web app's removers having deleted them (matched by file name), since a missing mount or share makes Plex trash everything in it.
 
 | Key         | Description                                                                                    |
 |-----        |-------------                                                                                   |
 | `libraries` | Plex libraries to empty the trash of. Omit for every movie and TV library.                     |
-| `max_items` | Skip a library if its trash holds more items than this (default: `100`)                        |
+| `max_items` | Skip a library if its trash holds more items than this, upgrade leftovers included (default: `100`) |
+| `max_deleted_items` | Skip a library if more items than this are fully deleted and weren't removed by the web app's removers (default: `50`) |
 | `dry_run`   | `true` to log trash counts without emptying (default: `[settings]` `dry_run`)                  |
 
 ### `[tautulli]` (optional)

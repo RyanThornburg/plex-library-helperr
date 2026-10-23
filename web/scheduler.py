@@ -3,15 +3,15 @@
 import logging
 import threading
 import zoneinfo
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
 
 from results import JOBS
 from web import cron
-from web.db import Schedule
-from web.jobs import AlreadyActive, JobRunner, utc_now
+from web.db import JobRun, Schedule
+from web.jobs import ACTIVE, AlreadyActive, JobRunner, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +20,67 @@ MAX_NAME = 100
 MAX_CRON = 100
 
 ZONES = sorted(zoneinfo.available_timezones())
+
+# after a live movers/removers run moves or removes files, empty plex's trash once
+# autoscan (minimum-age) and plex have scanned the folders
+TRASH_FOLLOWUP_DELAY = timedelta(minutes=15)
+# a follow-up that's blocked (a scan still running) is tried again, this many in all
+TRASH_FOLLOWUP_ATTEMPTS = 3
+# runs older than this aren't followed up, trash left that long waits for a manual run
+TRASH_FOLLOWUP_LOOKBACK = timedelta(days=2)
+TRASH_ACTIONS = ("move", "remove")
+
+
+def left_trash(run: JobRun) -> bool:
+    """moved or removed files, which plex puts in its trash"""
+    changes = (run.result or {}).get("changes", [])
+    return any(c["action"] in TRASH_ACTIONS and c["status"] == "done" for c in changes)
+
+
+def emptied(run: JobRun) -> bool:
+    """an empty trash run with config.toml's settings that nothing stopped"""
+    changes = (run.result or {}).get("changes", [])
+    return (
+        run.job == "empty_trash"
+        and run.status == "succeeded"
+        and not run.dry_run
+        and all(c["status"] in ("done", "dry_run") for c in changes)
+    )
+
+
+def trash_followup_due(session: Session, now: datetime) -> datetime | None:
+    """when to queue a follow-up empty trash, None when none is needed. Worked out from
+    run history alone, so a restart doesn't lose one"""
+    trash_runs = list(
+        session.scalars(
+            select(JobRun)
+            .where(JobRun.job == "empty_trash")
+            .order_by(JobRun.id.desc())
+            .limit(50)
+        )
+    )
+    if any(r.status in ACTIVE for r in trash_runs):
+        return None
+    since = now - TRASH_FOLLOWUP_LOOKBACK
+    last_emptied = next((r.finished_at for r in trash_runs if emptied(r)), None)
+    if last_emptied and last_emptied > since:
+        since = last_emptied
+    work = session.scalars(
+        select(JobRun).where(
+            JobRun.job.in_(("movers", "removers")),
+            JobRun.dry_run.is_(False),
+            JobRun.finished_at > since,
+        )
+    )
+    last_work = max((r.finished_at for r in work if left_trash(r) and r.finished_at), default=None)
+    if last_work is None:
+        return None
+    attempts = [r for r in trash_runs if r.trigger == "followup" and r.created_at > last_work]
+    if len(attempts) >= TRASH_FOLLOWUP_ATTEMPTS:
+        return None
+    return max([last_work, *(r.finished_at or r.created_at for r in attempts)]) + (
+        TRASH_FOLLOWUP_DELAY
+    )
 
 
 def schedule_errors(name: str, job: str, expression: str, zone: str) -> list[str]:
@@ -87,7 +148,19 @@ class Scheduler:
             self._stop.wait(61 - now.second - now.microsecond / 1_000_000)
 
     def tick(self, now: datetime) -> list[int]:
-        """queue every schedule that's due, returns the queued run ids"""
+        """queue every schedule that's due and a follow-up empty trash when one is,
+        returns the queued run ids"""
+        queued = self._schedules(now)
+        with Session(self.engine) as session:
+            due = trash_followup_due(session, now)
+        if due is not None and due <= now:
+            try:
+                queued.append(self.runner.submit("empty_trash", False, "followup", None))
+            except AlreadyActive:
+                pass
+        return queued
+
+    def _schedules(self, now: datetime) -> list[int]:
         queued = []
         with Session(self.engine) as session:
             schedules = list(session.scalars(select(Schedule).where(Schedule.enabled)))

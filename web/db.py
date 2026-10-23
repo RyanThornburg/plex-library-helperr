@@ -66,7 +66,8 @@ class JobRun(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     job: Mapped[str] = mapped_column(String(32))
-    trigger: Mapped[str] = mapped_column(String(16))  # manual, schedule, api
+    # manual, schedule, api, followup (empty trash after moves/removals)
+    trigger: Mapped[str] = mapped_column(String(16))
     requested_by: Mapped[str | None] = mapped_column(String(320))
     # true when the run was asked to be dry, false means config.toml's dry_run settings applied
     dry_run: Mapped[bool] = mapped_column(server_default=false())

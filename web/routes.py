@@ -27,7 +27,7 @@ from web.jobs import (
     approvable,
     utc_now,
 )
-from web.scheduler import ZONES, next_run_at, schedule_errors
+from web.scheduler import ZONES, next_run_at, schedule_errors, trash_followup_due
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +74,8 @@ def run_source(run: JobRun) -> str:
         return run.requested_by
     if run.schedule:
         return f"schedule: {run.schedule.name}"
+    if run.trigger == "followup":
+        return "follow-up after moves/removals"
     return run.trigger
 
 
@@ -271,6 +273,8 @@ def index(request: Request) -> HTMLResponse:
         next_run = next_run_at(schedule, now)
         if next_run and (schedule.job not in next_runs or next_run < next_runs[schedule.job][0]):
             next_runs[schedule.job] = (next_run, schedule)
+    with Session(request.app.state.engine) as session:
+        followup = trash_followup_due(session, now)
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -283,6 +287,7 @@ def index(request: Request) -> HTMLResponse:
             "auto_rules": auto_rules,
             "active_jobs": {r.job for r in runs if r.status in ACTIVE},
             "next_runs": next_runs,
+            "followup": followup,
         },
     )
 

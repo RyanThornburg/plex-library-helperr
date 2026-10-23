@@ -45,6 +45,18 @@ class PlannedRemoval:
 
 
 @dataclass
+class TrashedItem:
+    """a fully deleted plex item (no version left) that emptying the trash removes from
+    the library. Upgrade leftovers, items with a version still there, are only counted"""
+
+    library: str
+    title: str
+    files: list[str]
+    # the removers run that deleted its files, when the web app knows
+    removed_by_run: int | None = None
+
+
+@dataclass
 class JobResult:
     """everything a job run changed, the folders/libraries left to scan, and errors that
     stopped part of the job early (details of skipped media stay in the log)"""
@@ -55,6 +67,7 @@ class JobResult:
     plex_libraries: set[str] = field(default_factory=set[str])
     errors: list[str] = field(default_factory=list[str])
     removals: list[PlannedRemoval] = field(default_factory=list[PlannedRemoval])
+    trash: list[TrashedItem] = field(default_factory=list[TrashedItem])
 
     @property
     def failed(self) -> bool:
@@ -69,6 +82,7 @@ class JobResult:
             "plex_libraries": sorted(self.plex_libraries),
             "errors": list(self.errors),
             "removals": [asdict(r) for r in self.removals],
+            "trash": [asdict(t) for t in self.trash],
         }
 
     def log_summary(self) -> None:

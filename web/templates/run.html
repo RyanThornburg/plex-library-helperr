@@ -82,6 +82,29 @@
 {% endif %}
 {% endif %}
 
+{% if run.result.trash %}
+<h2>Fully deleted</h2>
+<p class="muted">No version of these is left, so emptying the trash removes them from Plex. Old versions left by upgrades aren't listed, they're counted with each library below.</p>
+<table>
+  <thead><tr><th>Library</th><th>Item</th><th>Files</th><th>Deleted by</th></tr></thead>
+  <tbody>
+    {% for item in run.result.trash %}
+    <tr>
+      <td>{{ item.library }}</td>
+      <td>{{ item.title }}</td>
+      <td>
+        <details>
+          <summary>{{ item.files | length }}</summary>
+          <ul class="items files">{% for file in item.files %}<li>{{ file }}</li>{% endfor %}</ul>
+        </details>
+      </td>
+      <td>{% if item.removed_by_run %}<a href="/runs/{{ item.removed_by_run }}">removers #{{ item.removed_by_run }}</a>{% else %}<span class="tag tag-warn">not by removers</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
 {% if changes or not removals %}
 <h2>{{ "Other changes" if removals else "Changes" }}</h2>
 {% endif %}

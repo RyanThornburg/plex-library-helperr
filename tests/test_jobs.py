@@ -413,3 +413,30 @@ class TestAutoApproveRunner:
         runner.wait_idle()
         assert self.calls == [(job, None)]
         runner.stop()
+
+
+class TestRemovedFiles:
+    def test_empty_trash_gets_the_removers_deleted_file_names(self, engine):
+        seen = []
+
+        def run_job(job, settings, removed_files=None):
+            seen.append(removed_files)
+            return JobResult(job)
+
+        add_plan(engine, removal(1, "done", files=(1, 2)), removal(2, "dry_run", files=(3,)), status="succeeded")
+        with Session(engine) as session:
+            session.get_one(JobRun, 1).finished_at = utc_now()
+            session.commit()
+        runner = make_runner(engine, run_job)
+        runner.submit("empty_trash", False, "manual", None)
+        runner.wait_idle()
+        # done removals only, by file name
+        assert seen == [{"S01E01.mkv": 1, "S01E02.mkv": 1}]
+        runner.stop()
+
+    def test_nothing_passed_without_removals(self, engine):
+        runner = make_runner(engine, lambda job, settings: JobResult(job))
+        run_id = runner.submit("empty_trash", False, "manual", None)
+        runner.wait_idle()
+        assert get(engine, run_id).status == "succeeded"
+        runner.stop()

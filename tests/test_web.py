@@ -690,3 +690,30 @@ class TestRemoversPage:
     def test_toggle_needs_same_origin(self, settings):
         with TestClient(removers_app(settings)) as c:
             assert c.post("/removers/auto-approve?rule=rm-housewives&enabled=true", headers=auth()).status_code == 403
+
+
+class TestTrashPage:
+    def test_fully_deleted_items_are_listed(self, settings):
+        from results import TrashedItem
+
+        def trash_job(job, s):
+            return JobResult(
+                job,
+                changes=[Change("PLEX", "empty_trash", "TV Shows", ["Survivor - S01E01 - Pilot"], "dry_run", "121 old versions after upgrades, 2 fully deleted (1 by removers)")],
+                trash=[
+                    TrashedItem("TV Shows", "Survivor - S01E01 - Pilot", ["/mnt/nfs/tv/S01E01.mkv"], 4),
+                    TrashedItem("TV Shows", "<b>Lost</b>", ["/mnt/nfs/tv/lost.mkv"]),
+                ],
+            )
+
+        app = create_app(settings, keys=FakeKeys(), run_job=trash_job, load_config=live_config, run_scheduler=False)
+        with TestClient(app) as c:
+            c.post("/jobs/empty_trash?dry_run=true", headers={**auth(), **ORIGIN})
+            wait(c)
+            page = c.get("/runs/1", headers=auth()).text
+        assert "Fully deleted" in page
+        assert 'href="/runs/4">removers #4' in page
+        assert "not by removers" in page
+        assert "/mnt/nfs/tv/lost.mkv" in page
+        assert "&lt;b&gt;Lost&lt;/b&gt;" in page
+        assert "121 old versions after upgrades" in page

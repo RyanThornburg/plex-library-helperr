@@ -10,7 +10,14 @@ from config.models import ConfigSettings
 from results import JobResult
 from web.db import JobRun, Schedule, make_engine, migrate
 from web.jobs import JobRunner
-from web.scheduler import Scheduler, next_run_at, schedule_errors
+from web.scheduler import (
+    TRASH_FOLLOWUP_ATTEMPTS,
+    TRASH_FOLLOWUP_DELAY,
+    Scheduler,
+    next_run_at,
+    schedule_errors,
+    trash_followup_due,
+)
 
 START = datetime(2026, 10, 22, 13, 0)
 
@@ -148,3 +155,103 @@ class TestValidation:
         assert next_run_at(schedule, START) == START + timedelta(minutes=47)
         schedule.enabled = False
         assert next_run_at(schedule, START) is None
+
+
+# ---------------------------------------------------------------------------
+# follow-up empty trash
+# ---------------------------------------------------------------------------
+
+
+def add_run(engine, job, finished, changes=(), dry_run=False, trigger="schedule", status="succeeded"):
+    with Session(engine) as session:
+        run = JobRun(
+            job=job,
+            trigger=trigger,
+            status=status,
+            dry_run=dry_run,
+            created_at=finished - timedelta(minutes=1),
+            started_at=finished - timedelta(minutes=1),
+            finished_at=None if status in ("queued", "running") else finished,
+            result={"job": job, "changes": [dict(c) for c in changes]},
+        )
+        session.add(run)
+        session.commit()
+        return run.id
+
+
+MOVED = [{"action": "move", "status": "done"}]
+REMOVED = [{"action": "remove", "status": "done"}]
+EMPTIED = [{"action": "empty_trash", "status": "done"}]
+BLOCKED = [{"action": "empty_trash", "status": "blocked"}]
+
+
+def due(engine, now):
+    with Session(engine) as session:
+        return trash_followup_due(session, now)
+
+
+class TestTrashFollowup:
+    def test_due_a_while_after_files_moved_or_removed(self, engine):
+        add_run(engine, "movers", START, MOVED)
+        assert due(engine, START) == START + TRASH_FOLLOWUP_DELAY
+        add_run(engine, "removers", START + timedelta(minutes=5), REMOVED)
+        assert due(engine, START) == START + timedelta(minutes=5) + TRASH_FOLLOWUP_DELAY
+
+    @pytest.mark.parametrize(
+        "changes, dry_run",
+        [
+            ([{"action": "profile", "status": "done"}], False),
+            ([{"action": "move", "status": "dry_run"}], False),
+            (MOVED, True),
+            ([], False),
+        ],
+        ids=["profile-only", "config-dry", "forced-dry", "nothing"],
+    )
+    def test_not_needed(self, engine, changes, dry_run):
+        add_run(engine, "movers", START, changes, dry_run=dry_run)
+        assert due(engine, START) is None
+
+    def test_not_needed_once_emptied(self, engine):
+        add_run(engine, "removers", START, REMOVED)
+        add_run(engine, "empty_trash", START + timedelta(minutes=20), EMPTIED, trigger="manual")
+        assert due(engine, START + timedelta(hours=1)) is None
+
+    def test_a_forced_dry_empty_doesnt_count(self, engine):
+        add_run(engine, "removers", START, REMOVED)
+        add_run(engine, "empty_trash", START + timedelta(minutes=20), [{"action": "empty_trash", "status": "dry_run"}], dry_run=True)
+        assert due(engine, START) is not None
+
+    def test_config_dry_empty_counts(self, engine):
+        # config.toml has empty trash dry, nothing more to do until that changes
+        add_run(engine, "removers", START, REMOVED)
+        add_run(engine, "empty_trash", START + timedelta(minutes=20), [{"action": "empty_trash", "status": "dry_run"}])
+        assert due(engine, START + timedelta(hours=1)) is None
+
+    def test_blocked_follow_up_is_retried_then_given_up(self, engine):
+        add_run(engine, "removers", START, REMOVED)
+        last = START
+        for attempt in range(TRASH_FOLLOWUP_ATTEMPTS):
+            assert due(engine, last) == last + TRASH_FOLLOWUP_DELAY
+            last = last + TRASH_FOLLOWUP_DELAY + timedelta(minutes=1)
+            add_run(engine, "empty_trash", last, BLOCKED, trigger="followup")
+        assert due(engine, last) is None
+        # new work starts over
+        add_run(engine, "movers", last + timedelta(hours=1), MOVED)
+        assert due(engine, last) == last + timedelta(hours=1) + TRASH_FOLLOWUP_DELAY
+
+    def test_waits_for_an_active_empty_trash(self, engine):
+        add_run(engine, "removers", START, REMOVED)
+        add_run(engine, "empty_trash", START + timedelta(minutes=2), status="running", trigger="manual")
+        assert due(engine, START + timedelta(hours=1)) is None
+
+    def test_old_work_isnt_followed_up(self, engine):
+        add_run(engine, "movers", START - timedelta(days=3), MOVED)
+        assert due(engine, START) is None
+
+    def test_tick_queues_it(self, engine, runner, scheduler):
+        add_run(engine, "movers", START, MOVED)
+        assert scheduler.tick(START + timedelta(minutes=14)) == []
+        [run_id] = scheduler.tick(START + TRASH_FOLLOWUP_DELAY)
+        runner.wait_idle()
+        run = next(r for r in runs(engine) if r.id == run_id)
+        assert (run.job, run.trigger, run.dry_run) == ("empty_trash", "followup", False)

@@ -802,7 +802,7 @@ class TestMainEmptyTrash:
         run_arr, run_removers, empty_trash, settings = self._main(["--empty-trash"])
         run_arr.assert_not_called()
         run_removers.assert_not_called()
-        empty_trash.assert_called_once_with(settings.plex, settings.empty_trash, ANY)
+        empty_trash.assert_called_once_with(settings.plex, settings.empty_trash, ANY, None)
 
     def test_default_does_not_empty_trash(self):
         _, _, empty_trash, _ = self._main([])

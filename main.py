@@ -6,6 +6,7 @@ import argparse
 import logging.config
 import os
 import sys
+from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from pathlib import PurePosixPath
 from typing import Callable, Iterable
@@ -383,10 +384,12 @@ def run_job(
     settings: ConfigSettings,
     approved: Approved | None = None,
     auto_approve: frozenset[str] = frozenset(),
+    removed_files: Mapping[str, int] | None = None,
 ) -> JobResult:
     """run one job (movers, removers or empty_trash) and return what it changed.
     `approved` applies a reviewed removers plan and `auto_approve` holds the keys of
-    removers that delete without review, see remover.run_removers"""
+    removers that delete without review, see remover.run_removers. `removed_files` maps
+    file names the removers deleted to their run, see plex.empty_plex_trash"""
     if job not in JOBS:
         raise ValueError(f"unknown job '{job}', expected one of {', '.join(JOBS)}")
     if approved is not None and job != "removers":
@@ -396,7 +399,7 @@ def run_job(
     if job == "empty_trash":
         logger.info("-" * 90)
         logger.info("STARTING PLEX EMPTY TRASH")
-        empty_plex_trash(settings.plex, settings.empty_trash, result)
+        empty_plex_trash(settings.plex, settings.empty_trash, result, removed_files)
         return result
 
     if job == "removers":

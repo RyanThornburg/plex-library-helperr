@@ -20,6 +20,9 @@
       {% elif mode %}<span class="tag">dry run</span>
       {% else %}<span class="tag tag-live">live</span>{% endif %}
     </p>
+    {% if job == "empty_trash" and followup %}
+    <p class="muted">Follow-up: {{ followup | localtime }}, after moves/removals</p>
+    {% endif %}
     {% if job in next_runs %}
     {% set next_run, schedule = next_runs[job] %}
     <p class="muted">Next: {{ next_run | localtime }}, <a href="/schedules/{{ schedule.id }}">{{ schedule.name }}</a>{% if schedule.dry_run %} (dry run){% endif %}</p>

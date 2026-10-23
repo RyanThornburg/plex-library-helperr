@@ -210,11 +210,14 @@ class EmptyTrashSettings:
     """
     libraries: (list[str]) Plex libraries to empty the trash of, empty means every movie/show library
     max_items: (int) Skip a library if its trash holds more items than this (a missing mount trashes everything)
+    max_deleted_items: (int) Skip a library if more items than this are fully deleted (no
+        version left) and weren't removed by the web app's removers
     dry_run: (bool) Defaults to the [settings] dry_run
     """
 
     libraries: list[str] = field(default_factory=list[str])
     max_items: int = 100
+    max_deleted_items: int = 50
     dry_run: bool = False
 
     def __post_init__(self):
@@ -225,6 +228,15 @@ class EmptyTrashSettings:
         ):
             raise ValueError(
                 f"plex.empty_trash.max_items must be an integer >= 1, got '{self.max_items}'"
+            )
+        if (
+            not isinstance(self.max_deleted_items, int)
+            or isinstance(self.max_deleted_items, bool)
+            or self.max_deleted_items < 0
+        ):
+            raise ValueError(
+                "plex.empty_trash.max_deleted_items must be an integer >= 0, "
+                f"got '{self.max_deleted_items}'"
             )
 
 

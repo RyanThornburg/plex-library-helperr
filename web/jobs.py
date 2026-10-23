@@ -5,6 +5,7 @@ import queue
 import threading
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
+from pathlib import PurePosixPath
 from typing import Any
 
 from sqlalchemy import Engine, select, update
@@ -24,6 +25,8 @@ MAX_LOG_CHARS = 1_000_000
 APPROVABLE = ("dry_run", "blocked")
 # an older plan has to be made again, it's been too long since it was reviewed
 PLAN_MAX_AGE = timedelta(days=7)
+# removers deletions empty trash recognizes, plex's trash is emptied well before this
+REMOVED_FILES_MAX_AGE = timedelta(days=90)
 
 # run_job(job, settings), run_job("removers", settings, approved) to apply a plan, or
 # run_job("removers", settings, auto_approve=keys) for removers that skip review
@@ -171,6 +174,24 @@ class JobRunner:
                 )
             )
 
+    def removed_files(self) -> dict[str, int]:
+        """names of the files removers runs deleted lately, mapped to the run. Names, not
+        paths: sonarr and plex see the same file under different paths"""
+        since = utc_now() - REMOVED_FILES_MAX_AGE
+        files: dict[str, int] = {}
+        with Session(self.engine) as session:
+            runs = session.execute(
+                select(JobRun.id, JobRun.result)
+                .where(JobRun.job == "removers", JobRun.finished_at >= since)
+                .order_by(JobRun.id)
+            )
+            for run_id, result in runs:
+                for removal in (result or {}).get("removals", []):
+                    if removal["status"] == "done":
+                        for file in removal["files"]:
+                            files[PurePosixPath(file["path"]).name] = run_id
+        return files
+
     def apply_problem(self, session: Session, plan: JobRun) -> str | None:
         """why a removers run's plan can't be applied, None when it can"""
         if not self.allow_apply:
@@ -276,23 +297,23 @@ class JobRunner:
             settings = self.load_config()
             if dry_run:
                 config.force_dry_run(settings)
-            # a forced dry run never deletes, so auto-approve only counts without one
-            plain_live_removers = job == "removers" and not dry_run and approved is None
-            auto = self.auto_approved_rules() if plain_live_removers else None
-            if approved is None and auto:
-                logger.info("WEB\t Auto-approve on for removers %s", "; ".join(sorted(auto)))
-                result = self.run_job(job, settings, auto_approve=auto)
-            elif approved is None:
-                result = self.run_job(job, settings)
-            else:
+            # only what a run needs is passed, plain runs are run_job(job, settings)
+            kwargs: dict[str, Any] = {}
+            if approved is not None:
                 # only submit_apply queues these, checked again in case anything else does
                 if not self.allow_apply:
                     raise ApplyRefused("REMOVERS_ALLOW_APPLY is off, not applying the plan")
-                result = self.run_job(
-                    job,
-                    settings,
-                    {a["series_id"]: set(a["file_ids"]) for a in approved},
-                )
+                kwargs["approved"] = {a["series_id"]: set(a["file_ids"]) for a in approved}
+            elif job == "removers" and not dry_run:
+                # a forced dry run never deletes, so auto-approve only counts without one
+                if auto := self.auto_approved_rules():
+                    logger.info(
+                        "WEB\t Auto-approve on for removers %s", "; ".join(sorted(auto))
+                    )
+                    kwargs["auto_approve"] = auto
+            if job == "empty_trash" and (removed := self.removed_files()):
+                kwargs["removed_files"] = removed
+            result = self.run_job(job, settings, **kwargs)
             result.log_summary()
         except Exception:
             # any failure, including a broken config.toml, ends up in the run's log

@@ -1,6 +1,10 @@
 """plex.py"""
 
 import logging
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from pathlib import PurePosixPath
+from xml.etree.ElementTree import Element
 
 import requests
 from plexapi import exceptions as plexapi_exceptions
@@ -9,7 +13,7 @@ from plexapi.library import LibrarySection
 from plexapi.server import PlexServer
 
 from config.models import EmptyTrashSettings, PlexConfig
-from results import Change, JobResult, Status
+from results import Change, JobResult, Status, TrashedItem
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +48,14 @@ def refresh_plex_libraries(
 
 
 def empty_plex_trash(
-    plex_config: PlexConfig | None, settings: EmptyTrashSettings, result: JobResult
+    plex_config: PlexConfig | None,
+    settings: EmptyTrashSettings,
+    result: JobResult,
+    removed_files: Mapping[str, int] | None = None,
 ) -> None:
-    """empty plex library trash, skipping libraries that look like a missing mount"""
+    """empty plex library trash, skipping libraries that look like a missing mount.
+    removed_files maps the names of files the web app's removers deleted to their run,
+    those don't count toward max_deleted_items"""
 
     if not plex_config:
         logger.warning("Plex server not configured")
@@ -67,7 +76,7 @@ def empty_plex_trash(
 
     for section in sections:
         try:
-            change = empty_section_trash(plex, section, settings)
+            change = empty_section_trash(plex, section, settings, removed_files or {}, result)
         except (
             plexapi_exceptions.PlexApiException,
             requests.exceptions.RequestException,
@@ -107,14 +116,70 @@ def count_trash(plex: PlexServer, section: LibrarySection) -> int | None:
     return plexapi_utils.cast(int, data.attrib.get("totalSize"))
 
 
-def empty_section_trash(
-    plex: PlexServer, section: LibrarySection, settings: EmptyTrashSettings
-) -> Change | None:
-    """empty one library's trash if it is not scanning and is under max_items,
-    None when there is nothing to do"""
+@dataclass
+class SectionTrash:
+    # items with a version still there, left by upgrades (and moves Plex matched up)
+    upgraded: int = 0
+    deleted: list[TrashedItem] = field(default_factory=list[TrashedItem])
 
-    def change(status: Status, detail: str) -> Change:
-        return Change("PLEX", "empty_trash", section.title, [], status, detail)
+    def unexpected(self) -> int:
+        """fully deleted items no removers run explains, what a missing mount looks like"""
+        return sum(1 for t in self.deleted if t.removed_by_run is None)
+
+    def summary(self) -> str:
+        by_removers = len(self.deleted) - self.unexpected()
+        deleted = f"{len(self.deleted)} fully deleted"
+        if by_removers:
+            deleted += f" ({by_removers} by removers)"
+        return f"{self.upgraded} old versions after upgrades, {deleted}"
+
+
+def item_title(item: Element) -> str:
+    if item.get("type") == "episode":
+        return (
+            f"{item.get('grandparentTitle')} - "
+            f"S{int(item.get('parentIndex') or 0):02d}E{int(item.get('index') or 0):02d}"
+            f" - {item.get('title')}"
+        )
+    year = item.get("year")
+    return f"{item.get('title')} ({year})" if year else str(item.get("title"))
+
+
+def list_trash(
+    plex: PlexServer, section: LibrarySection, removed_files: Mapping[str, int]
+) -> SectionTrash:
+    """sort a library's trash by whether each item keeps a version. Plex marks each
+    trashed version (Media) with deletedAt"""
+    args = {"type": plexapi_utils.searchType(TRASH_LIBTYPES[section.type]), "trash": 1}
+    data = plex.query(f"/library/sections/{section.key}/all{plexapi_utils.joinArgs(args)}")
+    trash = SectionTrash()
+    for item in data:
+        media = item.findall("Media")
+        if any(not m.get("deletedAt") for m in media):
+            trash.upgraded += 1
+            continue
+        files = [str(p.get("file")) for m in media for p in m.findall("Part") if p.get("file")]
+        # sonarr and plex see different paths for the same file, its name is the same
+        runs = [removed_files[n] for f in files if (n := PurePosixPath(f).name) in removed_files]
+        trash.deleted.append(
+            TrashedItem(section.title, item_title(item), files, max(runs) if runs else None)
+        )
+    return trash
+
+
+def empty_section_trash(
+    plex: PlexServer,
+    section: LibrarySection,
+    settings: EmptyTrashSettings,
+    removed_files: Mapping[str, int],
+    result: JobResult,
+) -> Change | None:
+    """empty one library's trash if it is not scanning, is under max_items and its fully
+    deleted items are explained or under max_deleted_items. None when there's nothing to do.
+    Fully deleted items are added to result.trash"""
+
+    def change(status: Status, detail: str, items: list[str] | None = None) -> Change:
+        return Change("PLEX", "empty_trash", section.title, items or [], status, detail)
 
     if section.type not in TRASH_LIBTYPES:
         logger.warning(
@@ -147,12 +212,37 @@ def empty_section_trash(
             "blocked", f"{count} items in trash is over max_items ({settings.max_items})"
         )
 
-    logger.info("PLEX %s: emptying trash (%s items)", section.title, count)
+    trash = list_trash(plex, section, removed_files)
+    result.trash.extend(trash.deleted)
+    titles = [t.title for t in trash.deleted]
+    for t in trash.deleted:
+        logger.info(
+            "PLEX %s: fully deleted: %s%s",
+            section.title,
+            t.title,
+            f" (removers run {t.removed_by_run})" if t.removed_by_run else "",
+        )
+    if trash.unexpected() > settings.max_deleted_items:
+        logger.warning(
+            "PLEX %s: %s fully deleted items not removed by removers is over "
+            "max_deleted_items (%s), skipping. Check the library's files are reachable",
+            section.title,
+            trash.unexpected(),
+            settings.max_deleted_items,
+        )
+        return change(
+            "blocked",
+            f"{trash.summary()}: {trash.unexpected()} not by removers is over "
+            f"max_deleted_items ({settings.max_deleted_items})",
+            titles,
+        )
+
+    logger.info("PLEX %s: emptying trash, %s", section.title, trash.summary())
     if settings.dry_run:
         logger.info("PLEX DRY RUN - not actually emptying trash")
-        return change("dry_run", f"{count} items")
+        return change("dry_run", trash.summary(), titles)
     section.emptyTrash()
-    return change("done", f"{count} items")
+    return change("done", trash.summary(), titles)
 
 
 def setup_plex_server(plex_config: PlexConfig) -> PlexServer | None:

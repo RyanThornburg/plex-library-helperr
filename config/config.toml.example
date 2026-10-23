@@ -13,12 +13,13 @@ filter_time = "1d"
 baseurl = ''
 token = ''
 
-# empty trash (only runs with: main.py --empty-trash)
-#   Schedule it after removers/scans have finished. Old versions left by
-#   upgrades are in the trash too.
+# empty trash (main.py --empty-trash, or the web app, which also runs it after
+#   moves/removals). Old versions left by upgrades are in the trash too; items
+#   with no version left are "fully deleted" and leave the library when emptied.
 [plex.empty_trash]
 libraries = ['TV Shows']  # omit or [] for every movie/show library
 max_items = 100  # skip a library if its trash holds more items than this (protects against a missing mount)
+max_deleted_items = 50  # skip a library if more items than this are fully deleted, not counting the removers' deletions
 # dry_run = true  # defaults to [settings] dry_run
 
 #############################################################
