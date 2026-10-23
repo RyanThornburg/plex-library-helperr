@@ -20,8 +20,9 @@
   <dt>Triggers</dt><dd>Radarr: <strong>On Movie Added</strong>. Sonarr: <strong>On Series Add</strong>. Others are accepted and ignored.</dd>
   <dt>URL</dt><dd><code>http://plex-library-helperr:{{ port }}/webhooks/arr</code> (this container's name on the shared Docker network)</dd>
   <dt>Method</dt><dd>POST</dd>
-  <dt>Username</dt><dd>anything, e.g. <code>helperr</code></dd>
-  <dt>Password</dt><dd>the API key above</dd>
+  <dt>Headers</dt><dd><code>X-Api-Key</code> = the API key above</dd>
+  <dt>Username / Password</dt><dd>leave empty</dd>
 </dl>
+<p class="hint">Versions without a Headers field can send the key as the Password instead, with any Username.</p>
 <p class="hint">The Test button in Radarr/Sonarr should succeed without starting a run.</p>
 {% endblock %}

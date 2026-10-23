@@ -54,8 +54,9 @@ def regenerate_api_key(engine: Engine, requested_by: str | None) -> str:
 
 
 def presented_key(request: Request) -> str | None:
-    """the key from X-Api-Key, or the password of basic auth (radarr/sonarr's webhook
-    username/password fields). Never from the url, which ends up in logs"""
+    """the key from the X-Api-Key header (radarr/sonarr's webhook headers), or the
+    password of basic auth for versions without headers. Never from the url, which ends
+    up in logs"""
     if key := request.headers.get("x-api-key"):
         return key
     scheme, _, value = request.headers.get("authorization", "").partition(" ")
