@@ -1,0 +1,31 @@
+{% extends "settings/_rule_form.html" %}
+{% block fields %}
+<label for="type">Removes</label>
+<div>
+  <select id="type" name="type">
+    <option value="seasons"{% if values.get("type") != "episodes" %} selected{% endif %}>Whole seasons</option>
+    <option value="episodes"{% if values.get("type") == "episodes" %} selected{% endif %}>Episode files</option>
+  </select>
+  <p class="hint">Seasons: a season goes only when every file in it is old enough. Episodes: each file on its own, for daily and talk shows.</p>
+</div>
+<label for="keep">Keep the latest</label>
+<div>
+  <input id="keep" name="keep" type="number" min="1" value="{{ values.get('keep', '') }}" required>
+  <p class="hint">Seasons or episodes with files. Specials never count.</p>
+</div>
+{{ f.chips("tags", "Series tagged", values.get("tags"), library.tags if library else [], "Any of these. A tag can only belong to one remover.") }}
+{{ f.chips("exclude_tags", "Not tagged", values.get("exclude_tags"), library.tags if library else []) }}
+<label for="min_age">Older than</label>
+<div>
+  <input id="min_age" name="min_age" value="{{ values.get('min_age', '') }}" placeholder="90d" spellcheck="false" required>
+  <p class="hint">Every file in a season (or the episode's file) must be older than this. Series added more recently are skipped.</p>
+</div>
+<label for="skip_if_watched_within">Unless watched within</label>
+<div>
+  <input id="skip_if_watched_within" name="skip_if_watched_within" value="{{ values.get('skip_if_watched_within') or '' }}" placeholder="off" spellcheck="false">
+  <p class="hint">Keeps everything from the earliest recently watched removal onward. Needs Tautulli or Plex.</p>
+</div>
+<span></span>
+<label class="check"><input type="checkbox" name="include_specials"{% if values.get("include_specials") %} checked{% endif %}> Remove specials too</label>
+{{ f.choice("plex_library", "Plex library", values.get("plex_library"), plex_libraries, blank="None", hint="Refreshed after removing when Autoscan isn't set up.") }}
+{% endblock %}

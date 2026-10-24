@@ -17,13 +17,13 @@ from web.jobs import AlreadyActive, ApplyRefused, JobRunner, utc_now
 logger = logging.getLogger("tests.jobs")
 
 
-def arr(dry_run: bool = False, remover_dry_run: bool = False) -> ArrConfig:
+def arr(dry_run: bool = False) -> ArrConfig:
     return ArrConfig(
         baseurl="http://arr",
         apikey="key",
         tag=None,
         dry_run=dry_run,
-        remover_settings=RemoverSettings(dry_run=remover_dry_run),
+        remover_settings=RemoverSettings(max_deletes=10),
     )
 
 
@@ -60,8 +60,8 @@ class TestForceDryRun:
         assert not any(dry_run_fields(settings))
         config.force_dry_run(settings)
         fields = dry_run_fields(settings)
-        # radarr, sonarr, both remover_settings and empty_trash
-        assert len(fields) == 5
+        # radarr, sonarr and empty_trash
+        assert len(fields) == 3
         assert all(fields)
 
 
@@ -77,9 +77,9 @@ class TestConfigDryRun:
         settings = ConfigSettings(plex=None, radarr=None, sonarr=None)
         assert config.config_dry_run("movers", settings) is True
 
-    def test_removers_use_remover_settings(self):
-        settings = ConfigSettings(plex=None, radarr=None, sonarr=arr(False, True))
-        assert config.config_dry_run("removers", settings) is True
+    def test_removers_only_plan(self):
+        # they delete approvals, the web app reports auto-approved rules
+        assert config.config_dry_run("removers", live_settings()) is True
 
     def test_empty_trash(self):
         assert config.config_dry_run("empty_trash", live_settings()) is False
@@ -143,8 +143,8 @@ class TestJobRunner:
         runner.submit("movers", True, "manual", None)
         runner.submit("removers", False, "manual", None)
         runner.wait_idle()
-        assert all(seen[:5])
-        assert not any(seen[5:])
+        assert all(seen[:3])
+        assert not any(seen[3:])
         runner.stop()
 
     def test_failed_result_is_failed(self, engine):
@@ -295,7 +295,7 @@ class TestApply:
         [(job, approved, dry_runs)] = self.calls
         assert job == "removers"
         assert approved == {1: {1, 2}, 3: {1}}
-        # config.toml's settings, not forced dry
+        # the config's settings, not forced dry
         assert not any(dry_runs)
         runner.stop()
 
@@ -309,7 +309,7 @@ class TestApply:
     @pytest.mark.parametrize(
         "plan, series, message",
         [
-            ({"age": timedelta(days=8)}, [1], "more than 7 days old"),
+            ({"age": timedelta(days=8)}, [1], "older than 7d"),
             ({"job": "movers"}, [1], "no planned removals"),
             ({"status": "running"}, [1], "no planned removals"),
             ({}, [], "Select at least one"),

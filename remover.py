@@ -362,12 +362,12 @@ def run_removers(
     approved: Approved | None = None,
     auto_approve: frozenset[str] = frozenset(),
 ) -> None:
-    """plan every removal first, then unmonitor and delete. With remover_settings.dry_run
-    on, only rules whose key is in `auto_approve` delete, the rest are planned for review.
+    """plan every removal first, then unmonitor and delete what's approved. Only rules
+    whose key is in `auto_approve` delete, the rest are planned for review.
 
     With `approved` (applying a reviewed plan) only those series are planned again from
     fresh data, and only units whose files were all approved and are still eligible are
-    removed. remover_settings.dry_run doesn't apply, approving was the decision to delete.
+    removed.
 
     max_deletes caps the files a run deletes, planned-only removals don't count"""
     if not arr_config.apikey or not arr_config.baseurl:
@@ -477,8 +477,8 @@ def run_removers(
         )
         result.removals.append(plan.planned(status, detail))
 
-    # approved and auto-approved removals delete, with dry_run on the rest wait for review
-    auto = approved is None and settings.dry_run
+    # approved and auto-approved removals delete, the rest wait for review
+    auto = approved is None
     live = [p for p in plans if not auto or p.rule.key in auto_approve]
     review = [p for p in plans if p not in live]
     if review:

@@ -25,7 +25,7 @@ WORKDIR /app
 # app files stay root-owned so the app can't modify its own code
 COPY --from=build /app/.venv /app/.venv
 COPY *.py ./
-COPY config/__init__.py config/models.py config/config.toml.example ./config/
+COPY config/__init__.py config/models.py config/document.py ./config/
 COPY web ./web
 # unraid's nobody:users, so files written to /config match other appdata.
 # a new named volume copies this ownership; a bind mount needs chown on the host

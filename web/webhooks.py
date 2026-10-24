@@ -6,14 +6,15 @@ import hmac
 import json
 import logging
 import secrets
+from datetime import timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import Engine
+from sqlalchemy import Engine, delete
 from sqlalchemy.orm import Session
 
-from web.db import AppSetting
+from web.db import AppSetting, TrashEvent
 from web.jobs import JobRunner, utc_now
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,8 @@ API_KEY_SETTING = "api_key"
 MAX_BODY_BYTES = 1_000_000
 # a request was added, so movers can move it before anything downloads
 ADDED_EVENTS = {"MovieAdded": "movie", "SeriesAdd": "series"}
+# an imported file, an upgrade when it replaced one: plex puts the old one in its trash
+IMPORT_EVENT = "Download"
 
 
 def api_key(engine: Engine) -> str:
@@ -105,22 +108,50 @@ def describe(payload: dict[str, Any], media_key: str) -> str:
     title = media.get("title") if isinstance(media, dict) else None
     year = media.get("year") if isinstance(media, dict) else None
     name = f"{title} ({year})" if title and year else str(title or "?")
+    episodes = payload.get("episodes")
+    if isinstance(episodes, list):
+        codes = [
+            f"S{e['seasonNumber']:02}E{e['episodeNumber']:02}"
+            for e in episodes
+            if isinstance(e, dict)
+            and isinstance(e.get("seasonNumber"), int)
+            and isinstance(e.get("episodeNumber"), int)
+        ]
+        if codes:
+            name += " " + ",".join(codes)
     return f"{app}: {name}"[:320]
+
+
+def record_trash_event(engine: Engine, event: str, source: str, keep: timedelta) -> None:
+    """for the follow-up empty trash, dropping events older than keep (the look back)"""
+    now = utc_now()
+    with Session(engine) as session:
+        session.execute(delete(TrashEvent).where(TrashEvent.received_at < now - keep))
+        session.add(TrashEvent(received_at=now, event=event, source=source))
+        session.commit()
 
 
 @router.post("/webhooks/arr")
 async def arr_webhook(request: Request) -> JSONResponse:
     """radarr/sonarr connect -> webhook. An added movie/series queues movers, so it moves
-    to its root folder before anything downloads. Other events are accepted and ignored,
-    so turning more on in radarr/sonarr doesn't make them report errors"""
+    to its root folder before anything downloads. An upgrade is recorded, and the
+    scheduler empties trash once plex has scanned it. Other events are accepted and
+    ignored, so turning more on in radarr/sonarr doesn't make them report errors"""
     check_key(request)
     payload = await json_body(request)
     event = str(payload.get("eventType", ""))
+    runner: JobRunner = request.app.state.runner
+    if event == IMPORT_EVENT and payload.get("isUpgrade") is True:
+        source = describe(payload, "movie" if "movie" in payload else "series")
+        logger.info("WEB\t Webhook upgrade from %s, empty trash follows", source)
+        record_trash_event(
+            request.app.state.engine, event, source, runner.defaults().followup_lookback
+        )
+        return JSONResponse({"event": event, "queued": None})
     if event not in ADDED_EVENTS:
         logger.info("WEB\t Webhook %s event, nothing to do", event or "unknown")
         return JSONResponse({"event": event, "queued": None})
     source = describe(payload, ADDED_EVENTS[event])
     logger.info("WEB\t Webhook %s from %s", event, source)
-    runner: JobRunner = request.app.state.runner
     run_id = runner.submit_soon("movers", "webhook", source)
     return JSONResponse({"event": event, "queued": run_id})

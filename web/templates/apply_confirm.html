@@ -9,9 +9,6 @@
 <p class="banner banner-bad">{{ total }} files is more than max_deletes ({{ max_deletes }}), so the run would remove nothing. Select fewer series.</p>
 {% else %}
 <p class="banner banner-warn">This <strong>unmonitors and deletes up to {{ total }} episode files</strong> from {{ selected | length }} series in Sonarr. Each series is planned again first: anything watched, replaced, downloading or no longer outside the keep window since this plan is skipped and reported.</p>
-{% if remover_dry_run %}
-<p class="muted">config.toml has remover dry_run on. That keeps removers runs from deleting on their own; it doesn't apply to a plan you approve.</p>
-{% endif %}
 {% endif %}
 
 {% if selected %}

@@ -6,13 +6,12 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from config.models import ConfigSettings
+from config.models import ConfigSettings, WebDefaults
 from results import JobResult
-from web.db import JobRun, Schedule, make_engine, migrate
+from web.db import JobRun, Schedule, TrashEvent, make_engine, migrate
 from web.jobs import JobRunner
 from web.scheduler import (
-    TRASH_FOLLOWUP_ATTEMPTS,
-    TRASH_FOLLOWUP_DELAY,
+    FOLLOWUP_MAX_WAIT,
     Scheduler,
     next_run_at,
     schedule_errors,
@@ -20,6 +19,9 @@ from web.scheduler import (
 )
 
 START = datetime(2026, 10, 22, 13, 0)
+DEFAULTS = WebDefaults()
+TRASH_FOLLOWUP_DELAY = DEFAULTS.followup_delay
+TRASH_FOLLOWUP_ATTEMPTS = DEFAULTS.followup_attempts
 
 
 @pytest.fixture
@@ -179,15 +181,21 @@ def add_run(engine, job, finished, changes=(), dry_run=False, trigger="schedule"
         return run.id
 
 
+def add_upgrade(engine, received):
+    with Session(engine) as session:
+        session.add(TrashEvent(received_at=received, event="Download", source="Radarr: Frankenstein (2025)"))
+        session.commit()
+
+
 MOVED = [{"action": "move", "status": "done"}]
 REMOVED = [{"action": "remove", "status": "done"}]
 EMPTIED = [{"action": "empty_trash", "status": "done"}]
 BLOCKED = [{"action": "empty_trash", "status": "blocked"}]
 
 
-def due(engine, now):
+def due(engine, now, defaults=DEFAULTS):
     with Session(engine) as session:
-        return trash_followup_due(session, now)
+        return trash_followup_due(session, now, defaults)
 
 
 class TestTrashFollowup:
@@ -222,7 +230,7 @@ class TestTrashFollowup:
         assert due(engine, START) is not None
 
     def test_config_dry_empty_counts(self, engine):
-        # config.toml has empty trash dry, nothing more to do until that changes
+        # the settings have empty trash dry, nothing more to do until that changes
         add_run(engine, "removers", START, REMOVED)
         add_run(engine, "empty_trash", START + timedelta(minutes=20), [{"action": "empty_trash", "status": "dry_run"}])
         assert due(engine, START + timedelta(hours=1)) is None
@@ -246,6 +254,48 @@ class TestTrashFollowup:
 
     def test_old_work_isnt_followed_up(self, engine):
         add_run(engine, "movers", START - timedelta(days=3), MOVED)
+        assert due(engine, START) is None
+
+    def test_settings_change_it(self, engine):
+        add_run(engine, "movers", START - timedelta(days=3), MOVED)
+        defaults = WebDefaults(followup_delay=timedelta(hours=1), followup_lookback=timedelta(days=4))
+        assert due(engine, START, defaults) == START - timedelta(days=3) + timedelta(hours=1)
+
+    def test_off_with_no_attempts(self, engine):
+        add_run(engine, "movers", START, MOVED)
+        assert due(engine, START, WebDefaults(followup_attempts=0)) is None
+
+    def test_due_a_while_after_upgrades(self, engine):
+        add_upgrade(engine, START)
+        assert due(engine, START) == START + TRASH_FOLLOWUP_DELAY
+        # upgrades close together share one
+        add_upgrade(engine, START + timedelta(minutes=3))
+        add_run(engine, "movers", START + timedelta(minutes=2), MOVED)
+        assert due(engine, START) == START + timedelta(minutes=3) + TRASH_FOLLOWUP_DELAY
+
+    def test_a_steady_stream_of_upgrades_waits_at_most_a_few_delays(self, engine):
+        for minute in range(0, 120, 5):
+            add_upgrade(engine, START + timedelta(minutes=minute))
+        assert due(engine, START + timedelta(minutes=115)) == START + FOLLOWUP_MAX_WAIT * TRASH_FOLLOWUP_DELAY
+
+    def test_an_empty_trash_only_covers_what_plex_had_scanned(self, engine):
+        add_upgrade(engine, START)
+        add_upgrade(engine, START + timedelta(minutes=55))
+        # the capped follow-up, started 5 minutes after the last upgrade
+        followup = START + FOLLOWUP_MAX_WAIT * TRASH_FOLLOWUP_DELAY + timedelta(minutes=1)
+        add_run(engine, "empty_trash", followup, EMPTIED, trigger="followup")
+        # the last upgrade may not have been scanned yet: once more, a delay later
+        assert due(engine, followup) == followup + TRASH_FOLLOWUP_DELAY
+        add_run(engine, "empty_trash", followup + TRASH_FOLLOWUP_DELAY + timedelta(minutes=1), EMPTIED, trigger="followup")
+        assert due(engine, followup + timedelta(hours=1)) is None
+
+    def test_a_manual_empty_right_after_an_upgrade_doesnt_cover_it(self, engine):
+        add_upgrade(engine, START)
+        add_run(engine, "empty_trash", START + timedelta(minutes=3), EMPTIED, trigger="manual")
+        assert due(engine, START + timedelta(minutes=3)) == START + TRASH_FOLLOWUP_DELAY
+
+    def test_old_upgrades_arent_followed_up(self, engine):
+        add_upgrade(engine, START - timedelta(days=3))
         assert due(engine, START) is None
 
     def test_tick_queues_it(self, engine, runner, scheduler):

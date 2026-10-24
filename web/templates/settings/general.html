@@ -1,0 +1,52 @@
+{% extends "settings/_layout.html" %}
+{% import "settings/_fields.html" as f with context %}
+{% set tab = "general" %}
+{% block settings %}
+{% if import_error %}
+<p class="banner banner-bad">config.toml couldn't be imported: {{ import_error }}. Fix it and restart the app to try again, or set everything up here.</p>
+{% elif imported %}
+<p class="banner">Imported from config.toml on {{ imported.created_at | localtime }}. The file isn't read anymore{% if toml_exists %}. It still holds your API keys in plain text, so delete <code>{{ toml_path }}</code> once you've checked everything here{% endif %}.</p>
+{% endif %}
+
+<form method="post" action="/settings" class="form">
+  {{ f.version_field() }}
+  <span></span>
+  <div>
+    <label class="check"><input type="checkbox" name="dry_run"{% if values.dry_run %} checked{% endif %}> Dry run</label>
+    <p class="hint">Movers, profilers and empty trash log what they would change and change nothing. Radarr, Sonarr and Empty trash can override it. Removers don't use it: they always plan for review, and only delete what you approve or auto-approve.</p>
+  </div>
+
+  <label for="filter_time">Only media added within</label>
+  <div>
+    <input id="filter_time" name="filter_time" value="{{ values.filter_time }}" placeholder="whole library" spellcheck="false">
+    <p class="hint">Movers and profilers only check media Radarr/Sonarr added this recently, e.g. <code>1d</code>, <code>12h</code>, <code>30m</code>. Empty checks the whole library every run.</p>
+  </div>
+
+  <h2 class="form-heading">Follow-up empty trash</h2>
+  <label for="followup_delay">Delay</label>
+  <div>
+    <input id="followup_delay" name="followup_delay" value="{{ values.followup_delay }}" spellcheck="false" required>
+    <p class="hint">After a live run moves or removes files, or Radarr/Sonarr upgrade one (webhook), empty Plex's trash this long after the last of them, once Autoscan and Plex have scanned. A steady stream of upgrades waits at most 4 times this.</p>
+  </div>
+  <label for="followup_attempts">Attempts</label>
+  <div>
+    <input id="followup_attempts" name="followup_attempts" type="number" min="0" max="10" value="{{ values.followup_attempts }}" required>
+    <p class="hint">A follow-up that's blocked (e.g. a scan still running) is tried again, this many in all. 0 turns follow-ups off.</p>
+  </div>
+  <label for="followup_lookback">Look back</label>
+  <div>
+    <input id="followup_lookback" name="followup_lookback" value="{{ values.followup_lookback }}" spellcheck="false" required>
+    <p class="hint">Runs and upgrades older than this aren't followed up, their trash waits for a manual or scheduled run.</p>
+  </div>
+
+  <h2 class="form-heading">Removers</h2>
+  <label for="plan_max_age">Plans expire after</label>
+  <div>
+    <input id="plan_max_age" name="plan_max_age" value="{{ values.plan_max_age }}" spellcheck="false" required>
+    <p class="hint">An older removers plan can't be applied, run removers again for a fresh one.</p>
+  </div>
+
+  <span></span>
+  <div class="actions"><button type="submit">Save</button></div>
+</form>
+{% endblock %}

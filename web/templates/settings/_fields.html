@@ -1,0 +1,59 @@
+{# a list field: one value per line, static/app.js turns it into chips with suggestions #}
+{% macro chips(name, label, values, options=[], hint="", match_name=None, match_value=None) %}
+<label for="{{ name }}">{{ label }}</label>
+<div>
+  {% if match_name %}{{ match(match_name, match_value) }}{% endif %}
+  <textarea id="{{ name }}" name="{{ name }}" rows="3" spellcheck="false" data-chips{% if options %} data-options="{{ name }}-options"{% endif %}>{{ (values or []) | join("\n") }}</textarea>
+  {% if options %}
+  <datalist id="{{ name }}-options">{% for option in options %}<option value="{{ option }}">{% endfor %}</datalist>
+  {% endif %}
+  {% if hint %}<p class="hint">{{ hint }}</p>{% endif %}
+</div>
+{% endmacro %}
+
+{# a select of known values, keeping a saved value that isn't one of them. Without
+   options (they couldn't load) it's a text field #}
+{% macro choice(name, label, value, options, blank=None, hint="", required=False) %}
+<label for="{{ name }}">{{ label }}</label>
+<div>
+  {% if options %}
+  <select id="{{ name }}" name="{{ name }}"{% if required %} required{% endif %}>
+    {% if blank is not none %}<option value="">{{ blank }}</option>{% endif %}
+    {% if value and value not in options %}<option value="{{ value }}" selected>{{ value }} (not found)</option>{% endif %}
+    {% for option in options %}
+    <option value="{{ option }}"{% if option == value %} selected{% endif %}>{{ option }}</option>
+    {% endfor %}
+  </select>
+  {% else %}
+  <input id="{{ name }}" name="{{ name }}" value="{{ value or '' }}" spellcheck="false"{% if required %} required{% endif %}>
+  {% endif %}
+  {% if hint %}<p class="hint">{{ hint }}</p>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro match(name, value) %}
+<select name="{{ name }}" aria-label="Match" class="inline-select">
+  <option value="any"{% if value != "all" %} selected{% endif %}>any of</option>
+  <option value="all"{% if value == "all" %} selected{% endif %}>all of</option>
+</select>
+{% endmacro %}
+
+{# dry run of a section: inherit the general setting, or on/off #}
+{% macro dry_run(value, global_dry) %}
+<label for="dry_run">Dry run</label>
+<div>
+  <select id="dry_run" name="dry_run">
+    <option value="inherit"{% if value == "inherit" %} selected{% endif %}>Same as General ({{ "on" if global_dry else "off" }})</option>
+    <option value="true"{% if value == "true" %} selected{% endif %}>On: log what would change, change nothing</option>
+    <option value="false"{% if value == "false" %} selected{% endif %}>Off: make changes</option>
+  </select>
+</div>
+{% endmacro %}
+
+{% macro version_field() %}<input type="hidden" name="version" value="{{ version }}">{% endmacro %}
+
+{% macro choice_problems(problems) %}
+{% for problem in problems %}
+<p class="banner banner-warn">{{ problem }}. You can still type values in.</p>
+{% endfor %}
+{% endmacro %}

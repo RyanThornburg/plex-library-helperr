@@ -38,10 +38,10 @@
   <div>
     <label class="check"><input type="checkbox" name="dry_run"{% if values.dry_run %} checked{% endif %}> Force dry run</label>
     <p class="hint">
-      Unchecked, runs use config.toml's dry_run settings, which are now:
-      {% if config_error %}unknown, config.toml can't be loaded ({{ config_error }})
+      Unchecked, runs use the dry run <a href="/settings">settings</a>, which are now:
+      {% if config_error %}unknown, the settings can't be loaded ({{ config_error }})
       {% else %}
-      {% for job in jobs %}{{ JOB_INFO[job][0] }} <strong>{% if dry_runs[job] is none and job == "removers" and auto_rules %}dry run, but auto-approved removers delete{% elif dry_runs[job] is none %}mixed{% elif dry_runs[job] %}dry run{% else %}live{% endif %}</strong>{{ ", " if not loop.last }}{% endfor %}.
+      {% for job in jobs %}{{ JOB_INFO[job][0] }} <strong>{% if dry_runs[job] is none and job == "removers" and auto_rules %}dry run, but auto-approved removers delete{% elif dry_runs[job] is none %}mixed{% elif job == "removers" %}plan for review{% elif dry_runs[job] %}dry run{% else %}live{% endif %}</strong>{{ ", " if not loop.last }}{% endfor %}.
       {% endif %}
     </p>
   </div>

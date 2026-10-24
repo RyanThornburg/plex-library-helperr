@@ -1,0 +1,35 @@
+{% extends "settings/_layout.html" %}
+{% import "settings/_fields.html" as f with context %}
+{% set tab = "trash" %}
+{% block settings %}
+<p class="muted">Empty trash clears what Plex marked deleted: old versions left by upgrades, and items with no file left ("fully deleted", they leave the library with their watch history). It skips a library while it's scanning, or when its trash looks like a missing mount.</p>
+{{ f.choice_problems(choice_problems) }}
+<form method="post" action="/settings/trash" class="form">
+  {{ f.version_field() }}
+  {% if plex_libraries %}
+  <span class="label">Libraries</span>
+  <div>
+    {% for library in plex_libraries | list + (values.libraries | reject("in", plex_libraries) | list) %}
+    <label class="check check-row"><input type="checkbox" name="libraries" value="{{ library }}"{% if library in values.libraries %} checked{% endif %}> {{ library }}{% if library not in plex_libraries %} <span class="muted">(not found in Plex)</span>{% endif %}</label>
+    {% endfor %}
+    <p class="hint">None checked empties every movie and show library.</p>
+  </div>
+  {% else %}
+  {{ f.chips("libraries", "Libraries", values.libraries, [], "Library names, one per line. Empty means every movie and show library.") }}
+  {% endif %}
+
+  <label for="max_items">Max items</label>
+  <div>
+    <input id="max_items" name="max_items" type="number" min="1" value="{{ values.max_items }}" required>
+    <p class="hint">Skip a library whose trash holds more than this, including upgrade leftovers. A missing mount trashes everything.</p>
+  </div>
+  <label for="max_deleted_items">Max fully deleted items</label>
+  <div>
+    <input id="max_deleted_items" name="max_deleted_items" type="number" min="0" value="{{ values.max_deleted_items }}" required>
+    <p class="hint">Skip a library with more fully deleted items than this, not counting files the removers deleted.</p>
+  </div>
+  {{ f.dry_run(values.dry_run, global_dry) }}
+  <span></span>
+  <div class="actions"><button type="submit">Save</button></div>
+</form>
+{% endblock %}

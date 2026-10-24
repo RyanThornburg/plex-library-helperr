@@ -1,0 +1,16 @@
+{% extends "settings/_rule_form.html" %}
+{% block fields %}
+{{ f.choice("profile", "Quality profile", values.get("profile"), library.profile_names if library else [], blank="Choose a profile", required=True) }}
+<label for="monitored">Monitoring</label>
+<div>
+  <select id="monitored" name="monitored">
+    <option value=""{% if values.get("monitored") is none %} selected{% endif %}>Leave as is</option>
+    <option value="true"{% if values.get("monitored") is true %} selected{% endif %}>Monitor</option>
+    <option value="false"{% if values.get("monitored") is false %} selected{% endif %}>Unmonitor</option>
+  </select>
+</div>
+<h2 class="form-heading">For {{ "movies" if arr == "radarr" else "series" }} with</h2>
+<p class="hint form-note">Any of these matches.</p>
+{{ f.chips("titles", "Titles", values.get("titles"), library.values("titles") if library else [], "Exact titles.") }}
+{{ f.chips(arr_field, arr_field | capitalize, values.get(arr_field), library.values(arr_field) if library else []) }}
+{% endblock %}

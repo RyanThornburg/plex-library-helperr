@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Make {{ "these jobs" if jobs | length > 1 else "this job" }} live?</h1>
+<p class="banner banner-warn">With this change, dry run is <strong>off</strong> for:</p>
+<ul>
+  {% for job in jobs %}
+  <li><strong>{{ JOB_INFO[job][0] }}</strong>: {{ {"movers": "runs that aren't forced dry, including schedules and webhooks, will move files and change quality profiles.", "empty_trash": "runs that aren't forced dry, including follow-ups, will empty Plex's trash. Fully deleted items leave the library with their watch history."}[job] }}</li>
+  {% endfor %}
+</ul>
+<form method="post" action="{{ action }}" class="actions">
+  {% for name, value in fields %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+  <input type="hidden" name="confirm_live" value="1">
+  <button type="submit" class="button-danger">Save and go live</button>
+  <a class="button button-secondary" href="{{ back }}">Cancel</a>
+</form>
+{% endblock %}

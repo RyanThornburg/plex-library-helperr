@@ -4,19 +4,21 @@
 <h1>Run {{ title }}?</h1>
 <p>{{ description }}</p>
 {% if config_error %}
-<p class="banner banner-bad">config.toml can't be loaded, so this run will fail: {{ config_error }}</p>
+<p class="banner banner-bad">The settings can't be loaded, so this run will fail: {{ config_error }}</p>
 {% elif mode is none and auto_rules %}
-<p class="banner banner-warn">config.toml has removers dry run on, but <strong>auto-approve is on</strong> for {{ auto_rules | length }} remover{{ "s" if auto_rules | length != 1 }} ({% for rule in auto_rules %}{{ rule.tags | join(", ") }}{{ "; " if not loop.last }}{% endfor %}). Their removals <strong>will be deleted</strong> without review, the rest are planned for review.</p>
+<p class="banner banner-warn">Removers plan for review, but <strong>auto-approve is on</strong> for {{ auto_rules | length }} remover{{ "s" if auto_rules | length != 1 }} ({% for rule in auto_rules %}{{ rule.tags | join(", ") }}{{ "; " if not loop.last }}{% endfor %}). Their removals <strong>will be deleted</strong> without review, the rest are planned for review.</p>
 {% elif mode is none %}
-<p class="banner banner-warn">config.toml is <strong>live for some *arrs</strong> and dry run for others. Changes will be made where it's live.</p>
+<p class="banner banner-warn">The settings are <strong>live for some *arrs</strong> and dry run for others. Changes will be made where it's live.</p>
+{% elif mode and job == "removers" %}
+<p class="banner">Removers only plan: nothing is deleted until you approve the plan on the run's page.</p>
 {% elif mode %}
-<p class="banner">config.toml has <strong>dry run</strong> on for this job, so nothing will be changed.</p>
+<p class="banner">The settings have <strong>dry run</strong> on for this job, so nothing will be changed.</p>
 {% else %}
-<p class="banner banner-warn">config.toml has dry run <strong>off</strong> for this job. This run <strong>will make changes</strong>.</p>
+<p class="banner banner-warn">The settings have dry run <strong>off</strong> for this job. This run <strong>will make changes</strong>.</p>
 {% endif %}
 <div class="actions">
   <form method="post" action="/jobs/{{ job }}?dry_run=false">
-    <button type="submit" class="{{ 'button-danger' if mode is not true }}">Run with config.toml settings</button>
+    <button type="submit" class="{{ 'button-danger' if mode is not true }}">Run with the settings</button>
   </form>
   <a class="button button-secondary" href="/">Cancel</a>
 </div>

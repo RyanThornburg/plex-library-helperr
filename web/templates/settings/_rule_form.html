@@ -1,0 +1,63 @@
+{% extends "settings/_layout.html" %}
+{% import "settings/_fields.html" as f with context %}
+{% set tab = arr if kind != "removers" else "" %}
+{% set name = {"movers": "mover", "profilers": "profiler", "removers": "remover"}[kind] %}
+{% set action = "/settings/" ~ arr ~ "/" ~ kind ~ "/" ~ (number or "new") %}
+{% block settings %}
+<p><a href="{{ back }}">← {{ "Removers" if kind == "removers" else label }}</a></p>
+<h2>{{ "Edit" if number else "New" }} {{ label }} {{ name }}{% if number %} {{ number }}{% endif %}</h2>
+{{ f.choice_problems(choice_problems) }}
+{% if library %}
+<p class="hint">Choices from {{ label }} as of {{ library.fetched_at | localtime }}. <a href="{{ action }}?refresh=1">Reload</a></p>
+{% endif %}
+
+<form method="post" action="{{ action }}" class="form">
+  {{ f.version_field() }}
+  {% block fields %}{% endblock %}
+  <span></span>
+  <div class="actions">
+    <button type="submit" name="action" value="save">Save</button>
+    {% if kind != "removers" %}<button type="submit" name="action" value="preview" class="button-secondary">Preview matches</button>{% endif %}
+    <a class="button button-secondary" href="{{ back }}">Cancel</a>
+  </div>
+</form>
+
+{% if preview %}
+<section class="preview" id="preview">
+  <h2>Preview</h2>
+  {% if preview.problem %}
+  <p class="banner banner-warn">{{ preview.problem }}</p>
+  {% else %}
+  <p>
+    {% if kind == "movers" %}Matches <strong>{{ preview.total }}</strong> {{ "movies" if arr == "radarr" else "series" }} not already in {{ values.path }}{% else %}Would change <strong>{{ preview.total }}</strong> {{ "movies" if arr == "radarr" else "series" }} not already on {{ values.profile }}{% endif %}
+    in the whole library{% if preview.claimed %}, and {{ preview.claimed }} more that an earlier mover matches first{% endif %}.
+    {% if filter_time %}Runs only check media added within {{ filter_time | span }}: {{ preview.recent }} of these would change on the next run, the rest when they're re-added or if that setting changes.{% endif %}
+    Nothing has been saved or changed.
+  </p>
+  {% if preview.matches %}
+  <table>
+    <thead><tr><th>Title</th><th>Path</th><th>Added</th></tr></thead>
+    <tbody>
+      {% for match in preview.matches %}
+      <tr{% if filter_time and match.recent %} class="row-highlight"{% endif %}>
+        <td>{{ match.title }}</td>
+        <td class="files">{{ match.path }}</td>
+        <td>{{ match.added | localtime }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if preview.total > preview.matches | length %}<p class="hint">Showing the first {{ preview.matches | length }}.</p>{% endif %}
+  {% endif %}
+  {% endif %}
+</section>
+{% endif %}
+
+{% if number %}
+<form method="post" action="{{ action }}/delete" class="delete-form">
+  {{ f.version_field() }}
+  <button type="submit" class="button-danger">Delete {{ name }}</button>
+  <span class="muted">You can bring it back from Settings → History.{% if kind == "removers" %} Its auto-approve turns off.{% endif %}</span>
+</form>
+{% endif %}
+{% endblock %}

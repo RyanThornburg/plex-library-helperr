@@ -1,0 +1,31 @@
+{% extends "settings/_layout.html" %}
+{% import "settings/_fields.html" as f with context %}
+{% set tab = "history" %}
+{% macro show_diff(lines) %}
+<pre class="diff">{% for kind, line in lines %}<span class="diff-{{ kind or 'same' }}">{{ line }}</span>{% endfor %}</pre>
+{% endmacro %}
+{% block settings %}
+<p><a href="/settings/history">← History</a></p>
+<h2>Version {{ shown.id }}{% if is_current %} <span class="tag">current</span>{% endif %}</h2>
+<dl class="facts">
+  <dt>Saved</dt><dd>{{ shown.created_at | localtime }}{% if shown.created_by %} by {{ shown.created_by }}{% endif %}</dd>
+  <dt>Change</dt><dd>{{ shown.note }}</dd>
+</dl>
+
+<h2>{% if previous %}Changes from version {{ previous.id }}{% else %}Settings{% endif %}</h2>
+{% if changes %}{{ show_diff(changes) }}{% else %}<p class="empty">No setting changed (e.g. only a key).</p>{% endif %}
+
+{% if not is_current %}
+<h2>Restore</h2>
+{% if restore_changes %}
+<p class="muted">Restoring saves this version again as the newest. Compared with the current settings that changes:</p>
+{{ show_diff(restore_changes) }}
+<form method="post" action="/settings/history/{{ shown.id }}/restore" class="actions table-actions">
+  {{ f.version_field() }}
+  <button type="submit">Restore version {{ shown.id }}</button>
+</form>
+{% else %}
+<p class="empty">The current settings are the same as this version.</p>
+{% endif %}
+{% endif %}
+{% endblock %}

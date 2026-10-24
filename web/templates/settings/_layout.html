@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% set tabs = [
+  ("/settings", "General", "general"),
+  ("/settings/connections", "Connections", "connections"),
+  ("/settings/radarr", "Radarr", "radarr"),
+  ("/settings/sonarr", "Sonarr", "sonarr"),
+  ("/settings/trash", "Empty trash", "trash"),
+  ("/settings/webhook", "Webhook", "webhook"),
+  ("/settings/history", "History", "history"),
+] %}
+{% block content %}
+<h1>Settings</h1>
+<nav class="tabs" aria-label="Settings">
+  {% for href, title, key in tabs %}
+  <a href="{{ href }}"{% if key == tab %} aria-current="page"{% endif %}>{{ title }}</a>
+  {% endfor %}
+  <a href="/removers">Removers</a>
+</nav>
+{% if saved %}<p class="banner banner-ok">Saved.</p>{% endif %}
+{% if errors %}
+<ul class="banner banner-bad errors-list">
+  {% for error in errors %}<li>{{ error }}</li>{% endfor %}
+</ul>
+{% endif %}
+{% block settings %}{% endblock %}
+{% endblock %}

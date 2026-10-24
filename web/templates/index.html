@@ -2,7 +2,7 @@
 {% block head %}{% if active_jobs %}<meta http-equiv="refresh" content="5">{% endif %}{% endblock %}
 {% block content %}
 {% if config_error %}
-<p class="banner banner-bad">config.toml can't be loaded, every job will fail until it's fixed: {{ config_error }}</p>
+<p class="banner banner-bad">The settings can't be loaded, every job will fail until it's fixed: {{ config_error }} <a href="/settings">Settings</a></p>
 {% endif %}
 
 <section class="jobs">
@@ -13,15 +13,16 @@
     <h2>{{ title }}</h2>
     <p class="muted">{{ description }}</p>
     <p class="mode">
-      config.toml:
+      <a href="/settings">Settings</a>:
       {% if config_error %}<span class="tag">unknown</span>
-      {% elif mode is none and job == "removers" and auto_rules %}<a class="tag tag-warn" href="/removers">dry run, auto-approve on for {{ auto_rules | length }}</a>
+      {% elif mode is none and job == "removers" and auto_rules %}<a class="tag tag-warn" href="/removers">review, auto-approve on for {{ auto_rules | length }}</a>
+      {% elif job == "removers" %}<span class="tag">plan for review</span>
       {% elif mode is none %}<span class="tag tag-warn">mixed: live for some *arrs</span>
       {% elif mode %}<span class="tag">dry run</span>
       {% else %}<span class="tag tag-live">live</span>{% endif %}
     </p>
     {% if job == "empty_trash" and followup %}
-    <p class="muted">Follow-up: {{ followup | localtime }}, after moves/removals</p>
+    <p class="muted">Follow-up: {{ followup | localtime }}, after moves/removals/upgrades</p>
     {% endif %}
     {% if job in next_runs %}
     {% set next_run, schedule = next_runs[job] %}
@@ -53,7 +54,7 @@
       <td><a href="/runs/{{ run.id }}">{{ run.id }}</a></td>
       <td>{{ JOB_INFO[run.job][0] }}</td>
       <td><span class="status status-{{ run.status }}">{{ run.status }}</span></td>
-      <td>{{ "apply plan" if run.plan_run_id else "dry run" if run.dry_run else "config" }}</td>
+      <td>{{ "apply plan" if run.plan_run_id else "dry run" if run.dry_run else "settings" }}</td>
       <td>{{ run.result.changes | length if run.result else "-" }}</td>
       <td>{{ run.started_at | localtime }}</td>
       <td>{{ duration(run) }}</td>

@@ -1,0 +1,48 @@
+{% extends "settings/_layout.html" %}
+{% import "settings/_fields.html" as f with context %}
+{% set tab = "connections" %}
+{% block settings %}
+<p class="muted">API keys, tokens and passwords are encrypted before they're stored, and never shown again: leave the field empty to keep the saved one.</p>
+<div class="services">
+{% for service, (label, secret_label, url_key) in SERVICES.items() %}
+{% set values = forms[service] %}
+{% set secret = secrets.get(service_secrets[service]) %}
+{% set configured = values.url %}
+<section class="card" id="{{ service }}">
+  <div class="heading">
+    <h2>{{ label }}</h2>
+    {% if configured and (secret or service == "autoscan") %}<span class="tag">connected</span>{% else %}<span class="tag tag-warn">not set up</span>{% endif %}
+  </div>
+  <p class="hint">{{ hints[service] }}</p>
+  {% if active == service %}
+  {% for error in service_errors %}<p class="banner banner-bad">{{ error }}</p>{% endfor %}
+  {% if tested %}<p class="banner banner-ok">{{ tested }}</p>{% endif %}
+  {% endif %}
+  {% if secret and not secret.readable %}
+  <p class="banner banner-bad">The saved {{ secret_label | lower }} can't be decrypted (HELPERR_SECRET_KEY changed?). Enter it again.</p>
+  {% endif %}
+  <form method="post" action="/settings/connections/{{ service }}#{{ service }}" class="form form-compact">
+    {{ f.version_field() }}
+    <label for="{{ service }}-url">URL</label>
+    <input id="{{ service }}-url" name="url" value="{{ values.url }}" placeholder="http://192.168.1.15:{{ {'radarr': 7878, 'sonarr': 8989, 'plex': 32400, 'tautulli': 8181, 'autoscan': 3030}[service] }}" spellcheck="false" autocomplete="off">
+    {% if service == "autoscan" %}
+    <label for="autoscan-username">Username</label>
+    <input id="autoscan-username" name="username" value="{{ values.username }}" spellcheck="false" autocomplete="off">
+    {% endif %}
+    <label for="{{ service }}-secret">{{ secret_label }}</label>
+    <div>
+      <input id="{{ service }}-secret" name="secret" type="password" autocomplete="new-password" spellcheck="false" placeholder="{{ 'saved, leave empty to keep' if secret else 'not set' }}">
+      {% if secret %}<p class="hint">Saved {{ secret.updated_at | localtime }}{% if secret.updated_by %} by {{ secret.updated_by }}{% endif %}</p>{% endif %}
+    </div>
+    <span></span>
+    <div class="actions">
+      <button type="submit" name="action" value="save">Save</button>
+      <button type="submit" name="action" value="test" class="button-secondary">Test</button>
+      {% if configured %}<button type="submit" name="action" value="disconnect" class="button-secondary" formnovalidate>Disconnect</button>{% endif %}
+    </div>
+  </form>
+</section>
+{% endfor %}
+</div>
+<p class="hint">Disconnect forgets the URL and {{ "key" }}, rules are kept. Test uses what's in the form, with the saved key when the field is empty.</p>
+{% endblock %}

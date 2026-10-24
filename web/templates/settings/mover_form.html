@@ -1,0 +1,19 @@
+{% extends "settings/_rule_form.html" %}
+{% block fields %}
+{% set media = "movies" if arr == "radarr" else "series" %}
+{{ f.choice("path", "Move to", values.get("path"), library.paths if library else [], blank="Choose a root folder", required=True, hint="A root folder in " ~ label ~ ". Media already in it, or in an excluded path, is skipped.") }}
+{{ f.choice("plex_library", "Plex library", values.get("plex_library"), plex_libraries, blank="None", hint="Refreshed after a move when Autoscan isn't set up.") }}
+
+<h2 class="form-heading">Match {{ media }} with</h2>
+<p class="hint form-note">Every filter you fill in has to match. Comparisons ignore case.</p>
+{{ f.chips("genres", "Genres", values.get("genres"), library.values("genres") if library else [], match_name="genre_match", match_value=values.get("genre_match")) }}
+{{ f.chips("tags", "Tags", values.get("tags"), library.tags if library else [], match_name="tag_match", match_value=values.get("tag_match")) }}
+{{ f.chips("certifications", "Certifications", values.get("certifications"), library.values("certifications") if library else [], "Any of these, e.g. G, TV-Y7.") }}
+{{ f.chips(arr_field, arr_field | capitalize, values.get(arr_field), library.values(arr_field) if library else [], "Any of these.") }}
+
+<h2 class="form-heading">Skip {{ media }} with</h2>
+{{ f.chips("exclude_genres", "Genres", values.get("exclude_genres"), library.values("genres") if library else [], "Any of these.") }}
+{{ f.chips("exclude_tags", "Tags", values.get("exclude_tags"), library.tags if library else [], "Any of these.") }}
+{{ f.chips("exclude_certifications", "Certifications", values.get("exclude_certifications"), library.values("certifications") if library else []) }}
+{{ f.chips("exclude_paths", "In these folders", values.get("exclude_paths"), library.paths if library else [], "Root folders whose media this mover leaves alone.") }}
+{% endblock %}

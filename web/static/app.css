@@ -34,6 +34,8 @@ body {
 
 .topbar {
   display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
@@ -158,7 +160,7 @@ summary { cursor: pointer; }
   table { display: block; overflow-x: auto; }
 }
 
-.nav { display: flex; gap: 16px; align-items: center; }
+.nav { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: center; }
 .nav a:not(.brand) { color: var(--text); text-decoration: none; }
 .nav a:not(.brand):hover { color: var(--accent); }
 
@@ -202,3 +204,99 @@ input:not([type]), select {
 .key-row input { flex: 1 1 320px; max-width: 420px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .key-row form { margin: 0; }
 main h2 { margin-top: 24px; }
+
+/* settings */
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 16px; border-bottom: 1px solid var(--border); }
+.tabs a { padding: 6px 12px; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tabs a:hover { color: var(--text); }
+.tabs a[aria-current="page"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.banner-ok { border-left-color: var(--ok); }
+main .banner { margin: 0 0 12px; }
+
+.services { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 12px; }
+.services .card { scroll-margin-top: 16px; }
+.form-compact { margin: 4px 0 0; grid-template-columns: max-content minmax(0, 1fr); }
+/* contain: their width doesn't widen the label column they span */
+.form > .form-heading { grid-column: 1 / -1; margin: 12px 0 0; contain: inline-size; }
+.form > .form-note { grid-column: 1 / -1; margin: -8px 0 0; contain: inline-size; }
+.card h2, .heading h2 { margin: 0; }
+main > .heading { margin-top: 24px; }
+.form > .label { font-weight: 600; }
+.check-row { display: flex; margin: 2px 0; }
+
+input[type="number"], input[type="password"], textarea {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+input[type="number"] { max-width: 160px; }
+.inline-select { width: auto; margin-bottom: 6px; }
+button:disabled { opacity: 0.4; cursor: default; }
+.row-actions { flex-wrap: nowrap; justify-content: flex-end; white-space: nowrap; }
+.row-highlight td { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.preview { margin: 8px 0 24px; }
+
+/* list fields, built from their textarea by app.js */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 5px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.chips:focus-within { outline: 2px solid var(--accent); outline-offset: -1px; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 4px 1px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 13px;
+}
+.chip button {
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 400;
+  line-height: 1.4;
+}
+.chip button:hover { color: var(--bad); }
+.chips input {
+  flex: 1 1 140px;
+  min-width: 120px;
+  padding: 2px 4px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+}
+
+.diff {
+  overflow: auto;
+  max-height: 60vh;
+  margin: 0 0 16px;
+  padding: 8px 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.diff span { display: block; padding: 0 12px; white-space: pre; }
+.diff-add { background: color-mix(in srgb, var(--ok) 15%, transparent); }
+.diff-del { background: color-mix(in srgb, var(--bad) 15%, transparent); }
+.diff-hunk { color: var(--muted); }
+
+@media (max-width: 700px) {
+  .services { grid-template-columns: 1fr; }
+  .form-compact { grid-template-columns: 1fr; }
+}

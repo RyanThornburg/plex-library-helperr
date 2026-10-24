@@ -1,7 +1,6 @@
 """routes.py - pages and json api for running jobs, reviewing runs and scheduling jobs"""
 
 import logging
-import os
 import pathlib
 from datetime import datetime, timedelta
 from typing import Any
@@ -29,7 +28,6 @@ from web.jobs import (
     utc_now,
 )
 from web.scheduler import ZONES, next_run_at, schedule_errors, trash_followup_due
-from web.webhooks import api_key, regenerate_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +75,7 @@ def run_source(run: JobRun) -> str:
     if run.schedule:
         return f"schedule: {run.schedule.name}"
     if run.trigger == "followup":
-        return "follow-up after moves/removals"
+        return "follow-up after moves/removals/upgrades"
     return run.trigger
 
 
@@ -148,7 +146,7 @@ def config_modes(
     request: Request,
 ) -> tuple[dict[str, bool | None], str | None, list[RemoverRule]]:
     """each job's dry run state as configured (None when partly live), any error loading
-    config.toml and the auto-approved removers. Read fresh so edits show without a restart"""
+    the config and the auto-approved removers"""
     try:
         settings = request.app.state.load_config()
     except Exception as e:  # shown on the page, jobs would fail the same way
@@ -162,14 +160,8 @@ def config_modes(
 
 
 def span(value: timedelta | None) -> str:
-    """a duration the way config.toml writes it: 7d, 12h, 30m"""
-    if value is None:
-        return "-"
-    seconds = int(value.total_seconds())
-    for unit, size in (("d", 86400), ("h", 3600), ("m", 60)):
-        if seconds % size == 0:
-            return f"{seconds // size}{unit}"
-    return f"{seconds}s"
+    """a duration the way the settings write it: 7d, 12h, 30m"""
+    return "-" if value is None else config.format_duration(value)
 
 
 templates.env.filters["span"] = span
@@ -276,7 +268,7 @@ def index(request: Request) -> HTMLResponse:
         if next_run and (schedule.job not in next_runs or next_run < next_runs[schedule.job][0]):
             next_runs[schedule.job] = (next_run, schedule)
     with Session(request.app.state.engine) as session:
-        followup = trash_followup_due(session, now)
+        followup = trash_followup_due(session, now, runner(request).defaults())
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -296,7 +288,8 @@ def index(request: Request) -> HTMLResponse:
 
 @router.get("/jobs/{job}/confirm", response_class=HTMLResponse)
 def confirm_page(request: Request, job: str) -> HTMLResponse:
-    """runs with config.toml's dry_run go through this page, it says whether they're live"""
+    """runs with the config's dry run settings go through this page, it says whether
+    they're live"""
     check_job(job)
     dry_runs, config_error, auto_rules = config_modes(request)
     mode = dry_runs.get(job)
@@ -364,12 +357,11 @@ def apply_confirm(
         problem = error or runner(request).apply_problem(session, run)
     if problem is None and (not selected or len(selected) != len(set(series))):
         problem = "Select at least one series from the plan."
-    max_deletes = remover_dry_run = None
+    max_deletes = None
     try:
         sonarr = request.app.state.load_config().sonarr
         if sonarr:
             max_deletes = sonarr.remover_settings.max_deletes
-            remover_dry_run = sonarr.remover_settings.dry_run
     except Exception:  # the run would fail the same way, its log will say why
         pass
     total = sum(len(r["files"]) for r in selected)
@@ -384,7 +376,6 @@ def apply_confirm(
             "problem": problem,
             "over_max": max_deletes is not None and total > max_deletes,
             "max_deletes": max_deletes,
-            "remover_dry_run": remover_dry_run,
             "query": urlencode([("series", r["series_id"]) for r in selected]),
         },
         status_code=400 if error else 200,
@@ -537,11 +528,15 @@ def delete_schedule_form(request: Request, schedule_id: int) -> RedirectResponse
 
 
 def remover_rules(request: Request) -> tuple[list[RemoverRule], str | None]:
+    settings, error = remover_config(request)
+    return (settings.sonarr.removers if settings and settings.sonarr else []), error
+
+
+def remover_config(request: Request) -> tuple[ConfigSettings | None, str | None]:
     try:
-        settings = request.app.state.load_config()
+        return request.app.state.load_config(), None
     except Exception as e:
-        return [], f"{type(e).__name__}: {e}"
-    return (settings.sonarr.removers if settings.sonarr else []), None
+        return None, f"{type(e).__name__}: {e}"
 
 
 def rule_settings(request: Request) -> dict[str, RemoverRuleSetting]:
@@ -550,7 +545,7 @@ def rule_settings(request: Request) -> dict[str, RemoverRuleSetting]:
 
 
 def set_auto_approve(request: Request, rule_key: str, enabled: bool) -> None:
-    """turning on needs the rule in config.toml, off always works"""
+    """turning on needs the rule in the config, off always works"""
     if enabled and rule_key not in {r.key for r in remover_rules(request)[0]}:
         raise HTTPException(status_code=404)
     with Session(request.app.state.engine) as session:
@@ -572,16 +567,20 @@ def set_auto_approve(request: Request, rule_key: str, enabled: bool) -> None:
 
 @router.get("/removers", response_class=HTMLResponse)
 def removers_page(request: Request) -> HTMLResponse:
-    rules, config_error = remover_rules(request)
+    settings, config_error = remover_config(request)
+    sonarr = settings.sonarr if settings else None
     return templates.TemplateResponse(
         request,
         "removers.html",
         {
             "user": request.state.user,
-            "rules": rules,
+            "rules": sonarr.removers if sonarr else [],
+            "max_deletes": sonarr.remover_settings.max_deletes if sonarr else None,
             "config_error": config_error,
             "settings": rule_settings(request),
             "allow_apply": runner(request).allow_apply,
+            "version": request.app.state.store.document()[0],
+            "saved": request.query_params.get("saved") == "1",
         },
     )
 
@@ -608,25 +607,6 @@ def auto_approve_confirm_page(request: Request, rule: str) -> HTMLResponse:
 def auto_approve_form(request: Request, rule: str, enabled: bool) -> RedirectResponse:
     set_auto_approve(request, rule, enabled)
     return RedirectResponse("/removers", status_code=303)
-
-
-@router.get("/settings", response_class=HTMLResponse)
-def settings_page(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(
-        request,
-        "settings.html",
-        {
-            "user": request.state.user,
-            "api_key": api_key(request.app.state.engine),
-            "port": os.environ.get("PORT", "8080"),
-        },
-    )
-
-
-@router.post("/settings/api-key")
-def regenerate_api_key_form(request: Request) -> RedirectResponse:
-    regenerate_api_key(request.app.state.engine, request.state.user)
-    return RedirectResponse("/settings", status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -676,7 +656,7 @@ class AutoApproveRequest(BaseModel):
 
 @router.get("/api/removers")
 def api_removers(request: Request) -> list[dict[str, Any]]:
-    """config.toml's removers with their web app settings"""
+    """the config's removers with their auto-approve setting"""
     rules, config_error = remover_rules(request)
     if config_error:
         raise HTTPException(status_code=500, detail=config_error)

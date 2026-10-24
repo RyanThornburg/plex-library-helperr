@@ -1,12 +1,17 @@
 """Tests for config module"""
 
+import tomllib
 from datetime import timedelta
 
 import pytest
 
 import config
-from config import _build_arr_config, parse_duration
-from config.models import MoverRule, ProfileRule
+from config import _build_arr_config, format_duration, parse_duration
+from config.models import MoverRule, ProfileRule, WebDefaults
+
+
+def load(toml: str):
+    return config.build_config(tomllib.loads(toml))
 
 # ---------------------------------------------------------------------------
 # parse_duration
@@ -14,35 +19,61 @@ from config.models import MoverRule, ProfileRule
 
 
 class TestParseDuration:
-    def test_days(self):
-        assert parse_duration("7d") == timedelta(days=7)
+    @pytest.mark.parametrize(
+        "value, expected",
+        [
+            ("7d", timedelta(days=7)),
+            ("24h", timedelta(hours=24)),
+            ("30m", timedelta(minutes=30)),
+            (" 5d ", timedelta(days=5)),
+        ],
+    )
+    def test_valid(self, value, expected):
+        assert parse_duration(value, "x") == expected
 
-    def test_hours(self):
-        assert parse_duration("24h") == timedelta(hours=24)
+    @pytest.mark.parametrize("value", ["", None, "7x", "abc", 7, "1.5d"])
+    def test_invalid_raises(self, value):
+        with pytest.raises(ValueError, match="filter_time: invalid duration"):
+            parse_duration(value, "filter_time")
 
-    def test_minutes(self):
-        assert parse_duration("30m") == timedelta(minutes=30)
+    @pytest.mark.parametrize(
+        "value, text",
+        [(timedelta(days=7), "7d"), (timedelta(hours=36), "36h"), (timedelta(minutes=90), "90m")],
+    )
+    def test_format_round_trips(self, value, text):
+        assert format_duration(value) == text
+        assert parse_duration(text, "x") == value
 
-    def test_single_day(self):
-        assert parse_duration("1d") == timedelta(days=1)
 
-    def test_empty_string_returns_none(self):
-        assert parse_duration("") is None
+class TestSettings:
+    def test_filter_time(self):
+        assert load("[settings]\nfilter_time = '1d'\n").filter_time == timedelta(days=1)
+        assert load("[settings]\nfilter_time = ''\n").filter_time is None
+        assert load("").filter_time is None
 
-    def test_none_returns_none(self):
-        assert parse_duration(None) is None
+    def test_bad_filter_time_raises(self):
+        # a typo would otherwise move the whole library
+        with pytest.raises(ValueError, match="filter_time"):
+            load("[settings]\nfilter_time = '1 day'\n")
 
-    def test_invalid_unit_returns_none(self):
-        assert parse_duration("7x") is None
+    def test_dry_run_must_be_a_bool(self):
+        with pytest.raises(ValueError, match="dry_run"):
+            load("[settings]\ndry_run = 'false'\n")
 
-    def test_invalid_format_returns_none(self):
-        assert parse_duration("abc") is None
+    def test_web_defaults(self):
+        assert load("").web == WebDefaults()
+        web = load("[web]\nfollowup_delay = '1h'\nfollowup_attempts = 0\nplan_max_age = '3d'\n").web
+        assert web.followup_delay == timedelta(hours=1)
+        assert web.followup_attempts == 0
+        assert web.plan_max_age == timedelta(days=3)
 
-    def test_non_string_returns_none(self):
-        assert parse_duration(7) is None
-
-    def test_whitespace_is_stripped(self):
-        assert parse_duration(" 5d ") == timedelta(days=5)
+    @pytest.mark.parametrize(
+        "toml",
+        ["followup_delay = '0m'", "followup_attempts = -1", "followup_attempts = 11", "plan_max_age = '7'", "other = 1"],
+    )
+    def test_bad_web_defaults_raise(self, toml):
+        with pytest.raises(ValueError, match=r"\[web\]"):
+            load(f"[web]\n{toml}\n")
 
 
 # ---------------------------------------------------------------------------
@@ -140,9 +171,7 @@ class TestArrFieldValidation:
 
 class TestPlexConfig:
     def _load(self, tmp_path, monkeypatch, plex_toml: str):
-        (tmp_path / "config.toml").write_text(plex_toml)
-        monkeypatch.setattr(config, "__file__", str(tmp_path / "__init__.py"))
-        return config.load_config()
+        return load(plex_toml)
 
     def test_empty_plex_values_is_none(self, tmp_path, monkeypatch):
         settings = self._load(
@@ -168,19 +197,18 @@ class TestPlexConfig:
 
 class TestEmptyTrashConfig:
     def _load(self, tmp_path, monkeypatch, toml: str):
-        (tmp_path / "config.toml").write_text(toml)
-        monkeypatch.setattr(config, "__file__", str(tmp_path / "__init__.py"))
-        return config.load_config()
+        return load(toml)
 
     def test_defaults(self, tmp_path, monkeypatch):
         settings = self._load(tmp_path, monkeypatch, "")
         assert settings.empty_trash.libraries == []
         assert settings.empty_trash.max_items == 100
-        assert settings.empty_trash.dry_run is False
+        # a document without dry_run is dry
+        assert settings.empty_trash.dry_run is True
 
     def test_dry_run_defaults_to_settings(self, tmp_path, monkeypatch):
-        settings = self._load(tmp_path, monkeypatch, "[settings]\ndry_run = true\n")
-        assert settings.empty_trash.dry_run is True
+        settings = self._load(tmp_path, monkeypatch, "[settings]\ndry_run = false\n")
+        assert settings.empty_trash.dry_run is False
 
     def test_parsed(self, tmp_path, monkeypatch):
         settings = self._load(
@@ -227,22 +255,22 @@ class TestRemoverConfig:
         assert rule.skip_if_watched_within == timedelta(days=14)
         assert rule.include_specials is False
 
-    def test_remover_settings_default_to_dry_run(self):
+    def test_remover_settings_default(self):
         arr = _build_arr_config({"removers": [remover()]}, False, "sonarr")
-        assert arr.remover_settings.dry_run is True
         assert arr.remover_settings.max_deletes is None
 
     def test_remover_settings_parsed(self):
         arr = _build_arr_config(
-            {
-                "removers": [remover()],
-                "remover_settings": {"dry_run": False, "max_deletes": 50},
-            },
+            {"removers": [remover()], "remover_settings": {"max_deletes": 50}},
             True,
             "sonarr",
         )
-        assert arr.remover_settings.dry_run is False
         assert arr.remover_settings.max_deletes == 50
+
+    def test_remover_dry_run_is_gone(self):
+        # removers only delete approvals, config.document drops it from config.toml
+        with pytest.raises(ValueError, match="remover_settings"):
+            _build_arr_config({"remover_settings": {"dry_run": False}}, False, "sonarr")
 
     def test_invalid_max_deletes_raises(self):
         with pytest.raises(ValueError, match="max_deletes"):
@@ -300,9 +328,7 @@ class TestRemoverConfig:
 
 class TestTautulliConfig:
     def _load(self, tmp_path, monkeypatch, toml: str):
-        (tmp_path / "config.toml").write_text(toml)
-        monkeypatch.setattr(config, "__file__", str(tmp_path / "__init__.py"))
-        return config.load_config()
+        return load(toml)
 
     def test_configured(self, tmp_path, monkeypatch):
         settings = self._load(
@@ -316,20 +342,11 @@ class TestTautulliConfig:
         assert settings.tautulli is None
 
 
-class TestDataDir:
-    def test_loads_from_data_dir(self, tmp_path, monkeypatch):
-        (tmp_path / "config.toml").write_text("[settings]\ndry_run = true\n")
+class TestConfigTomlPath:
+    def test_in_data_dir(self, tmp_path, monkeypatch):
         monkeypatch.setenv("DATA_DIR", str(tmp_path))
-        assert config.load_config().empty_trash.dry_run is True
+        assert config.config_toml_path() == tmp_path / "config.toml"
 
-    def test_copies_example_into_data_dir(self, tmp_path, monkeypatch):
-        package_dir = tmp_path / "package"
-        data_dir = tmp_path / "data"
-        package_dir.mkdir()
-        data_dir.mkdir()
-        (package_dir / "config.toml.example").write_text("[settings]\ndry_run = true\n")
-        monkeypatch.setattr(config, "__file__", str(package_dir / "__init__.py"))
-        monkeypatch.setenv("DATA_DIR", str(data_dir))
-        assert config.load_config().empty_trash.dry_run is True
-        assert (data_dir / "config.toml").exists()
-        assert not (package_dir / "config.toml").exists()
+    def test_next_to_the_package_without_it(self, monkeypatch):
+        monkeypatch.delenv("DATA_DIR", raising=False)
+        assert config.config_toml_path().parent.name == "config"

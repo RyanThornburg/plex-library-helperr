@@ -187,11 +187,11 @@ class RemoverRule:
 @dataclass
 class RemoverSettings:
     """
-    dry_run: (bool) Separate from the movers dry_run, defaults to true
-    max_deletes: (int) Skip all removals if a run would delete more files than this
+    max_deletes: (int) Skip all removals if a run would delete more files than this.
+    There's no dry_run: removers only delete what was approved, by reviewing a plan or
+    auto-approve
     """
 
-    dry_run: bool = True
     max_deletes: int | None = None
 
     def __post_init__(self):
@@ -237,6 +237,39 @@ class EmptyTrashSettings:
             raise ValueError(
                 "plex.empty_trash.max_deleted_items must be an integer >= 0, "
                 f"got '{self.max_deleted_items}'"
+            )
+
+
+def _positive_span(value: object, name: str) -> None:
+    if not isinstance(value, timedelta) or value <= timedelta(0):
+        raise ValueError(f"web.{name} must be greater than 0")
+
+
+@dataclass
+class WebDefaults:
+    """
+    followup_delay: (timedelta) Empty trash this long after a live run moved/removed files or an upgrade
+    followup_attempts: (int) Follow-ups tried in all when blocked (e.g. a scan running), 0 is off
+    followup_lookback: (timedelta) Runs and upgrades older than this aren't followed up
+    plan_max_age: (timedelta) A removers plan older than this can't be applied
+    """
+
+    followup_delay: timedelta = timedelta(minutes=15)
+    followup_attempts: int = 3
+    followup_lookback: timedelta = timedelta(days=2)
+    plan_max_age: timedelta = timedelta(days=7)
+
+    def __post_init__(self):
+        _positive_span(self.followup_delay, "followup_delay")
+        _positive_span(self.followup_lookback, "followup_lookback")
+        _positive_span(self.plan_max_age, "plan_max_age")
+        if (
+            not isinstance(self.followup_attempts, int)
+            or isinstance(self.followup_attempts, bool)
+            or not 0 <= self.followup_attempts <= 10
+        ):
+            raise ValueError(
+                f"web.followup_attempts must be an integer from 0 to 10, got '{self.followup_attempts}'"
             )
 
 
@@ -332,6 +365,7 @@ class ConfigSettings:
     autoscan: AutoscanConfig | None = None
     tautulli: TautulliConfig | None = None
     empty_trash: EmptyTrashSettings = field(default_factory=EmptyTrashSettings)
+    web: WebDefaults = field(default_factory=WebDefaults)
 
     def __repr__(self):
-        return f"ConfigSettings(filter_time={self.filter_time}, plex={self.plex}, empty_trash={self.empty_trash}, tautulli={self.tautulli}, autoscan={self.autoscan}, sonarr={self.sonarr}, radarr={self.radarr})"
+        return f"ConfigSettings(filter_time={self.filter_time}, web={self.web}, plex={self.plex}, empty_trash={self.empty_trash}, tautulli={self.tautulli}, autoscan={self.autoscan}, sonarr={self.sonarr}, radarr={self.radarr})"

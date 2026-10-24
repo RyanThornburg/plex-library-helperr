@@ -4,7 +4,9 @@ import os
 import pathlib
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from web.secret_box import MIN_KEY_CHARS
 
 # <team>.cloudflareaccess.com, the issuer of cloudflare access tokens
 TEAM_DOMAIN_RE = re.compile(r"^[a-z0-9-]+\.cloudflareaccess\.com$")
@@ -22,6 +24,7 @@ class WebSettings:
     database_path: (pathlib.Path) SQLite database file
     allow_remover_apply: (bool) REMOVERS_ALLOW_APPLY, whether a reviewed removers plan can
         be applied from the ui. An env var so nothing in the app can turn it on
+    secret_key: (str) HELPERR_SECRET_KEY, encrypts the config's api keys and tokens
     """
 
     team_domain: str
@@ -29,6 +32,7 @@ class WebSettings:
     allowed_emails: frozenset[str]
     database_path: pathlib.Path
     allow_remover_apply: bool = False
+    secret_key: str = field(default="", repr=False)
 
     @property
     def issuer(self) -> str:
@@ -63,14 +67,32 @@ def load_web_settings(env: Mapping[str, str] = os.environ) -> WebSettings:
     if allow_apply not in ("", "true", "false"):
         problems.append("REMOVERS_ALLOW_APPLY must be true or false")
 
+    secret_key = secret_key_problems(env, problems)
+
     if problems:
         raise ValueError("Web settings invalid: " + "; ".join(problems))
 
-    data_dir = env.get("DATA_DIR") or str(pathlib.Path(__file__).parent.parent)
     return WebSettings(
         team_domain=team_domain,
         audience=audience,
         allowed_emails=allowed_emails,
-        database_path=pathlib.Path(data_dir) / "helperr.db",
+        database_path=database_path(env),
         allow_remover_apply=allow_apply == "true",
+        secret_key=secret_key,
     )
+
+
+def database_path(env: Mapping[str, str] = os.environ) -> pathlib.Path:
+    data_dir = env.get("DATA_DIR") or str(pathlib.Path(__file__).parent.parent)
+    return pathlib.Path(data_dir) / "helperr.db"
+
+
+def secret_key_problems(env: Mapping[str, str], problems: list[str]) -> str:
+    """HELPERR_SECRET_KEY, adding to problems when it's missing or too short"""
+    secret_key = env.get("HELPERR_SECRET_KEY", "").strip()
+    if len(secret_key) < MIN_KEY_CHARS:
+        problems.append(
+            f"HELPERR_SECRET_KEY must be at least {MIN_KEY_CHARS} random characters "
+            "(e.g. from openssl rand -hex 32), it encrypts the api keys and tokens"
+        )
+    return secret_key

@@ -36,6 +36,32 @@ class AppSetting(Base):
     updated_at: Mapped[datetime]
 
 
+class ConfigVersion(Base):
+    """one saved version of the config document (config.toml's shape, no secrets), the
+    newest is the config. Restoring an old version saves it again as a new one"""
+
+    __tablename__ = "config_versions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    document: Mapped[dict[str, Any]] = mapped_column(JSON)
+    # what changed, e.g. "Radarr mover 2 edited", shown in the history
+    note: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[datetime]
+    created_by: Mapped[str | None] = mapped_column(String(320))
+
+
+class ConfigSecret(Base):
+    """an api key/token/password of the config, by config.document.SECRET_FIELDS name.
+    Encrypted with HELPERR_SECRET_KEY, and never versioned"""
+
+    __tablename__ = "config_secrets"
+
+    name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime]
+    updated_by: Mapped[str | None] = mapped_column(String(320))
+
+
 class Schedule(Base):
     """runs a job whenever its cron expression matches, in its own time zone"""
 
@@ -47,7 +73,7 @@ class Schedule(Base):
     cron: Mapped[str] = mapped_column(String(100))
     # IANA name, so the cron doesn't depend on the container's TZ
     timezone: Mapped[str] = mapped_column(String(64), server_default="UTC")
-    # like JobRun.dry_run: true forces dry run, false uses config.toml's dry_run settings
+    # like JobRun.dry_run: true forces dry run, false uses the config's dry_run settings
     dry_run: Mapped[bool] = mapped_column(server_default=true())
     enabled: Mapped[bool] = mapped_column(server_default=true())
     created_at: Mapped[datetime]
@@ -57,8 +83,8 @@ class Schedule(Base):
 
 
 class RemoverRuleSetting(Base):
-    """web app settings for a remover rule from config.toml, keyed by RemoverRule.key.
-    Editing a rule's tags changes its key, so its settings go back to the defaults"""
+    """web app settings for a remover rule of the config, keyed by RemoverRule.key.
+    Editing or deleting a rule turns its auto-approve off (web.config_store)"""
 
     __tablename__ = "remover_rule_settings"
 
@@ -76,10 +102,10 @@ class JobRun(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     job: Mapped[str] = mapped_column(String(32))
-    # manual, schedule, api, followup (empty trash after moves/removals), webhook
+    # manual, schedule, api, followup (empty trash after moves/removals/upgrades), webhook
     trigger: Mapped[str] = mapped_column(String(16))
     requested_by: Mapped[str | None] = mapped_column(String(320))
-    # true when the run was asked to be dry, false means config.toml's dry_run settings applied
+    # true when the run was asked to be dry, false means the config's dry_run settings applied
     dry_run: Mapped[bool] = mapped_column(server_default=false())
     # queued, running, succeeded, failed
     status: Mapped[str] = mapped_column(String(16), index=True)
@@ -100,6 +126,21 @@ class JobRun(Base):
         ForeignKey("job_runs.id", ondelete="SET NULL"), index=True
     )
     approved: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+
+
+class TrashEvent(Base):
+    """a radarr/sonarr webhook for a change that leaves files in plex's trash (an upgrade
+    replaced a file), followed up with an empty trash like moves/removals (web.scheduler).
+    Kept for WebDefaults.followup_lookback"""
+
+    __tablename__ = "trash_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    received_at: Mapped[datetime] = mapped_column(index=True)  # naive utc
+    # the webhook's eventType, e.g. Download
+    event: Mapped[str] = mapped_column(String(32))
+    # e.g. "Sonarr: Survivor (2000) S01E02", like JobRun.requested_by
+    source: Mapped[str] = mapped_column(String(320))
 
 
 def make_engine(path: pathlib.Path) -> Engine:

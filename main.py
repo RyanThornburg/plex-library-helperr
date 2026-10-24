@@ -22,7 +22,6 @@ from arrapi import (
     SonarrAPI,
 )
 
-import config
 from autoscan import trigger_autoscan
 from config.models import ArrConfig, ConfigSettings, MoverRule, ProfileRule
 from logging_config import logging_config
@@ -379,6 +378,14 @@ def serve() -> None:
     )
 
 
+def load_settings() -> ConfigSettings:
+    """the web app's stored config, the same one its jobs run with (config.toml is
+    imported into it the first time)"""
+    from web.config_store import open_store
+
+    return open_store().load_settings()
+
+
 def run_job(
     job: str,
     settings: ConfigSettings,
@@ -464,7 +471,7 @@ def main(argv: list[str] | None = None) -> JobResult | None:
         serve()
         return None
     logger.info("Loading config settings")
-    settings = config.load_config()
+    settings = load_settings()
     logger.info(settings)
 
     job = "removers" if args.remove else "empty_trash" if args.empty_trash else "movers"

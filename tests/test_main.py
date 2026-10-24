@@ -683,7 +683,7 @@ class TestMainErrorHandling:
         arr_config = ArrConfig(baseurl="http://arr", apikey="key", tag=None)
         settings = ConfigSettings(plex=None, radarr=arr_config, sonarr=arr_config)
         with (
-            patch.object(main.config, "load_config", return_value=settings),
+            patch.object(main, "load_settings", return_value=settings),
             patch.object(main.logging.config, "dictConfig"),
             patch.object(
                 main, "run_arr", side_effect=[ConnectionFailure("down"), None]
@@ -719,7 +719,7 @@ class TestMainScanDispatch:
             args[-1].scan_dirs.update(scan_dirs)
 
         with (
-            patch.object(main.config, "load_config", return_value=settings),
+            patch.object(main, "load_settings", return_value=settings),
             patch.object(main.logging.config, "dictConfig"),
             patch.object(main, "run_arr", side_effect=fake_run_arr),
             patch.object(main, "trigger_autoscan", return_value=True) as autoscan,
@@ -765,7 +765,7 @@ class TestMainRemove:
         arr_config = ArrConfig(baseurl="http://arr", apikey="key", tag=None)
         settings = ConfigSettings(plex=None, radarr=arr_config, sonarr=arr_config)
         with (
-            patch.object(main.config, "load_config", return_value=settings),
+            patch.object(main, "load_settings", return_value=settings),
             patch.object(main.logging.config, "dictConfig"),
             patch.object(main, "run_arr") as run_arr,
             patch.object(main, "run_removers") as run_removers,
@@ -789,7 +789,7 @@ class TestMainEmptyTrash:
         arr_config = ArrConfig(baseurl="http://arr", apikey="key", tag=None)
         settings = ConfigSettings(plex=None, radarr=arr_config, sonarr=arr_config)
         with (
-            patch.object(main.config, "load_config", return_value=settings),
+            patch.object(main, "load_settings", return_value=settings),
             patch.object(main.logging.config, "dictConfig"),
             patch.object(main, "run_arr") as run_arr,
             patch.object(main, "run_removers") as run_removers,

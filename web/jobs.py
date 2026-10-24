@@ -12,7 +12,7 @@ from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
 
 import config
-from config.models import ConfigSettings
+from config.models import ConfigSettings, WebDefaults
 from results import JOBS, JobResult
 from web.db import JobRun, RemoverRuleSetting
 
@@ -23,8 +23,6 @@ ACTIVE = ("queued", "running")
 MAX_LOG_CHARS = 1_000_000
 # removals a reviewed plan can approve: not already done or failed
 APPROVABLE = ("dry_run", "blocked")
-# an older plan has to be made again, it's been too long since it was reviewed
-PLAN_MAX_AGE = timedelta(days=7)
 # removers deletions empty trash recognizes, plex's trash is emptied well before this
 REMOVED_FILES_MAX_AGE = timedelta(days=90)
 
@@ -32,6 +30,11 @@ REMOVED_FILES_MAX_AGE = timedelta(days=90)
 # run_job("removers", settings, auto_approve=keys) for removers that skip review
 RunJob = Callable[..., JobResult]
 LoadConfig = Callable[[], ConfigSettings]
+LoadDefaults = Callable[[], WebDefaults]
+
+
+def no_config() -> ConfigSettings:
+    raise ValueError("no config to run with")
 
 
 def utc_now() -> datetime:
@@ -95,11 +98,14 @@ class JobRunner:
         self,
         engine: Engine,
         run_job: RunJob | None = None,
-        load_config: LoadConfig = config.load_config,
+        load_config: LoadConfig = no_config,
         allow_apply: bool = False,
+        defaults: LoadDefaults = WebDefaults,
     ):
         self.engine = engine
         self.load_config = load_config
+        # the config's web defaults (e.g. plan max age), read when needed
+        self.defaults = defaults
         # REMOVERS_ALLOW_APPLY, set on the container where the ui can't change it
         self.allow_apply = allow_apply
         if run_job is None:
@@ -195,7 +201,7 @@ class JobRunner:
         return files
 
     def submit_soon(self, job: str, trigger: str, requested_by: str | None) -> int | None:
-        """queue a run with config.toml's settings unless one is already queued, which will
+        """queue a run with the config's dry run settings unless one is already queued, which will
         see whatever asked for this. While one is running, one more is queued when it
         finishes. Returns the queued run's id, None when it'll follow the running one"""
         with self._submit_lock, Session(self.engine) as session:
@@ -223,10 +229,11 @@ class JobRunner:
             )
         if not approvable(plan):
             return "This run has no planned removals to approve."
-        if utc_now() - plan.created_at > PLAN_MAX_AGE:
+        max_age = self.defaults().plan_max_age
+        if utc_now() - plan.created_at > max_age:
             return (
-                f"This plan is more than {PLAN_MAX_AGE.days} days old. Run removers again "
-                "for a fresh plan."
+                f"This plan is older than {config.format_duration(max_age)} (Settings → "
+                "General). Run removers again for a fresh plan."
             )
         applied = session.scalar(select(JobRun.id).where(JobRun.plan_run_id == plan.id))
         if applied is not None:
@@ -346,7 +353,7 @@ class JobRunner:
             result = self.run_job(job, settings, **kwargs)
             result.log_summary()
         except Exception:
-            # any failure, including a broken config.toml, ends up in the run's log
+            # any failure, including a broken config, ends up in the run's log
             logger.exception("WEB\t %s run %s failed", job, run_id)
         finally:
             root.removeHandler(capture)

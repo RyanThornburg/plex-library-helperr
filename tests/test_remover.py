@@ -339,15 +339,17 @@ class SonarrFakes:
         self.client.episodes.side_effect = lambda _id: build_raw({1: 1, 2: 1, 3: 1})[0]
         self.client.episode_files.side_effect = lambda _id: build_raw({1: 1, 2: 1, 3: 1})[1]
 
-    def _run(self, series, rule=None, settings=None, watches=None):
+    def _run(self, series, rule=None, settings=None, watches=None, auto_approve=True):
+        """auto_approve: the rule deletes, otherwise it plans for review"""
         arr = MagicMock()
         arr.all_series.return_value = series
+        rule = rule or seasons_rule(plex_library="Reality")
         arr_config = ArrConfig(
             baseurl="http://sonarr",
             apikey="key",
             tag=None,
-            removers=[rule or seasons_rule(plex_library="Reality")],
-            remover_settings=settings or RemoverSettings(dry_run=False),
+            removers=[rule],
+            remover_settings=settings or RemoverSettings(),
         )
         with (
             patch.object(remover, "SonarrAPI", return_value=arr),
@@ -355,7 +357,13 @@ class SonarrFakes:
             patch.object(remover, "get_watch_history", return_value=watches) as wh,
             patch.object(remover, "utc_now", return_value=NOW),
         ):
-            run_removers(arr_config, None, None, self.result)
+            run_removers(
+                arr_config,
+                None,
+                None,
+                self.result,
+                auto_approve=frozenset({rule.key}) if auto_approve else frozenset(),
+            )
         return wh
 
 
@@ -369,11 +377,11 @@ class TestRunRemovers(SonarrFakes):
         assert self.result.scan_dirs == {"/tv/Show/Season 01"}
         assert self.result.plex_libraries == {"Reality"}
         assert self.result.changes == [
-            Change("SONARR", "remove", "Survivor", ["S01"], "done", "1 files")
+            Change("SONARR", "remove", "Survivor", ["S01"], "done", "1 files, auto-approved")
         ]
 
-    def test_dry_run_changes_nothing(self):
-        self._run([make_series()], settings=RemoverSettings(dry_run=True))
+    def test_unapproved_changes_nothing(self):
+        self._run([make_series()], auto_approve=False)
         self.client.unmonitor_episodes.assert_not_called()
         self.client.delete_episode_files.assert_not_called()
         assert self.result.scan_dirs == set()
@@ -381,7 +389,7 @@ class TestRunRemovers(SonarrFakes):
 
     def test_max_deletes_blocks_everything(self):
         series = [make_series(id=1), make_series(id=2)]
-        self._run(series, settings=RemoverSettings(dry_run=False, max_deletes=1))
+        self._run(series, settings=RemoverSettings(max_deletes=1))
         self.client.delete_episode_files.assert_not_called()
         assert [c.status for c in self.result.changes] == ["blocked", "blocked"]
         assert "exceeds max_deletes (1)" in self.result.changes[0].detail
@@ -460,7 +468,7 @@ class TestApplyPlan(SonarrFakes):
             apikey="key",
             tag=None,
             removers=[kwargs.get("rule") or seasons_rule()],
-            remover_settings=kwargs.get("settings") or RemoverSettings(dry_run=True),
+            remover_settings=kwargs.get("settings") or RemoverSettings(),
         )
         with (
             patch.object(remover, "SonarrAPI", return_value=arr),
@@ -470,7 +478,7 @@ class TestApplyPlan(SonarrFakes):
         ):
             run_removers(arr_config, None, None, self.result, approved)
 
-    def test_removes_approved_even_when_dry_run_is_on(self):
+    def test_removes_approved(self):
         self._apply([make_series()], {1: {1}})
         self.client.unmonitor_episodes.assert_called_once_with([1])
         self.client.delete_episode_files.assert_called_once_with([1])
@@ -542,15 +550,15 @@ class TestApplyPlan(SonarrFakes):
 
     def test_max_deletes_still_applies(self):
         series = [make_series(id=1), make_series(id=2)]
-        settings = RemoverSettings(dry_run=True, max_deletes=1)
+        settings = RemoverSettings(max_deletes=1)
         self._apply(series, {1: {1}, 2: {1}}, settings=settings)
         self.client.delete_episode_files.assert_not_called()
         assert [c.status for c in self.result.changes] == ["blocked", "blocked"]
 
 
 class TestPlanRecorded(SonarrFakes):
-    def test_dry_run_records_the_plan(self):
-        self._run([make_series()], settings=RemoverSettings(dry_run=True))
+    def test_unapproved_records_the_plan(self):
+        self._run([make_series()], auto_approve=False)
         [removal] = self.result.removals
         assert removal.status == "dry_run"
         assert removal.detail == "1 files"
@@ -560,7 +568,7 @@ class TestPlanRecorded(SonarrFakes):
 
 
 class TestAutoApprove(SonarrFakes):
-    def test_auto_approved_rule_deletes_with_dry_run_on(self):
+    def test_auto_approved_rule_deletes(self):
         rule = seasons_rule()
         self._apply_auto([make_series()], rule, frozenset({rule.key}))
         self.client.delete_episode_files.assert_called_once_with([1])
@@ -583,22 +591,22 @@ class TestAutoApprove(SonarrFakes):
         auto = seasons_rule()
         review = seasons_rule(tags=["rm-review"])
         series = [make_series(id=1), make_series(id=2, title="Other", tags=["rm-review"])]
-        settings = RemoverSettings(dry_run=True, max_deletes=1)
+        settings = RemoverSettings(max_deletes=1)
         self._apply_auto(series, [auto, review], frozenset({auto.key}), settings)
         self.client.delete_episode_files.assert_called_once_with([1])
 
     def test_max_deletes_blocks_auto_approved(self):
         rule = seasons_rule()
         series = [make_series(id=1), make_series(id=2)]
-        settings = RemoverSettings(dry_run=True, max_deletes=1)
+        settings = RemoverSettings(max_deletes=1)
         self._apply_auto(series, rule, frozenset({rule.key}), settings)
         self.client.delete_episode_files.assert_not_called()
         assert [c.status for c in self.result.changes] == ["blocked", "blocked"]
 
-    def test_dry_run_plan_over_max_deletes_is_still_a_plan(self):
+    def test_plan_over_max_deletes_is_still_a_plan(self):
         # nothing is deleted, so it can still be reviewed and partly approved
-        settings = RemoverSettings(dry_run=True, max_deletes=1)
-        self._run([make_series(id=1), make_series(id=2)], settings=settings)
+        settings = RemoverSettings(max_deletes=1)
+        self._run([make_series(id=1), make_series(id=2)], settings=settings, auto_approve=False)
         assert [c.status for c in self.result.changes] == ["dry_run", "dry_run"]
 
     def test_rule_key_ignores_order_and_case(self):
@@ -612,7 +620,7 @@ class TestAutoApprove(SonarrFakes):
             apikey="key",
             tag=None,
             removers=rules if isinstance(rules, list) else [rules],
-            remover_settings=settings or RemoverSettings(dry_run=True),
+            remover_settings=settings or RemoverSettings(),
         )
         with (
             patch.object(remover, "SonarrAPI", return_value=arr),

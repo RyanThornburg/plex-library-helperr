@@ -15,7 +15,7 @@ I used **Movers** for moving files to different library. I use **Profilers** pri
 - **Removers**  -  (Sonarr only) unmonitors and deletes old seasons/episodes from tagged series, keeping the latest ones
 - **Empty trash**  -  empties Plex library trash on demand, skipping libraries that are scanning or have a suspiciously full trash
 
-**Removers delete files.** They default to `dry_run = true` on their own. Check the `--remove` log before setting `[sonarr.remover_settings] dry_run = false`.
+**Removers delete files.** They only plan: nothing is deleted until you approve a plan in the web app, or turn on auto-approve for a rule there. Run from the command line, they log their plan and delete nothing.
 
 ## Requirements
 
@@ -40,19 +40,17 @@ uv run main.py --empty-trash
 
 Each run ends with a summary of what it changed (or would change in a dry run) and exits with status 1 if anything failed.
 
-`--remove` is a separate run so you can schedule it on its own, less often than the movers. It ignores `filter_time` and has its own `dry_run` setting in `[sonarr.remover_settings]`.
+The command line uses the web app's settings: the database `helperr.db` in `DATA_DIR` (or the repo), with `HELPERR_SECRET_KEY` set to the same value as the web app, since it decrypts the API keys. On the first run, a `config.toml` there is imported, like the web app does.
+
+`--remove` is a separate run so you can schedule it on its own, less often than the movers. It ignores `filter_time`.
 
 `--empty-trash` is for Plex servers with "Empty trash automatically after every scan" turned off. Removers and movers only trigger a scan, which moves deleted files to the trash. Schedule `--empty-trash` to run after those scans have finished (with Autoscan, the scan happens after its `minimum-age`).
 
-1. Before running copy `config.toml.example` to `config.toml`.
-    - If you run `main.py` before doing this, it will create `config.toml` from `config.toml.example`.
-1. Edit `config.toml` with your Radarr/Sonarr URL and API key
-
-`config.toml.example` has examples for movers and profiles. You should delete or modify those before running on your library.
+Settings are made in the web app (see below). To start from a `config.toml` instead, put it in `DATA_DIR` before the first start; [`config.toml.example`](config/config.toml.example) shows the format.
 
 ## Docker (Unraid)
 
-The image runs one job and exits. Config and logs live in the `/config` volume (`config.toml` and `logs/`), and the container runs as Unraid's `nobody:users` (99:100).
+The image runs one job and exits. Settings and logs live in the `/config` volume (the web app's `helperr.db` and `logs/`), and the container runs as Unraid's `nobody:users` (99:100).
 
 Every push to `mainline` runs the tests and publishes `ghcr.io/ryanthornburg/plex-library-helperr:latest`, the script-only version; pushes to the `v2` branch, which adds the web app, publish `:v2`. Both also get a `sha-<commit>` tag to pin or roll back to.
 
@@ -63,19 +61,20 @@ Add Container, one per job:
 | Field | Value |
 |---|---|
 | Repository | `ghcr.io/ryanthornburg/plex-library-helperr:latest` |
-| Network Type | The custom network your *arr containers are on, if `config.toml` uses container names (see below) |
+| Network Type | The custom network your *arr containers are on, if the settings use container names (see below) |
 | Extra Parameters | `--read-only --cap-drop ALL --security-opt no-new-privileges` |
 | Post Arguments | Empty for movers/profilers, `--remove`, or `--empty-trash` |
-| Path | Container path `/config`, host path `/mnt/user/appdata/plex-library-helperr/config` |
+| Path | Container path `/config`, host path `/mnt/user/appdata/plex-library-helperr/config` (the web app's, it holds the settings) |
+| Variable | `HELPERR_SECRET_KEY` = the web app's |
 | Variable (optional) | `TZ` = your zone, e.g. `America/New_York`, for local log timestamps |
 
-- **Apply starts the container right away**, so set `dry_run = true` in `config.toml` first. With an empty `/config`, the first run creates `config.toml` from the example, which has no server URLs, so that run changes nothing.
+- **Apply starts the container right away**, and runs with the web app's settings.
 - **Turn Autostart off** on the Docker tab, or the job runs every time the array starts.
 - Run a job with **Start**; the container stops when the job finishes. Its log icon shows the output, and `logs/log.log` in the config folder keeps it.
 - Updates show on the Docker tab like any other container (or let the CA Auto Update plugin apply them).
 - If the run fails with `Permission denied: '/config/logs'`, the container user can't write the config folder: `chown 99:100 /mnt/user/appdata/plex-library-helperr/config`.
 
-URLs in `config.toml` can't use `localhost`, which inside the container is the container itself. The server's IP works as it would from any other machine. Container names (e.g. `http://sonarr:8989`) work when this container is on the same custom network as those containers. Plex in host network mode has no container name to use, so give it the server's IP.
+Service URLs can't use `localhost`, which inside the container is the container itself. The server's IP works as it would from any other machine. Container names (e.g. `http://sonarr:8989`) work when this container is on the same custom network as those containers. Plex in host network mode has no container name to use, so give it the server's IP.
 
 ### User Script (alternative)
 
@@ -84,7 +83,7 @@ For running jobs from a schedule without the web app (with the web app, use its 
 ```bash
 #!/bin/bash
 IMAGE=ghcr.io/ryanthornburg/plex-library-helperr:latest
-# set only when config.toml uses container names
+# set only when the settings use container names
 NETWORK_ARGS=()  # e.g. NETWORK_ARGS=(--network my-docker-network)
 docker pull -q "$IMAGE"
 docker run --rm "${NETWORK_ARGS[@]}" \
@@ -97,21 +96,25 @@ docker image prune -f --filter "label=org.opencontainers.image.title=plex-librar
 ### Other
 
 - To build locally: `docker build -t plex-library-helperr .` in a clone of this repo.
-- Outside Docker, set `DATA_DIR` to keep `config.toml` and `logs/` somewhere other than the repo.
+- Outside Docker, set `DATA_DIR` to keep `helperr.db` and `logs/` somewhere other than the repo.
 
 ## Web app (in progress)
 
 `--serve` runs a web app for running and reviewing jobs:
 
-- Each job has a **Dry run** button, which forces every `dry_run` setting on, and a **Run…** button, which uses `config.toml` as-is. Run… always goes to a confirmation page that says whether the run will make changes. The UI can't make a run live that `config.toml` has as dry run, with one exception, approved remover plans:
-- **Remover plans:** every removers run saves its plan, the seasons/episodes it would remove from each series with their file paths. On a dry run's page, select series and review: the confirmation page shows how many files will be deleted, then an apply run removes them, even with `remover_settings.dry_run = true` (that setting keeps removers from deleting on their own; approving is the decision to delete). The apply run plans each approved series again from fresh Sonarr data and removes only seasons/episodes whose files were all approved and are still eligible: anything watched, replaced, downloading or no longer outside the keep window since is skipped and reported. `max_deletes` still applies. A plan can be applied once, within 7 days. Applying is off unless the container has `REMOVERS_ALLOW_APPLY=true`.
-- **Auto-approve:** the Removers page lists the remover rules in `config.toml`, each with an auto-approve switch (off by default, turning it on goes through a confirmation page). A removers run that uses `config.toml`'s settings (Run…, or a schedule without "Force dry run") deletes an auto-approved rule's removals without review, even with `remover_settings.dry_run = true`; other rules' removals are planned for review. Forced dry runs never delete, `max_deletes` applies, and it needs `REMOVERS_ALLOW_APPLY=true` like applying a plan. The switch is stored in the app's database by the rule's tags, so changing a rule's tags turns it back off.
-- **Follow-up empty trash:** 15 minutes after a live movers or removers run moves or removes files, the app queues an empty trash run with `config.toml`'s settings, so trash doesn't wait for a schedule. One that's blocked (e.g. a scan still running) is tried again, up to 3 runs per batch of changes. The empty trash card shows when the next follow-up is due.
-- **Webhooks:** with Radarr's *On Movie Added* and Sonarr's *On Series Add* webhooks pointed at the app, movers run as soon as something is added, so it moves to its root folder before anything downloads (no file move, no Plex trash). Adds close together share one run. Set it up from the Settings page, which shows the app's API key (generated on first start, regenerate any time) and the webhook URL: `http://plex-library-helperr:<PORT>/webhooks/arr`, method POST, and a header `X-Api-Key` set to the API key (versions without webhook headers can send it as the password, with any username). Radarr/Sonarr reach it over the shared Docker network; the key is only accepted there, and only starts movers. Keep a movers schedule as a safety net.
+- **Settings** are made in the app and stored in its database: connections to Radarr, Sonarr, Plex, Tautulli and Autoscan (with a Test button), dry run, movers and profilers per *arr, removers, empty trash, and the follow-up/plan defaults. Rule fields suggest values from Radarr/Sonarr/Plex (root folders, tags, genres, profiles, libraries…), and **Preview matches** shows what a mover or profiler would match in the whole library before you save it. Any change that turns a job's dry run off goes through a confirmation page.
+- **History:** every save is a version with who and when. A version's page shows what changed, and can restore it (as a new version).
+- **Secrets:** API keys, the Plex token and the Autoscan password are encrypted with `HELPERR_SECRET_KEY` before they're stored, kept out of the history, and never shown again: leave a key field empty to keep the saved one. If `HELPERR_SECRET_KEY` changes, the keys can't be decrypted and have to be entered again.
+- **config.toml** is imported once, on the first start with an empty database, then never read again. Delete it afterwards, it holds your keys in plain text. `remover_settings.dry_run` isn't imported (see auto-approve).
+- Each job has a **Dry run** button, which forces every dry run setting on, and a **Run…** button, which uses the settings as they are. Run… always goes to a confirmation page that says whether the run will make changes.
+- **Remover plans:** removers runs only plan. Every removers run saves its plan, the seasons/episodes it would remove from each series with their file paths. On the run's page, select series and review: the confirmation page shows how many files will be deleted, then an apply run removes them. The apply run plans each approved series again from fresh Sonarr data and removes only seasons/episodes whose files were all approved and are still eligible: anything watched, replaced, downloading or no longer outside the keep window since is skipped and reported. `max_deletes` still applies. A plan can be applied once, within 7 days (Settings → General). Applying is off unless the container has `REMOVERS_ALLOW_APPLY=true`.
+- **Auto-approve:** the Removers page lists the remover rules, each with an auto-approve switch (off by default, turning it on goes through a confirmation page). A removers run that isn't forced dry (Run…, or a schedule without "Force dry run") deletes an auto-approved rule's removals without review; other rules' removals are planned for review. Forced dry runs never delete, `max_deletes` applies, and it needs `REMOVERS_ALLOW_APPLY=true` like applying a plan. Editing or deleting a rule turns its auto-approve back off.
+- **Follow-up empty trash:** 15 minutes after a live movers or removers run moves or removes files, or Radarr/Sonarr upgrade a file (the webhook's *On File Upgrade*, under *On File Import*), the app queues an empty trash run with the settings' dry run, so trash doesn't wait for a schedule. Changes close together share one run, and a steady stream of upgrades waits at most four delays (an hour by default). One that's blocked (e.g. a scan still running) is tried again, up to 3 runs per batch of changes. The delay, attempts (0 turns it off) and look back are on Settings → General. The empty trash card shows when the next follow-up is due.
+- **Webhooks:** with Radarr's *On Movie Added* and Sonarr's *On Series Add* webhooks pointed at the app, movers run as soon as something is added, so it moves to its root folder before anything downloads (no file move, no Plex trash). Adds close together share one run. With *On File Import* and its *On File Upgrade* on as well (other imports are ignored), each upgrade queues a follow-up empty trash for the old file Plex keeps in its trash. Set it up from Settings → Webhook, which shows the app's API key (generated on first start, regenerate any time) and the webhook URL: `http://plex-library-helperr:<PORT>/webhooks/arr`, method POST, and a header `X-Api-Key` set to the API key (versions without webhook headers can send it as the password, with any username). Radarr/Sonarr reach it over the shared Docker network; the key is only accepted there, and only starts movers (and the follow-up empty trash). Keep a movers schedule as a safety net.
 - Jobs run one at a time in the order queued. A job that's already queued or running can't be queued again.
 - Every run is kept with who started it, what it changed (or would change), errors and its log. Runs interrupted by a restart are marked failed and never re-run automatically.
-- **Schedules** run a job on a cron expression (`minute hour day month weekday`, or `@hourly`/`@daily`/`@weekly`/`@monthly`) in the schedule's own time zone, which a new schedule takes from your browser. They're created and edited on the Schedules page and stored in the app's database, not `config.toml`. Like the buttons, a schedule either forces dry run (the default) or uses `config.toml`'s settings. A schedule whose job is still queued or running skips that time, and times missed while the app was down are skipped rather than caught up.
-- The same actions are available as JSON: `POST /api/jobs/<movers|removers|empty_trash>` (body `{"dry_run": false}` for a config run, dry by default), `GET /api/runs`, `GET /api/runs/<id>`, and `GET`/`POST /api/schedules`, `GET`/`PUT`/`DELETE /api/schedules/<id>` (body `{"name", "job", "cron", "timezone": "UTC", "dry_run": true, "enabled": true}`), `POST /api/runs/<id>/apply` (body `{"series_ids": [...]}`) to apply a removers plan, and `GET /api/removers`, `POST /api/removers/auto-approve` (body `{"rule": "<tags, lowercased, sorted, comma joined>", "enabled": true}`).
+- **Schedules** run a job on a cron expression (`minute hour day month weekday`, or `@hourly`/`@daily`/`@weekly`/`@monthly`) in the schedule's own time zone, which a new schedule takes from your browser. They're created and edited on the Schedules page. Like the buttons, a schedule either forces dry run (the default) or uses the settings. A schedule whose job is still queued or running skips that time, and times missed while the app was down are skipped rather than caught up.
+- The same actions are available as JSON: `POST /api/jobs/<movers|removers|empty_trash>` (body `{"dry_run": false}` for a config run, dry by default), `GET /api/runs`, `GET /api/runs/<id>`, and `GET`/`POST /api/schedules`, `GET`/`PUT`/`DELETE /api/schedules/<id>` (body `{"name", "job", "cron", "timezone": "UTC", "dry_run": true, "enabled": true}`), `POST /api/runs/<id>/apply` (body `{"series_ids": [...]}`) to apply a removers plan, `GET /api/removers`, `POST /api/removers/auto-approve` (body `{"rule": "<tags, lowercased, sorted, comma joined>", "enabled": true}`), and the settings: `GET /api/config` (the settings in config.toml's shape, without secrets, and its `version`), `PUT /api/config` (body `{"version", "config", "confirm_live": false}`: 409 when `version` isn't the current one, 422 when invalid or when it turns a job live without `confirm_live`; keys are only set on Settings → Connections), `GET /api/config/versions`, `GET /api/config/versions/<id>` and `POST /api/config/versions/<id>/restore` (body `{"version", "confirm_live": false}`).
 - Times on the pages are shown in your browser's time zone, so the container needs no `TZ`.
 
 The web app logs to `logs/web.log`, separate from the CLI's `logs/log.log`.
@@ -150,17 +153,31 @@ It is reached through a Cloudflare Tunnel, so the container publishes **no port*
 | Variable `CF_ACCESS_AUD` | the AUD tag from step 4 |
 | Variable `ALLOWED_EMAILS` | your Access email (comma separate more than one) |
 | Variable `REMOVERS_ALLOW_APPLY` | `true` to allow applying approved remover plans from the UI (default off). An environment variable so nothing in the app can turn it on |
+| Variable `HELPERR_SECRET_KEY` | 32+ random characters, e.g. from `openssl rand -hex 32`. Encrypts the API keys and tokens in the database; keep a copy, without it they have to be entered again. Mark it masked in the template |
 
-The database is `helperr.db` in `/config`, next to `config.toml`. Keep `/config` on a cache pool (not the array), since SQLite and Unraid's FUSE layer don't mix.
+The database is `helperr.db` in `/config`. Keep `/config` on a cache pool (not the array), since SQLite and Unraid's FUSE layer don't mix.
 
 ## Configuration
+
+Settings are edited in the web app. These are the keys of `config.toml`, which the app imports on its first start; `GET`/`PUT /api/config` use the same shape, without the keys and tokens.
 
 ### `[settings]`
 
 | Key           | Description                                                                                                           |
 |-----          |-------------                                                                                                          |
-| `dry_run`     | `true` to preview changes without applying them (default: `false`)                                                    |
-| `filter_time` | Only evaluate movies added within this window. Format: `7d`, `12h`, `30m`. Comment out/delete to evaluate all movies. |
+| `dry_run`     | `true` to preview changes without applying them (config.toml's default: `false`; the app's when it's missing: `true`) |
+| `filter_time` | Only evaluate movies added within this window. Format: `7d`, `12h`, `30m`. Comment out/delete to evaluate all movies. An invalid value is an error. |
+
+### `[web]` (optional)
+
+The web app's defaults, on Settings → General.
+
+| Key                 | Description                                                                                  |
+|-----                |-------------                                                                                 |
+| `followup_delay`    | Empty trash this long after a live run moved/removed files or an upgrade (default: `15m`)   |
+| `followup_attempts` | Follow-ups tried when blocked, e.g. by a scan, `0` turns them off (default: `3`)             |
+| `followup_lookback` | Runs and upgrades older than this aren't followed up (default: `2d`)                         |
+| `plan_max_age`      | A removers plan older than this can't be applied (default: `7d`)                             |
 
 ### `[plex]`
 
@@ -255,11 +272,10 @@ Assigns a quality profile to movies matched by title or studio/network.
 
 ### `[sonarr.remover_settings]`
 
-Only used by `--remove`.
+Only used by removers. There's no `dry_run`: removers only delete what was approved.
 
 | Key           | Description                                                                                                                |
 |-----          |-------------                                                                                                               |
-| `dry_run`     | `true` to log what would be removed without removing it (default: `true`). Separate from `[settings]` and `[sonarr]` `dry_run`. |
 | `max_deletes` | If a run would delete more files than this, nothing is removed. Removals only planned for review don't count. Omit for no limit. |
 
 ### `[[sonarr.removers]]`

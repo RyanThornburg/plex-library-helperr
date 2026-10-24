@@ -14,7 +14,7 @@ baseurl = ''
 token = ''
 
 # empty trash (main.py --empty-trash, or the web app, which also runs it after
-#   moves/removals). Old versions left by upgrades are in the trash too; items
+#   moves/removals/upgrades). Old versions left by upgrades are in the trash too; items
 #   with no version left are "fully deleted" and leave the library when emptied.
 [plex.empty_trash]
 libraries = ['TV Shows']  # omit or [] for every movie/show library
@@ -105,12 +105,12 @@ networks = [
 ]
 
 #############################################################
-# SONARR REMOVERS (only run with: main.py --remove)
+# SONARR REMOVERS
 #   Unmonitor then DELETE files of old seasons/episodes from series
-#   tagged in sonarr. filter_time is not used.
+#   tagged in sonarr. filter_time is not used. Removers only plan: the web
+#   app deletes what you approve, or a rule's removals with auto-approve on.
 #############################################################
 [sonarr.remover_settings]
-dry_run = true  # separate from [settings] dry_run, defaults to true if omitted
 max_deletes = 200  # remove nothing if a run would delete more files than this (plans for review don't count)
 
 # keep the latest 2 seasons of series tagged rm-keep-2-seasons

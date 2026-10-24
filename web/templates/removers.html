@@ -1,15 +1,19 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Removers</h1>
-<p class="muted">The remover rules in config.toml. With auto-approve on, a removers run that uses config.toml's settings (Run…, or a schedule without "Force dry run") deletes that rule's removals without review. Forced dry runs never delete, and <code>max_deletes</code> still applies. Other rules' removals wait in the run's plan for review.</p>
+<div class="heading">
+  <h1>Removers</h1>
+  <a class="button" href="/settings/sonarr/removers/new">Add remover</a>
+</div>
+<p class="muted">Unmonitor and delete old seasons/episodes of Sonarr series with a remover's tag. Removers runs only plan: you approve a plan on its run's page. With auto-approve on, a run that isn't forced dry (Run…, or a schedule without "Force dry run") deletes that rule's removals without review, and <code>max_deletes</code> still applies. Other rules' removals wait in the run's plan.</p>
 
+{% if saved %}<p class="banner banner-ok">Saved.</p>{% endif %}
 {% if not allow_apply %}
 <p class="banner banner-warn">Deleting from the app is turned off, so auto-approve has no effect and plans can't be applied. Set <code>REMOVERS_ALLOW_APPLY=true</code> on the container to allow it.</p>
 {% endif %}
 {% if config_error %}
-<p class="banner banner-bad">config.toml can't be loaded: {{ config_error }}</p>
+<p class="banner banner-bad">The settings can't be loaded: {{ config_error }}</p>
 {% elif not rules %}
-<p class="empty">No removers in config.toml.</p>
+<p class="empty">No removers yet.</p>
 {% else %}
 <table>
   <thead>
@@ -30,17 +34,32 @@
         {% if setting %}<br><span class="muted">{{ setting.updated_at | localtime }}</span>{% endif %}
       </td>
       <td>
-        {% if on %}
-        <form method="post" action="/removers/auto-approve?{{ {'rule': rule.key, 'enabled': 'false'} | urlencode }}">
-          <button type="submit" class="button-secondary">Turn off</button>
-        </form>
-        {% else %}
-        <a class="button button-secondary" href="/removers/auto-approve?{{ {'rule': rule.key} | urlencode }}">Turn on…</a>
-        {% endif %}
+        <div class="actions row-actions">
+          <a class="button button-secondary" href="/settings/sonarr/removers/{{ loop.index }}">Edit</a>
+          {% if on %}
+          <form method="post" action="/removers/auto-approve?{{ {'rule': rule.key, 'enabled': 'false'} | urlencode }}">
+            <button type="submit" class="button-secondary">Turn off</button>
+          </form>
+          {% else %}
+          <a class="button button-secondary" href="/removers/auto-approve?{{ {'rule': rule.key} | urlencode }}">Auto-approve…</a>
+          {% endif %}
+        </div>
       </td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
 {% endif %}
+
+<h2>Max deletes</h2>
+<form method="post" action="/settings/sonarr/remover-settings" class="form">
+  <input type="hidden" name="version" value="{{ version }}">
+  <label for="max_deletes">Per run</label>
+  <div>
+    <input id="max_deletes" name="max_deletes" type="number" min="1" value="{{ max_deletes or '' }}" placeholder="no limit">
+    <p class="hint">A run that would delete more files than this deletes nothing. Plans waiting for review don't count.</p>
+  </div>
+  <span></span>
+  <div class="actions"><button type="submit">Save</button></div>
+</form>
 {% endblock %}

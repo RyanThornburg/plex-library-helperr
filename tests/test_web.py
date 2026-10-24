@@ -4,23 +4,26 @@ import dataclasses
 import re
 import threading
 import time
+from datetime import datetime
 from types import SimpleNamespace
 
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
-from sqlalchemy import inspect
+from sqlalchemy import inspect, select
+from sqlalchemy.orm import Session
 
 from config.models import ArrConfig, ConfigSettings
 from results import Change, JobResult, PlannedFile, PlannedRemoval
 from web.app import create_app
-from web.db import make_engine, migrate
+from web.db import TrashEvent, make_engine, migrate
 from web.settings import WebSettings, load_web_settings
 
 TEAM = "rattsnest.cloudflareaccess.com"
 AUD = "a" * 64
 EMAIL = "me@example.com"
+SECRET_KEY = "s" * 40
 
 SIGNING_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 OTHER_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -56,6 +59,7 @@ def settings(tmp_path) -> WebSettings:
         audience=AUD,
         allowed_emails=frozenset({EMAIL}),
         database_path=tmp_path / "helperr.db",
+        secret_key=SECRET_KEY,
     )
 
 
@@ -203,25 +207,33 @@ class TestSettings:
                 "CF_ACCESS_AUD": AUD.upper(),
                 "ALLOWED_EMAILS": " Me@Example.com , other@example.com ",
                 "DATA_DIR": str(tmp_path),
+                "HELPERR_SECRET_KEY": f" {SECRET_KEY} ",
             }
         )
         assert settings.team_domain == TEAM
         assert settings.audience == AUD
         assert settings.allowed_emails == {EMAIL, "other@example.com"}
         assert settings.database_path == tmp_path / "helperr.db"
+        assert settings.secret_key == SECRET_KEY
+        assert SECRET_KEY not in repr(settings)
 
     def test_every_problem_is_reported(self):
         with pytest.raises(ValueError) as e:
             load_web_settings({"CF_ACCESS_TEAM_DOMAIN": "example.com", "REMOVERS_ALLOW_APPLY": "yes"})
-        for name in ("CF_ACCESS_TEAM_DOMAIN", "CF_ACCESS_AUD", "ALLOWED_EMAILS", "REMOVERS_ALLOW_APPLY"):
+        for name in ("CF_ACCESS_TEAM_DOMAIN", "CF_ACCESS_AUD", "ALLOWED_EMAILS", "REMOVERS_ALLOW_APPLY", "HELPERR_SECRET_KEY"):
             assert name in str(e.value)
 
     @pytest.mark.parametrize("value, allowed", [(None, False), ("false", False), (" True ", True)])
     def test_remover_apply_is_off_unless_set(self, value, allowed):
-        env = {"CF_ACCESS_TEAM_DOMAIN": TEAM, "CF_ACCESS_AUD": AUD, "ALLOWED_EMAILS": EMAIL}
+        env = {"CF_ACCESS_TEAM_DOMAIN": TEAM, "CF_ACCESS_AUD": AUD, "ALLOWED_EMAILS": EMAIL, "HELPERR_SECRET_KEY": SECRET_KEY}
         if value is not None:
             env["REMOVERS_ALLOW_APPLY"] = value
         assert load_web_settings(env).allow_remover_apply is allowed
+
+    def test_short_secret_key_refused(self):
+        env = {"CF_ACCESS_TEAM_DOMAIN": TEAM, "CF_ACCESS_AUD": AUD, "ALLOWED_EMAILS": EMAIL, "HELPERR_SECRET_KEY": "short"}
+        with pytest.raises(ValueError, match="HELPERR_SECRET_KEY"):
+            load_web_settings(env)
 
 
 class TestDatabase:
@@ -663,7 +675,7 @@ class TestRemoversPage:
             assert "Turn off" in c.get("/removers", headers=auth()).text
             c.post("/removers/auto-approve?rule=rm-housewives&enabled=false", headers={**auth(), **ORIGIN})
             assert c.app.state.runner.auto_approved_rules() == frozenset()
-            assert "nothing will be changed" in c.get("/jobs/removers/confirm", headers=auth()).text
+            assert "nothing is deleted until you approve" in c.get("/jobs/removers/confirm", headers=auth()).text
 
     def test_unknown_rule_cant_be_turned_on(self, settings):
         with TestClient(removers_app(settings)) as c:
@@ -685,7 +697,7 @@ class TestRemoversPage:
             c.post("/removers/auto-approve?rule=rm-housewives&enabled=true", headers={**auth(), **ORIGIN})
             assert "REMOVERS_ALLOW_APPLY=true" in c.get("/removers", headers=auth()).text
             assert c.app.state.runner.auto_approved_rules() == frozenset()
-            assert "nothing will be changed" in c.get("/jobs/removers/confirm", headers=auth()).text
+            assert "nothing is deleted until you approve" in c.get("/jobs/removers/confirm", headers=auth()).text
 
     def test_toggle_needs_same_origin(self, settings):
         with TestClient(removers_app(settings)) as c:
@@ -737,6 +749,19 @@ def basic(password: str, user: str = "helperr") -> dict[str, str]:
 
 
 MOVIE_ADDED = {"eventType": "MovieAdded", "instanceName": "Radarr", "movie": {"title": "Frankenstein", "year": 2025}}
+MOVIE_UPGRADED = {"eventType": "Download", "isUpgrade": True, "movie": {"title": "Frankenstein", "year": 2025}}
+EPISODES_UPGRADED = {
+    "eventType": "Download",
+    "isUpgrade": True,
+    "instanceName": "Sonarr 4K",
+    "series": {"title": "Survivor", "year": 2000},
+    "episodes": [{"seasonNumber": 1, "episodeNumber": 2}, {"seasonNumber": 1, "episodeNumber": 3}],
+}
+
+
+def trash_events(client) -> list[tuple[str, str]]:
+    with Session(client.app.state.engine) as session:
+        return [(e.event, e.source) for e in session.scalars(select(TrashEvent).order_by(TrashEvent.id))]
 
 
 class TestWebhooks:
@@ -756,12 +781,37 @@ class TestWebhooks:
         run = client.get(f"/api/runs/{response.json()['queued']}", headers=auth()).json()
         assert run["requested_by"] == "Sonarr: Survivor"
 
-    @pytest.mark.parametrize("event", ["Test", "Download", "Grab", ""])
-    def test_other_events_are_ignored(self, client, event):
-        response = client.post("/webhooks/arr", json={"eventType": event}, headers=basic(key_of(client)))
+    @pytest.mark.parametrize(
+        "body",
+        [{"eventType": "Test"}, {"eventType": "Download"}, {**MOVIE_UPGRADED, "isUpgrade": False}, {"eventType": "Grab"}, {"eventType": ""}],
+        ids=["test", "download", "import", "grab", "empty"],
+    )
+    def test_other_events_are_ignored(self, client, body):
+        response = client.post("/webhooks/arr", json=body, headers=basic(key_of(client)))
         assert response.status_code == 200
         assert response.json()["queued"] is None
         assert client.get("/api/runs", headers=auth()).json() == []
+        assert trash_events(client) == []
+
+    @pytest.mark.parametrize(
+        "body, source",
+        [(MOVIE_UPGRADED, "Radarr: Frankenstein (2025)"), (EPISODES_UPGRADED, "Sonarr 4K: Survivor (2000) S01E02,S01E03")],
+        ids=["radarr", "sonarr"],
+    )
+    def test_an_upgrade_is_recorded_for_a_follow_up_empty_trash(self, client, body, source):
+        response = client.post("/webhooks/arr", json=body, headers={"X-Api-Key": key_of(client)})
+        assert response.json() == {"event": "Download", "queued": None}
+        # plex hasn't scanned the upgrade yet, the scheduler empties trash later
+        assert client.get("/api/runs", headers=auth()).json() == []
+        assert trash_events(client) == [("Download", source)]
+        assert "Follow-up:" in client.get("/", headers=auth()).text
+
+    def test_old_upgrades_are_dropped(self, client):
+        with Session(client.app.state.engine) as session:
+            session.add(TrashEvent(received_at=datetime(2026, 1, 1), event="Download", source="old"))
+            session.commit()
+        client.post("/webhooks/arr", json=MOVIE_UPGRADED, headers={"X-Api-Key": key_of(client)})
+        assert trash_events(client) == [("Download", "Radarr: Frankenstein (2025)")]
 
     @pytest.mark.parametrize(
         "headers",
@@ -822,7 +872,7 @@ class TestWebhooks:
 
     def test_regenerate_replaces_the_key(self, client):
         old = key_of(client)
-        page = client.get("/settings", headers=auth()).text
+        page = client.get("/settings/webhook", headers=auth()).text
         assert f'value="{old}"' in page
         assert "/webhooks/arr" in page
         response = client.post("/settings/api-key", headers={**auth(), **ORIGIN}, follow_redirects=False)

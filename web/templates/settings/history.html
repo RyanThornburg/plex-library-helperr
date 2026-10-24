@@ -1,0 +1,22 @@
+{% extends "settings/_layout.html" %}
+{% set tab = "history" %}
+{% block settings %}
+<p class="muted">Every change to the settings is a version. Open one to see what changed, or to restore it. API keys and tokens aren't part of it: a change to one shows here, but not its value.</p>
+{% if versions %}
+<table>
+  <thead><tr><th>Version</th><th>Saved</th><th>By</th><th>Change</th></tr></thead>
+  <tbody>
+    {% for v in versions %}
+    <tr>
+      <td><a href="/settings/history/{{ v.id }}">{{ v.id }}</a>{% if loop.first %} <span class="tag">current</span>{% endif %}</td>
+      <td>{{ v.created_at | localtime }}</td>
+      <td class="muted">{{ v.created_by or "app" }}</td>
+      <td>{{ v.note }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">Nothing saved yet.</p>
+{% endif %}
+{% endblock %}
