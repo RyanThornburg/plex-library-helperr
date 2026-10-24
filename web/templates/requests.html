@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Requests · Helperr{% endblock %}
+{% block head %}{% if syncing %}<meta http-equiv="refresh" content="5">{% endif %}{% endblock %}
+{% block content %}
+<div class="heading">
+  <h1>Requests</h1>
+  <form method="post" action="/requests/sync">
+    <button type="submit" class="button-secondary"{% if syncing %} disabled{% endif %}>{{ "Syncing…" if syncing else "Sync now" }}</button>
+  </form>
+</div>
+<p class="muted">Seerr requests, and whether the person who asked watched them, from Tautulli's plays. Synced every hour.
+{% if status.finished_at %}Last sync {{ status.finished_at | localtime }}: {{ status.requests }} requests, {{ status.plays_read }} plays read.{% endif %}</p>
+{% if syncing %}<p class="banner">Syncing. The first sync copies all of Tautulli's history and takes a few minutes; this page refreshes until it's done.</p>{% endif %}
+{% if status.error %}<p class="banner banner-bad">{{ status.error }}</p>{% endif %}
+
+{% if users %}
+<h2>By requester</h2>
+<p class="muted">Declined requests are left out. Finished: watched the movie, or every episode Plex has of the requested seasons. Started: played any of it, including episodes Plex no longer has. Not started {{ stale_days }}d+: in Plex for {{ stale_days }} days or more, and they haven't played any of it.</p>
+<table>
+  <thead>
+    <tr><th>Requester</th><th>Requests</th><th>Last 90 days</th><th>Last request</th><th>In Plex</th><th>Finished</th><th>Started</th><th>Not started</th><th>Not started {{ stale_days }}d+</th></tr>
+  </thead>
+  <tbody>
+    {% for u in users %}
+    <tr>
+      <td><a href="/requests?{{ filters.query(user=u.id) | urlencode }}">{{ u.name }}</a>{% if u.plex_user_id is none %}<br><span class="muted">no Plex user matched</span>{% endif %}</td>
+      <td>{{ u.requests }}</td>
+      <td>{{ u.recent }}</td>
+      <td><time datetime="{{ u.last_requested_at }}Z">{{ u.last_requested_at[:10] }}</time></td>
+      <td>{{ u.available }}</td>
+      <td><a href="/requests?{{ filters.query(user=u.id, progress='finished', min_days=none) | urlencode }}">{{ u.finished }}</a>{% if u.finished_percent is not none %} <span class="muted">({{ u.finished_percent }}%)</span>{% endif %}</td>
+      <td><a href="/requests?{{ filters.query(user=u.id, progress='started', min_days=none) | urlencode }}">{{ u.started }}</a></td>
+      <td><a href="/requests?{{ filters.query(user=u.id, progress='not_started', min_days=none) | urlencode }}">{{ u.not_started }}</a></td>
+      <td><a href="/requests?{{ filters.query(user=u.id, progress='not_started', min_days=stale_days) | urlencode }}">{{ u.stale }}</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<h2>Requests</h2>
+<form method="get" action="/requests" class="filters">
+  <label>Requester
+    <select name="user">
+      <option value="">Anyone</option>
+      {% for u in users | sort(attribute="name") %}<option value="{{ u.id }}"{% if filters.user == u.id %} selected{% endif %}>{{ u.name }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Type
+    <select name="type">
+      <option value="">Any</option>
+      {% for key, label in TYPES.items() %}<option value="{{ key }}"{% if filters.type == key %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Progress
+    <select name="progress">
+      <option value="">Any</option>
+      {% for key, label in PROGRESS.items() %}<option value="{{ key }}"{% if filters.progress == key %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>In Plex for at least
+    <input name="min_days" type="number" min="0" value="{{ filters.min_days if filters.min_days is not none else '' }}" placeholder="any" class="input-days"> days
+  </label>
+  <div class="actions">
+    <button type="submit">Filter</button>
+    {% if filters.query() %}<a class="button button-secondary" href="/requests">Clear</a>{% endif %}
+  </div>
+</form>
+
+{% if not total %}
+<p class="empty">No requests synced yet.</p>
+{% elif not requests %}
+<p class="empty">No requests match.</p>
+{% else %}
+<p class="muted">{{ requests | length }} of {{ total }} requests.</p>
+<table>
+  <thead>
+    <tr><th>Title</th><th>Requester</th><th>Requested</th><th>In Plex since</th><th>Requester's progress</th><th>Last played</th><th>Others</th></tr>
+  </thead>
+  <tbody>
+    {% for r in requests %}
+    {% set state = progress(r) %}
+    <tr>
+      <td>
+        {{ r.title }}{% if r.year %} ({{ r.year }}){% endif %}
+        <br><span class="muted">{{ TYPES[r.media_type] }}{% if r.media_type == "tv" and r.seasons %}, season{{ "s" if r.seasons | length > 1 }} {{ r.seasons | join(", ") }}{% endif %}{% if r.is_4k %}, 4K{% endif %}{% if r.status not in ("approved", "completed") %}, {{ r.status }}{% endif %}</span>
+      </td>
+      <td>{{ r.requester }}</td>
+      <td>{{ r.requested_at | localtime }}</td>
+      <td>{% if r.available_at %}{{ r.available_at | localtime }}<br><span class="muted">{{ days_available(r, now) }} days</span>{% else %}-{% endif %}</td>
+      <td>
+        <span class="progress progress-{{ state }}">{{ PROGRESS[state] }}</span>
+        {% if r.media_type == "tv" and state in ("started", "finished", "not_started") %}<br><span class="muted">{{ r.watched }} of {{ r.items }} episodes{% if r.started > r.watched %}, {{ r.started - r.watched }} part watched{% endif %}</span>{% endif %}
+        {% if r.requester_plays %}<br><span class="muted">{{ r.requester_plays }} play{{ "s" if r.requester_plays != 1 }}</span>{% endif %}
+      </td>
+      <td>{{ r.last_played_at | localtime }}</td>
+      <td>{{ r.other_viewers or "-" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

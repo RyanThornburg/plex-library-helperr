@@ -306,6 +306,16 @@ def check_connection(service: str, values: dict[str, str]) -> str:
             if body.get("result") != "success":
                 raise LookupFailed(f"Tautulli refused: {body.get('message') or 'unknown error'}")
             return f"Tautulli {body.get('data', {}).get('tautulli_version', '')}"
+        if service == "seerr":
+            # status answers without a key, requests need it
+            headers = {"X-Api-Key": secret}
+            response = requests.get(f"{url}/api/v1/request", params={"take": 1}, headers=headers, timeout=TIMEOUT)
+            if response.status_code in (401, 403):
+                raise LookupFailed(f"Seerr refused the API key (HTTP {response.status_code})")
+            response.raise_for_status()
+            status = requests.get(f"{url}/api/v1/status", headers=headers, timeout=TIMEOUT)
+            status.raise_for_status()
+            return f"Seerr {status.json().get('version', '')}"
         if service == "autoscan":
             username = values.get("username", "")
             response = requests.get(

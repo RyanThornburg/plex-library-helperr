@@ -296,6 +296,17 @@ button:disabled { opacity: 0.4; cursor: default; }
 .diff-del { background: color-mix(in srgb, var(--bad) 15%, transparent); }
 .diff-hunk { color: var(--muted); }
 
+/* requests */
+.filters { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: end; margin: 0 0 12px; }
+.filters label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.filters select, .filters input { width: auto; }
+.input-days { max-width: 6em; }
+.progress { font-weight: 600; }
+.progress-finished { color: var(--ok); }
+.progress-started { color: var(--accent); }
+.progress-not_started { color: var(--bad); }
+.progress-unavailable, .progress-unmatched { color: var(--muted); }
+
 @media (max-width: 700px) {
   .services { grid-template-columns: 1fr; }
   .form-compact { grid-template-columns: 1fr; }

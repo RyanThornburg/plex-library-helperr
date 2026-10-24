@@ -154,6 +154,18 @@ class TestCheckConnection:
                 check_connection("autoscan", {"url": "http://a:3030", "username": "me", "secret": "pw"})
         assert get.call_args.kwargs["auth"] == ("me", "pw")
 
+    def test_seerr(self):
+        responses = [response(body={"results": []}), response(body={"version": "3.0.1"})]
+        with patch("web.lookups.requests.get", side_effect=responses) as get:
+            assert check_connection("seerr", {"url": "http://seerr:5055/", "secret": "key"}) == "Seerr 3.0.1"
+        assert get.call_args_list[0].args[0] == "http://seerr:5055/api/v1/request"
+        assert get.call_args_list[0].kwargs["headers"] == {"X-Api-Key": "key"}
+
+    def test_seerr_bad_key(self):
+        with patch("web.lookups.requests.get", return_value=response(403)):
+            with pytest.raises(LookupFailed, match="refused the API key"):
+                check_connection("seerr", {"url": "http://seerr:5055", "secret": "s3cret"})
+
     def test_plex(self):
         server = SimpleNamespace(friendlyName="rattplex", version="1.42")
         with patch("web.lookups.PlexServer", return_value=server):

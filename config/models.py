@@ -285,6 +285,17 @@ class TautulliConfig:
 
 
 @dataclass
+class SeerrConfig:
+    """Seerr (Overseerr) requests, for request stats"""
+
+    url: str
+    apikey: str
+
+    def __repr__(self):
+        return f"SeerrConfig(url={self.url},apikey={len(self.apikey) * '*'})"
+
+
+@dataclass
 class PlexConfig:
     """Plex class for refreshing library"""
 
@@ -364,8 +375,9 @@ class ConfigSettings:
     filter_time: timedelta | None = None
     autoscan: AutoscanConfig | None = None
     tautulli: TautulliConfig | None = None
+    seerr: SeerrConfig | None = None
     empty_trash: EmptyTrashSettings = field(default_factory=EmptyTrashSettings)
     web: WebDefaults = field(default_factory=WebDefaults)
 
     def __repr__(self):
-        return f"ConfigSettings(filter_time={self.filter_time}, web={self.web}, plex={self.plex}, empty_trash={self.empty_trash}, tautulli={self.tautulli}, autoscan={self.autoscan}, sonarr={self.sonarr}, radarr={self.radarr})"
+        return f"ConfigSettings(filter_time={self.filter_time}, web={self.web}, plex={self.plex}, empty_trash={self.empty_trash}, tautulli={self.tautulli}, seerr={self.seerr}, autoscan={self.autoscan}, sonarr={self.sonarr}, radarr={self.radarr})"

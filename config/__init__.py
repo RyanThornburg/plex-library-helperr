@@ -19,6 +19,7 @@ from config.models import (
     ProfileRule,
     RemoverRule,
     RemoverSettings,
+    SeerrConfig,
     TautulliConfig,
     WebDefaults,
 )
@@ -170,6 +171,7 @@ def build_config(data: Mapping[str, Any]) -> ConfigSettings:
     raw_settings = data.get("settings", {})
     plex_config = data.get("plex", {})
     tautulli_config = data.get("tautulli", {})
+    seerr_config = data.get("seerr", {})
     autoscan_config = data.get("autoscan", {})
     radarr_config = data.get("radarr")
     sonarr_config = data.get("sonarr")
@@ -193,6 +195,11 @@ def build_config(data: Mapping[str, Any]) -> ConfigSettings:
     tautulli = (
         TautulliConfig(url=tautulli_config["url"], apikey=tautulli_config["apikey"])
         if tautulli_config.get("url") and tautulli_config.get("apikey")
+        else None
+    )
+    seerr = (
+        SeerrConfig(url=seerr_config["url"], apikey=seerr_config["apikey"])
+        if seerr_config.get("url") and seerr_config.get("apikey")
         else None
     )
     autoscan = (
@@ -223,6 +230,7 @@ def build_config(data: Mapping[str, Any]) -> ConfigSettings:
         filter_time=filter_time,
         autoscan=autoscan,
         tautulli=tautulli,
+        seerr=seerr,
         empty_trash=empty_trash,
         web=_build_web(data.get("web", {})),
     )

@@ -143,6 +143,84 @@ class TrashEvent(Base):
     source: Mapped[str] = mapped_column(String(320))
 
 
+class Play(Base):
+    """a play from Tautulli's history, copied by web.stats so request stats don't read all
+    of it every time. Matched to requests by plex guid, which survives a move to another
+    library (a rating key doesn't), and a show's by its rating key too, which covers
+    episodes plex no longer has"""
+
+    __tablename__ = "plays"
+
+    # tautulli's history id
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
+    started_at: Mapped[datetime] = mapped_column(index=True)  # naive utc
+    stopped_at: Mapped[datetime | None]
+    # plex account id, like a seerr user's plexId
+    user_id: Mapped[int] = mapped_column(index=True)
+    username: Mapped[str] = mapped_column(String(255))
+    # movie, episode, track...
+    media_type: Mapped[str] = mapped_column(String(16))
+    rating_key: Mapped[int | None]
+    # an episode's show
+    grandparent_rating_key: Mapped[int | None] = mapped_column(index=True)
+    season: Mapped[int | None]
+    episode: Mapped[int | None]
+    # plex://movie/..., plex://episode/... (local://... for unmatched files), or before
+    # plex's new agents com.plexapp.agents.thetvdb://121361/6/1 (?lang= dropped)
+    guid: Mapped[str] = mapped_column(String(255), index=True)
+    title: Mapped[str] = mapped_column(String(500))
+    percent_complete: Mapped[int]
+    # reached tautulli's watched percent
+    watched: Mapped[bool]
+    play_duration: Mapped[int | None]  # seconds
+    # direct play, copy, transcode
+    transcode_decision: Mapped[str | None] = mapped_column(String(32))
+    platform: Mapped[str | None] = mapped_column(String(64))
+    product: Mapped[str | None] = mapped_column(String(64))
+    player: Mapped[str | None] = mapped_column(String(255))
+
+
+class MediaRequest(Base):
+    """a seerr request with how much of it the requester watched, rewritten by every
+    web.stats sync"""
+
+    __tablename__ = "media_requests"
+
+    # seerr's request id
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
+    # movie or tv
+    media_type: Mapped[str] = mapped_column(String(8))
+    tmdb_id: Mapped[int | None]
+    tvdb_id: Mapped[int | None]
+    title: Mapped[str] = mapped_column(String(500))
+    year: Mapped[int | None]
+    # the request's: pending, approved, declined, failed, completed
+    status: Mapped[str] = mapped_column(String(16))
+    # the media's: pending, processing, partially available, available, deleted...
+    media_status: Mapped[str] = mapped_column(String(32))
+    is_4k: Mapped[bool]
+    # requested seasons, empty for a movie
+    seasons: Mapped[list[int]] = mapped_column(JSON)
+    requested_at: Mapped[datetime] = mapped_column(index=True)
+    available_at: Mapped[datetime | None]
+    # seerr's user id and display name
+    requester_id: Mapped[int] = mapped_column(index=True)
+    requester: Mapped[str] = mapped_column(String(255))
+    # the requester's plex account (Play.user_id), None when no tautulli user matched
+    requester_user_id: Mapped[int | None]
+    # 1 for a movie in plex, or the episodes plex has of the requested seasons
+    items: Mapped[int]
+    # of those, how many the requester finished / played at all
+    watched: Mapped[int]
+    started: Mapped[int]
+    # the requester's plays of it, including episodes plex no longer has
+    requester_plays: Mapped[int]
+    last_played_at: Mapped[datetime | None]
+    # other people who played any of it
+    other_viewers: Mapped[int]
+    synced_at: Mapped[datetime]
+
+
 def make_engine(path: pathlib.Path) -> Engine:
     engine = create_engine(f"sqlite:///{path}")
 

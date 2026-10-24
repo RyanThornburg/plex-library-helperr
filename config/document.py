@@ -16,6 +16,7 @@ SECRET_FIELDS: dict[str, tuple[str, str]] = {
     "sonarr.apikey": ("sonarr", "apikey"),
     "plex.token": ("plex", "token"),
     "tautulli.apikey": ("tautulli", "apikey"),
+    "seerr.apikey": ("seerr", "apikey"),
     "autoscan.password": ("autoscan", "password"),
 }
 
