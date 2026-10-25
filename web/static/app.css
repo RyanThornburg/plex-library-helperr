@@ -299,6 +299,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 /* requests */
 .filters { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: end; margin: 0 0 12px; }
 .filters label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.filters label[hidden] { display: none; }
 .filters select, .filters input { width: auto; }
 .input-days { max-width: 6em; }
 .progress { font-weight: 600; }

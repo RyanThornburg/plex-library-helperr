@@ -19,6 +19,18 @@ if (zone) {
   if ([...zone.options].some((option) => option.value === browser)) zone.value = browser;
 }
 
+// the from/to dates of a period filter only show for a custom period
+const period = document.querySelector("select[data-period]");
+if (period) {
+  const toggle = () => {
+    for (const field of period.form.querySelectorAll("[data-period-custom]")) {
+      field.hidden = period.value !== "custom";
+    }
+  };
+  period.addEventListener("change", toggle);
+  toggle();
+}
+
 // a "select all" box in a table header toggles the named checkboxes in its form
 for (const all of document.querySelectorAll("input[data-select-all]")) {
   const boxes = () => all.form.querySelectorAll(`input[name="${all.dataset.selectAll}"]`);

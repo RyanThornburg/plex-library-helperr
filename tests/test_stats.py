@@ -1,6 +1,6 @@
 """Tests for request stats: the plays/requests sync and the requests page"""
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -487,32 +487,78 @@ class TestProgress:
         assert progress(stored_request(1, **fields)) == expected
 
 
+class TestPeriodRange:
+    NOW = datetime(2026, 10, 25, 12)
+
+    @pytest.mark.parametrize(
+        "period, since, until, expected",
+        [
+            # the start of the year, not 365 days
+            ("year", None, None, (datetime(2026, 1, 1), None)),
+            ("last_year", None, None, (datetime(2025, 1, 1), datetime(2026, 1, 1))),
+            ("30d", None, None, (datetime(2026, 9, 25, 12), None)),
+            ("365d", None, None, (datetime(2025, 10, 25, 12), None)),
+            ("all", None, None, (None, None)),
+            # until is inclusive
+            ("custom", date(2026, 3, 1), date(2026, 3, 31), (datetime(2026, 3, 1), datetime(2026, 4, 1))),
+            ("custom", None, None, (None, None)),
+        ],
+    )
+    def test_period_range(self, period, since, until, expected):
+        from web.stats_routes import period_range
+
+        assert period_range(period, since, until, self.NOW) == expected
+
+
 class TestRequestsPage:
     def test_lists_requests_and_requesters(self, client):
-        page = client.get("/requests", headers=auth())
+        page = client.get("/requests?period=all", headers=auth())
         assert page.status_code == 200
         assert "Title 3" in page.text and "3 of 10 episodes, 1 part watched" in page.text
         assert "no Plex user matched" in page.text
 
     def test_filters(self, client):
-        body = client.get("/api/requests?progress=not_started&min_days=30", headers=auth()).json()
+        body = client.get("/api/requests?period=all&progress=not_started&min_days=30", headers=auth()).json()
         # 6 is declined but still a request that wasn't started
         assert sorted(r["id"] for r in body["requests"]) == [1, 6]
-        body = client.get("/api/requests?user=8", headers=auth()).json()
+        body = client.get("/api/requests?period=all&user=8", headers=auth()).json()
         assert [r["progress"] for r in body["requests"]] == ["unmatched"]
-        body = client.get("/api/requests?type=tv", headers=auth()).json()
+        body = client.get("/api/requests?period=all&type=tv", headers=auth()).json()
         assert [r["id"] for r in body["requests"]] == [3]
 
-    @pytest.mark.parametrize("query", ["user=x", "min_days=-1", "type=book", "progress=done"])
+    @pytest.mark.parametrize(
+        "query",
+        ["user=x", "min_days=-1", "type=book", "progress=done", "period=decade", "since=x", "period=custom&until=2026-13-01", "since=2026-02-01&until=2026-01-01"],
+    )
     def test_bad_filters(self, client, query):
         assert client.get(f"/api/requests?{query}", headers=auth()).status_code == 422
 
     def test_users(self, client):
-        users = {u["name"]: u for u in client.get("/api/requests/users", headers=auth()).json()["users"]}
+        users = {u["name"]: u for u in client.get("/api/requests/users?period=all", headers=auth()).json()["users"]}
         kev = users["Kev"]
         assert (kev["requests"], kev["available"], kev["finished"], kev["started"], kev["not_started"], kev["stale"]) == (4, 3, 1, 1, 1, 1)
         assert kev["finished_percent"] == 33
         assert users["Sam"]["finished_percent"] is None
+
+    def test_period(self, client):
+        # 3 was requested 6 days ago, the rest 41
+        body = client.get("/api/requests?period=30d", headers=auth()).json()
+        assert [r["id"] for r in body["requests"]] == [3]
+        today = utc_now().date()
+        since = (today - timedelta(days=10)).isoformat()
+        body = client.get(f"/api/requests?since={since}&until={today}", headers=auth()).json()
+        assert [r["id"] for r in body["requests"]] == [3]
+        # a custom period's dates are ignored by the others
+        body = client.get(f"/api/requests?period=all&since={since}", headers=auth()).json()
+        assert len(body["requests"]) == 6
+        body = client.get("/api/requests/users?period=30d", headers=auth()).json()
+        assert [(u["name"], u["requests"]) for u in body["users"]] == [("Kev", 1)]
+        assert body["period"] == "30d" and body["to"] is None
+
+    def test_the_page_defaults_to_this_year(self, client):
+        page = client.get("/requests", headers=auth())
+        assert '<option value="year" selected>' in page.text
+        assert "made this year" in page.text
 
     def test_sync_now(self, client):
         with patch.object(client.app.state.stats, "sync_now") as sync_now:
