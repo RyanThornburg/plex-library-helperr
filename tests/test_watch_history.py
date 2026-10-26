@@ -69,6 +69,30 @@ class TestTautulliWatches:
         assert events[0].tvdb_id is None
         assert events[0].title == "Survivor"
 
+    def test_show_gone_from_plex_falls_back_to_title(self):
+        # a moved show has a new rating key, tautulli answers 400 for the old one
+        def fake_get(url, params, timeout):
+            if params["cmd"] == "get_history":
+                return tautulli_response({"data": [history_row()]})
+            r = MagicMock(status_code=400)
+            r.raise_for_status.side_effect = requests.exceptions.HTTPError(response=r)
+            return r
+
+        with patch.object(watch_history.requests, "get", side_effect=fake_get):
+            events = get_tautulli_watches(TAUTULLI, SINCE)
+        assert events == [WatchEvent(None, "Survivor", 3, 4, datetime(2026, 9, 10, 1))]
+
+    def test_metadata_server_error_returns_none(self):
+        def fake_get(url, params, timeout):
+            if params["cmd"] == "get_history":
+                return tautulli_response({"data": [history_row()]})
+            r = MagicMock(status_code=500)
+            r.raise_for_status.side_effect = requests.exceptions.HTTPError(response=r)
+            return r
+
+        with patch.object(watch_history.requests, "get", side_effect=fake_get):
+            assert get_tautulli_watches(TAUTULLI, SINCE) is None
+
     def test_rows_before_since_dropped(self):
         old = ts(datetime(2026, 8, 31, 23))
         events, _ = self._run([history_row(date=old, stopped=old)])

@@ -59,7 +59,14 @@ def _tautulli(config: TautulliConfig, cmd: str, **params: object) -> object:
 
 
 def _tautulli_show_tvdb_id(config: TautulliConfig, rating_key: object) -> int | None:
-    data = _tautulli(config, "get_metadata", rating_key=rating_key)
+    try:
+        data = _tautulli(config, "get_metadata", rating_key=rating_key)
+    except requests.exceptions.HTTPError as e:
+        # tautulli answers 400 for a rating key plex no longer has (the show was
+        # deleted, or moved to another library, which gives it a new key)
+        if e.response is None or e.response.status_code != 400:
+            raise
+        return None
     if not isinstance(data, dict) or not data:
         return None
     return _tvdb_from_guids([*data.get("guids", []), data.get("guid") or ""])
