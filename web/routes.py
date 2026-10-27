@@ -15,7 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 import config
-from config.models import ConfigSettings, RemoverRule
+from config.models import ConfigSettings, MovieRemoverRule, RemoverRule
 from results import JOBS
 from web.db import JobRun, RemoverRuleSetting, Schedule
 from web.jobs import (
@@ -25,6 +25,8 @@ from web.jobs import (
     ApplyRefused,
     JobRunner,
     approvable,
+    removal_key,
+    removal_service,
     utc_now,
 )
 from web.scheduler import ZONES, next_run_at, schedule_errors, trash_followup_due
@@ -41,8 +43,8 @@ JOB_INFO: dict[str, tuple[str, str]] = {
         "Move media to the root folders in your mover rules and set quality profiles.",
     ),
     "removers": (
-        "Sonarr removers",
-        "Unmonitor and delete old seasons/episodes of tagged series.",
+        "Removers",
+        "Plan deleting old seasons/episodes of tagged series and old movies in root folders.",
     ),
     "empty_trash": (
         "Empty Plex trash",
@@ -84,6 +86,8 @@ templates.env.globals["duration"] = duration
 templates.env.globals["run_source"] = run_source
 templates.env.globals["JOB_INFO"] = JOB_INFO
 templates.env.globals["APPROVABLE"] = APPROVABLE
+templates.env.globals["removal_key"] = removal_key
+templates.env.globals["removal_service"] = removal_service
 
 # a schedule form is a few short fields
 MAX_FORM_BYTES = 10_000
@@ -134,17 +138,22 @@ def check_job(job: str) -> None:
         raise HTTPException(status_code=404)
 
 
-def auto_approved(request: Request, settings: ConfigSettings) -> list[RemoverRule]:
+def all_removers(settings: ConfigSettings) -> list[RemoverRule | MovieRemoverRule]:
+    """sonarr's removers, then radarr's"""
+    return [r for arr in (settings.sonarr, settings.radarr) if arr for r in arr.removers]
+
+
+def auto_approved(
+    request: Request, settings: ConfigSettings
+) -> list[RemoverRule | MovieRemoverRule]:
     """the configured removers that delete without review"""
     keys = runner(request).auto_approved_rules()
-    if not keys or not settings.sonarr:
-        return []
-    return [r for r in settings.sonarr.removers if r.key in keys]
+    return [r for r in all_removers(settings) if r.key in keys] if keys else []
 
 
 def config_modes(
     request: Request,
-) -> tuple[dict[str, bool | None], str | None, list[RemoverRule]]:
+) -> tuple[dict[str, bool | None], str | None, list[RemoverRule | MovieRemoverRule]]:
     """each job's dry run state as configured (None when partly live), any error loading
     the config and the auto-approved removers"""
     try:
@@ -349,22 +358,36 @@ def run_page(request: Request, run_id: int) -> HTMLResponse:
 
 
 def apply_confirm(
-    request: Request, run_id: int, series: list[int], error: str | None = None
+    request: Request, run_id: int, items: list[str], error: str | None = None
 ) -> HTMLResponse:
     run = get_run(request, run_id)
-    selected = [r for r in approvable(run) if r["series_id"] in set(series)]
+    selected = [r for r in approvable(run) if removal_key(r) in set(items)]
     with Session(request.app.state.engine) as session:
         problem = error or runner(request).apply_problem(session, run)
-    if problem is None and (not selected or len(selected) != len(set(series))):
-        problem = "Select at least one series from the plan."
-    max_deletes = None
+    if problem is None and (not selected or len(selected) != len(set(items))):
+        problem = "Select at least one series or movie from the plan."
+    # each arr's removals and files, checked against its own max_deletes
+    arrs: list[dict[str, Any]] = []
     try:
-        sonarr = request.app.state.load_config().sonarr
-        if sonarr:
-            max_deletes = sonarr.remover_settings.max_deletes
+        settings = request.app.state.load_config()
     except Exception:  # the run would fail the same way, its log will say why
-        pass
-    total = sum(len(r["files"]) for r in selected)
+        settings = None
+    for service in ("SONARR", "RADARR"):
+        removals = [r for r in selected if removal_service(r) == service]
+        if not removals:
+            continue
+        arr = getattr(settings, service.lower()) if settings else None
+        max_deletes = arr.remover_settings.max_deletes if arr else None
+        files = sum(len(r["files"]) for r in removals)
+        arrs.append(
+            {
+                "service": service,
+                "removals": removals,
+                "files": files,
+                "max_deletes": max_deletes,
+                "over_max": max_deletes is not None and files > max_deletes,
+            }
+        )
     return templates.TemplateResponse(
         request,
         "apply_confirm.html",
@@ -372,11 +395,11 @@ def apply_confirm(
             "user": request.state.user,
             "run": run,
             "selected": selected,
-            "total": total,
+            "arrs": arrs,
+            "total": sum(a["files"] for a in arrs),
             "problem": problem,
-            "over_max": max_deletes is not None and total > max_deletes,
-            "max_deletes": max_deletes,
-            "query": urlencode([("series", r["series_id"]) for r in selected]),
+            "over_max": any(a["over_max"] for a in arrs),
+            "query": urlencode([("item", removal_key(r)) for r in selected]),
         },
         status_code=400 if error else 200,
     )
@@ -384,22 +407,23 @@ def apply_confirm(
 
 @router.get("/runs/{run_id}/apply", response_class=HTMLResponse)
 def apply_confirm_page(
-    request: Request, run_id: int, series: list[int] = Query(default=[])
+    request: Request, run_id: int, item: list[str] = Query(default=[])
 ) -> HTMLResponse:
-    """the plan's form gets here with ?series=..., says exactly what will be deleted"""
-    return apply_confirm(request, run_id, series)
+    """the plan's form gets here with ?item=sonarr:1&item=radarr:2..., says exactly what
+    will be deleted"""
+    return apply_confirm(request, run_id, item)
 
 
 @router.post("/runs/{run_id}/apply", response_model=None)
 def apply_plan_form(
-    request: Request, run_id: int, series: list[int] = Query(default=[])
+    request: Request, run_id: int, item: list[str] = Query(default=[])
 ) -> Response:
     try:
-        new_id = runner(request).submit_apply(run_id, series, "manual", request.state.user)
+        new_id = runner(request).submit_apply(run_id, item, "manual", request.state.user)
     except LookupError:
         raise HTTPException(status_code=404) from None
     except ApplyRefused as e:
-        return apply_confirm(request, run_id, series, str(e))
+        return apply_confirm(request, run_id, item, str(e))
     except AlreadyActive as e:
         new_id = e.run_id
     return RedirectResponse(f"/runs/{new_id}", status_code=303)
@@ -527,9 +551,9 @@ def delete_schedule_form(request: Request, schedule_id: int) -> RedirectResponse
     return RedirectResponse("/schedules", status_code=303)
 
 
-def remover_rules(request: Request) -> tuple[list[RemoverRule], str | None]:
+def remover_rules(request: Request) -> tuple[list[RemoverRule | MovieRemoverRule], str | None]:
     settings, error = remover_config(request)
-    return (settings.sonarr.removers if settings and settings.sonarr else []), error
+    return (all_removers(settings) if settings else []), error
 
 
 def remover_config(request: Request) -> tuple[ConfigSettings | None, str | None]:
@@ -569,13 +593,16 @@ def set_auto_approve(request: Request, rule_key: str, enabled: bool) -> None:
 def removers_page(request: Request) -> HTMLResponse:
     settings, config_error = remover_config(request)
     sonarr = settings.sonarr if settings else None
+    radarr = settings.radarr if settings else None
     return templates.TemplateResponse(
         request,
         "removers.html",
         {
             "user": request.state.user,
             "rules": sonarr.removers if sonarr else [],
+            "movie_rules": radarr.removers if radarr else [],
             "max_deletes": sonarr.remover_settings.max_deletes if sonarr else None,
+            "movie_max_deletes": radarr.remover_settings.max_deletes if radarr else None,
             "config_error": config_error,
             "settings": rule_settings(request),
             "allow_apply": runner(request).allow_apply,
@@ -630,16 +657,18 @@ def api_run_job(request: Request, job: str, body: RunRequest) -> JSONResponse:
 
 
 class ApplyRequest(BaseModel):
-    series_ids: list[int]
+    # removal keys: sonarr:<series id> or radarr:<movie id>
+    items: list[str] = []
+    # sonarr series, from before radarr removers
+    series_ids: list[int] = []
 
 
 @router.post("/api/runs/{run_id}/apply", status_code=202)
 def api_apply_plan(request: Request, run_id: int, body: ApplyRequest) -> JSONResponse:
-    """removes the approved series of a removers run's plan"""
+    """removes the approved series/movies of a removers run's plan"""
+    keys = body.items + [f"sonarr:{series_id}" for series_id in body.series_ids]
     try:
-        new_id = runner(request).submit_apply(
-            run_id, body.series_ids, "api", request.state.user
-        )
+        new_id = runner(request).submit_apply(run_id, keys, "api", request.state.user)
     except LookupError:
         raise HTTPException(status_code=404) from None
     except ApplyRefused as e:
@@ -650,7 +679,9 @@ def api_apply_plan(request: Request, run_id: int, body: ApplyRequest) -> JSONRes
 
 
 class AutoApproveRequest(BaseModel):
-    rule: str  # RemoverRule.key, its tags casefolded, sorted and comma joined
+    # RemoverRule.key, its tags casefolded, sorted and comma joined, or
+    # MovieRemoverRule.key, radarr:<root folder>
+    rule: str
     enabled: bool
 
 
@@ -664,10 +695,12 @@ def api_removers(request: Request) -> list[dict[str, Any]]:
     return [
         {
             "rule": r.key,
-            "type": r.type,
-            "keep": r.keep,
-            "tags": r.tags,
             "auto_approve": r.key in settings and settings[r.key].auto_approve,
+            **(
+                {"service": "SONARR", "type": r.type, "keep": r.keep, "tags": r.tags}
+                if isinstance(r, RemoverRule)
+                else {"service": "RADARR", "path": r.root}
+            ),
         }
         for r in rules
     ]

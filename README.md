@@ -31,7 +31,7 @@ uv sync
 # Run movers and profilers
 uv run main.py
 
-# Run Sonarr removers only (movers and profilers are skipped)
+# Run removers only, they plan for review (movers and profilers are skipped)
 uv run main.py --remove
 
 # Empty Plex library trash only
@@ -108,7 +108,7 @@ docker image prune -f --filter "label=org.opencontainers.image.title=plex-librar
 - **Secrets:** API keys, the Plex token and the Autoscan password are encrypted with `HELPERR_SECRET_KEY` before they're stored, kept out of the history, and never shown again: leave a key field empty to keep the saved one. If `HELPERR_SECRET_KEY` changes, the keys can't be decrypted and have to be entered again.
 - **config.toml** is imported once, on the first start with an empty database, then never read again. Delete it afterwards, it holds your keys in plain text. `remover_settings.dry_run` isn't imported (see auto-approve).
 - Each job has a **Dry run** button, which forces every dry run setting on, and a **Run…** button, which uses the settings as they are. Run… always goes to a confirmation page that says whether the run will make changes.
-- **Remover plans:** removers runs only plan. Every removers run saves its plan, the seasons/episodes it would remove from each series with their file paths. On the run's page, select series and review: the confirmation page shows how many files will be deleted, then an apply run removes them. The apply run plans each approved series again from fresh Sonarr data and removes only seasons/episodes whose files were all approved and are still eligible: anything watched, replaced, downloading or no longer outside the keep window since is skipped and reported. `max_deletes` still applies. A plan can be applied once, within 7 days (Settings → General). Applying is off unless the container has `REMOVERS_ALLOW_APPLY=true`.
+- **Remover plans:** removers runs only plan. Every removers run saves its plan: the seasons/episodes it would remove from each series, and the movies Radarr removers would delete, with their file paths. On the run's page, select series/movies and review: the confirmation page shows how many files will be deleted, then an apply run removes them. The apply run plans each approved series or movie again from fresh Sonarr/Radarr data and removes only what was approved and is still eligible: anything watched, replaced, downloading or no longer outside the keep window since is skipped and reported. Each *arr's `max_deletes` still applies. A plan can be applied once, within 7 days (Settings → General). Applying is off unless the container has `REMOVERS_ALLOW_APPLY=true`.
 - **Auto-approve:** the Removers page lists the remover rules, each with an auto-approve switch (off by default, turning it on goes through a confirmation page). A removers run that isn't forced dry (Run…, or a schedule without "Force dry run") deletes an auto-approved rule's removals without review; other rules' removals are planned for review. Forced dry runs never delete, `max_deletes` applies, and it needs `REMOVERS_ALLOW_APPLY=true` like applying a plan. Editing or deleting a rule turns its auto-approve back off.
 - **Follow-up empty trash:** 15 minutes after a live movers or removers run moves or removes files, or Radarr/Sonarr upgrade a file (the webhook's *On File Upgrade*, under *On File Import*), the app queues an empty trash run with the settings' dry run, so trash doesn't wait for a schedule. Changes close together share one run, and a steady stream of upgrades waits at most four delays (an hour by default). One that's blocked (e.g. a scan still running) is tried again, up to 3 runs per batch of changes. The delay, attempts (0 turns it off) and look back are on Settings → General. The empty trash card shows when the next follow-up is due.
 - **Requests:** with Seerr, Tautulli and Plex connected, the Requests page shows every Seerr request, who made it, when it reached Plex, and how much of it the requester has watched (a movie finished, started or not; a show as episodes of the requested seasons), plus how many other people played it. A table per requester counts their requests and what became of them, including how many they haven't started after 30 days in Plex. Both cover requests made in a period, this calendar year by default (also last year, the last 30/90 days or 12 months, all time, or custom dates), with filters for requester, type, progress and days in Plex (`/api/requests`, `/api/requests/users`, `period=year|last_year|30d|90d|365d|all|custom` with `since`/`until`). It syncs every hour in the background (and with **Sync now**): the first sync copies Tautulli's whole history into the app's database, which takes a few minutes, later ones only what's new. Plays are matched by Plex's own ids, so media moved to another library keeps its history. It only reads; nothing is deleted.
@@ -117,7 +117,7 @@ docker image prune -f --filter "label=org.opencontainers.image.title=plex-librar
 - Jobs run one at a time in the order queued. A job that's already queued or running can't be queued again.
 - Every run is kept with who started it, what it changed (or would change), errors and its log. Runs interrupted by a restart are marked failed and never re-run automatically.
 - **Schedules** run a job on a cron expression (`minute hour day month weekday`, or `@hourly`/`@daily`/`@weekly`/`@monthly`) in the schedule's own time zone, which a new schedule takes from your browser. They're created and edited on the Schedules page. Like the buttons, a schedule either forces dry run (the default) or uses the settings. A schedule whose job is still queued or running skips that time, and times missed while the app was down are skipped rather than caught up.
-- The same actions are available as JSON: `POST /api/jobs/<movers|removers|empty_trash>` (body `{"dry_run": false}` for a config run, dry by default), `GET /api/runs`, `GET /api/runs/<id>`, and `GET`/`POST /api/schedules`, `GET`/`PUT`/`DELETE /api/schedules/<id>` (body `{"name", "job", "cron", "timezone": "UTC", "dry_run": true, "enabled": true}`), `POST /api/runs/<id>/apply` (body `{"series_ids": [...]}`) to apply a removers plan, `GET /api/removers`, `POST /api/removers/auto-approve` (body `{"rule": "<tags, lowercased, sorted, comma joined>", "enabled": true}`), and the settings: `GET /api/config` (the settings in config.toml's shape, without secrets, and its `version`), `PUT /api/config` (body `{"version", "config", "confirm_live": false}`: 409 when `version` isn't the current one, 422 when invalid or when it turns a job live without `confirm_live`; keys are only set on Settings → Connections), `GET /api/config/versions`, `GET /api/config/versions/<id>` and `POST /api/config/versions/<id>/restore` (body `{"version", "confirm_live": false}`).
+- The same actions are available as JSON: `POST /api/jobs/<movers|removers|empty_trash>` (body `{"dry_run": false}` for a config run, dry by default), `GET /api/runs`, `GET /api/runs/<id>`, and `GET`/`POST /api/schedules`, `GET`/`PUT`/`DELETE /api/schedules/<id>` (body `{"name", "job", "cron", "timezone": "UTC", "dry_run": true, "enabled": true}`), `POST /api/runs/<id>/apply` (body `{"items": ["sonarr:<series id>", "radarr:<movie id>"]}`, or the older `{"series_ids": [...]}` for Sonarr) to apply a removers plan, `GET /api/removers`, `POST /api/removers/auto-approve` (body `{"rule": "<a Sonarr remover's tags, lowercased, sorted, comma joined, or radarr:<root folder>>", "enabled": true}`), and the settings: `GET /api/config` (the settings in config.toml's shape, without secrets, and its `version`), `PUT /api/config` (body `{"version", "config", "confirm_live": false}`: 409 when `version` isn't the current one, 422 when invalid or when it turns a job live without `confirm_live`; keys are only set on Settings → Connections), `GET /api/config/versions`, `GET /api/config/versions/<id>` and `POST /api/config/versions/<id>/restore` (body `{"version", "confirm_live": false}`).
 - Times on the pages are shown in your browser's time zone, so the container needs no `TZ`.
 
 The web app logs to `logs/web.log`, separate from the CLI's `logs/log.log`.
@@ -205,7 +205,7 @@ A library is skipped while it is scanning, when its trash holds more than `max_i
 
 ### `[tautulli]` (optional)
 
-Watch history for remover watch protection (`skip_if_watched_within`). Tautulli is preferred because it records partial plays from every user. Without it, Plex server history is used, which only records completed plays. If neither is configured or the history can't be read, removers that use `skip_if_watched_within` are skipped for that run. The web app also uses it for the Status, Requests and Playback pages.
+Watch history for remover watch protection (`skip_if_watched_within`). Tautulli is preferred because it records partial plays from every user. Without it, Plex server history is used, which only records completed plays. If neither is configured or the history can't be read, removers that use `skip_if_watched_within` are skipped for that run. Radarr removers use the web app's copy of Tautulli's history instead (see `[[radarr.removers]]`). The web app also uses it for the Status, Requests and Playback pages.
 
 | Key      | Description                                                   |
 |-----     |-------------                                                  |
@@ -292,13 +292,13 @@ Assigns a quality profile to movies matched by title or studio/network.
 | `networks`    | List of networks to match **(Sonarr only)**                               |
 | `monitored`   | Set the monitored state (`true`/`false`), or omit to leave unchanged      |
 
-### `[sonarr.remover_settings]`
+### `[sonarr.remover_settings]` / `[radarr.remover_settings]`
 
-Only used by removers. There's no `dry_run`: removers only delete what was approved.
+Only used by removers. There's no `dry_run`: removers only delete what was approved. Each *arr has its own.
 
 | Key           | Description                                                                                                                |
 |-----          |-------------                                                                                                               |
-| `max_deletes` | If a run would delete more files than this, nothing is removed. Removals only planned for review don't count. Omit for no limit. |
+| `max_deletes` | If a run would delete more of this *arr's files than this, none of them are removed. Removals only planned for review don't count. Omit for no limit. |
 
 ### `[[sonarr.removers]]`
 
@@ -326,6 +326,25 @@ How rules are applied:
 - After removing, the folders are scanned by Autoscan, or `plex_library` is refreshed if Autoscan isn't configured.
 
 Example: `type = "seasons"`, `keep = 2`, `min_age = "90d"` on a series with seasons 1-5 removes seasons 1-3 once all their files are older than 90 days.
+
+### `[[radarr.removers]]`
+
+Deletes old movies, with their files, from a Radarr root folder (e.g. a Hallmark folder that only needs the last two years). The movie is removed from Radarr too, without an import exclusion. Like Sonarr removers, runs only plan: you approve on the run's page, or turn on auto-approve for the rule. Configured on the Removers page.
+
+| Key                      | Description                                                                                                  |
+|-----                     |-------------                                                                                                 |
+| `path`                   | **Required.** The Radarr root folder whose movies this remover checks. A root folder can only belong to one remover. |
+| `min_age`                | **Required.** A movie is removed once it was both added to Radarr and released longer ago than this (`730d`). An invalid value is a config error. |
+| `exclude_tags`           | Skip movies with any of these Radarr tags                                                                    |
+| `skip_if_ever_watched`   | `true` to keep movies anyone has ever played (default: `false`, watched movies are removed too)             |
+| `skip_if_watched_within` | Keep movies played within this window (`180d`, ...). Not with `skip_if_ever_watched`.                       |
+| `plex_library`           | Plex library to refresh after removing (if Plex is configured and Autoscan is not)                           |
+
+How rules are applied:
+
+- Radarr's added date is when the movie was added to Radarr: a re-download or upgrade doesn't reset it (Plex's date added does). Its release date is Radarr's `releaseDate`. A movie without a release date is skipped, and so are movies without a file and movies in the download queue.
+- Plays are any play by any user, partial ones too, from the Tautulli history the web app copies for the Requests page (new plays are copied first). Movies are matched to plays by Plex guid and by their TMDb/IMDb ids, so plays from before a move to another library or before Plex's new agents count. A movie Plex doesn't have is kept when the rule checks plays, and if the history can't be read the rule's movies are all kept for that run. Only the web app has the history: `main.py --remove` keeps every movie of a rule that checks plays.
+- After removing, each movie's folder is scanned by Autoscan, or `plex_library` is refreshed if Autoscan isn't configured.
 
 ### Example config
 

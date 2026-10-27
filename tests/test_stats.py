@@ -19,6 +19,8 @@ from web.db import MediaRequest, Play, make_engine, migrate
 from web.jobs import utc_now
 from web.stats import (
     PlayFact,
+    StatsError,
+    movie_play_lookup,
     find_plays,
     Requester,
     match_user,
@@ -429,6 +431,65 @@ class TestSync:
             status = sync(engine, settings)
         assert "tautulli-key" not in status.error and "***" in status.error
         assert sync_status(engine).finished_at is not None
+
+
+# ---------------------------------------------------------------------------
+# radarr removers' play lookup
+# ---------------------------------------------------------------------------
+
+
+def radarr_movie(id, tmdb_id=None, imdb_id=None, title="Heat"):
+    return SimpleNamespace(id=id, tmdb_id=tmdb_id, imdb_id=imdb_id, label=title)
+
+
+class TestMoviePlayLookup:
+    SETTINGS = ConfigSettings(plex=PLEX, radarr=None, sonarr=None, tautulli=TAUTULLI)
+
+    def lookup(self, engine, movies, plex, settings=SETTINGS):
+        with (
+            patch.object(stats, "sync_plays") as synced,
+            patch.object(stats, "PlexServer", return_value=plex),
+        ):
+            found = movie_play_lookup(engine, settings)(movies)
+        synced.assert_called_once_with(engine, TAUTULLI)
+        return found
+
+    def add_plays(self, engine, *rows):
+        with Session(engine) as session:
+            for row in rows:
+                session.add(Play(**play_from_row(row)))
+            session.commit()
+
+    def test_plays_by_plex_and_legacy_guids(self, engine):
+        heat = plex_item("Heat", "plex://movie/a", ["tmdb://101", "imdb://tt1"])
+        other = plex_item("Other", "plex://movie/b", ["tmdb://102"])
+        plex = fake_plex(FakeSection("movie", [heat, other]), FakeSection("show", []))
+        self.add_plays(
+            engine,
+            history_row(id=1, guid="plex://movie/a", started=DAY),
+            # before plex's new agents, by imdb id
+            history_row(id=2, guid="com.plexapp.agents.imdb://tt1?lang=en", started=datetime(2020, 1, 1)),
+            history_row(id=3, guid="plex://movie/b"),
+        )
+        found = self.lookup(engine, [radarr_movie(1, tmdb_id=101), radarr_movie(2, imdb_id="tt2")], plex)
+        # 2 isn't in plex: its plays can't all be found, so it's left out
+        assert found == {1: [datetime(2020, 1, 1), DAY]}
+
+    def test_never_played(self, engine):
+        plex = fake_plex(FakeSection("movie", [plex_item("Heat", "plex://movie/a", ["imdb://tt1"])]))
+        assert self.lookup(engine, [radarr_movie(1, imdb_id="tt1")], plex) == {1: []}
+
+    def test_needs_tautulli_and_plex(self, engine):
+        lookup = movie_play_lookup(engine, ConfigSettings(plex=PLEX, radarr=None, sonarr=None))
+        with pytest.raises(StatsError, match="Tautulli and Plex"):
+            lookup([radarr_movie(1, tmdb_id=101)])
+
+    def test_errors_hide_secrets(self, engine):
+        error = requests.exceptions.ConnectionError("http://tautulli:8181/api/v2?apikey=tautulli-key failed")
+        with patch.object(stats, "sync_plays", side_effect=error):
+            with pytest.raises(StatsError) as e:
+                movie_play_lookup(engine, self.SETTINGS)([radarr_movie(1, tmdb_id=101)])
+        assert "tautulli-key" not in str(e.value)
 
 
 # ---------------------------------------------------------------------------

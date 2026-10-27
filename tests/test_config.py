@@ -7,7 +7,7 @@ import pytest
 
 import config
 from config import _build_arr_config, format_duration, parse_duration
-from config.models import MoverRule, ProfileRule, WebDefaults
+from config.models import MoverRule, MovieRemoverRule, ProfileRule, WebDefaults
 
 
 def load(toml: str):
@@ -277,8 +277,8 @@ class TestRemoverConfig:
         with pytest.raises(ValueError, match="max_deletes"):
             _build_arr_config({"remover_settings": {"max_deletes": 0}}, False, "sonarr")
 
-    def test_removers_on_radarr_raise(self):
-        with pytest.raises(ValueError, match="only supported for sonarr"):
+    def test_sonarr_removers_on_radarr_raise(self):
+        with pytest.raises(ValueError, match=r"\[\[radarr.removers\]\] #1.*'type'"):
             _build_arr_config({"removers": [remover()]}, False, "radarr")
 
     @pytest.mark.parametrize("min_age", ["180", 180, "", "6 months", "0d"])
@@ -361,3 +361,61 @@ class TestConfigTomlPath:
     def test_next_to_the_package_without_it(self, monkeypatch):
         monkeypatch.delenv("DATA_DIR", raising=False)
         assert config.config_toml_path().parent.name == "config"
+
+
+def movie_remover(**kwargs):
+    return {"path": "/data/media/movies/movies-hallmark", "min_age": "730d", **kwargs}
+
+
+class TestMovieRemoverConfig:
+    def test_valid(self):
+        arr = _build_arr_config(
+            {"removers": [movie_remover(skip_if_watched_within="180d", exclude_tags=["keep"])]},
+            False,
+            "radarr",
+        )
+        rule = arr.removers[0]
+        assert isinstance(rule, MovieRemoverRule)
+        assert rule.min_age == timedelta(days=730)
+        assert rule.skip_if_watched_within == timedelta(days=180)
+        assert rule.watch_check and not rule.skip_if_ever_watched
+        assert rule.key == "radarr:/data/media/movies/movies-hallmark"
+        assert rule.label == "/data/media/movies/movies-hallmark"
+
+    def test_trailing_slash_is_the_same_folder(self):
+        rule = _build_arr_config({"removers": [movie_remover(path="/movies/hallmark/")]}, False, "radarr").removers[0]
+        assert rule.key == "radarr:/movies/hallmark"
+
+    def test_folder_used_twice_raises(self):
+        removers = [movie_remover(path="/movies/hallmark"), movie_remover(path="/movies/hallmark/")]
+        with pytest.raises(ValueError, match="#2: path '/movies/hallmark' is already used by remover #1"):
+            _build_arr_config({"removers": removers}, False, "radarr")
+
+    @pytest.mark.parametrize(
+        "changes, message",
+        [
+            ({"min_age": "2 years"}, "min_age: invalid duration"),
+            ({"min_age": None}, "min_age"),
+            ({"path": ""}, "root folder path"),
+            ({"path": "/"}, "root folder path"),
+            ({"skip_if_watched_within": "0d"}, "greater than 0"),
+            ({"skip_if_ever_watched": True, "skip_if_watched_within": "7d"}, "not both"),
+            ({"skip_if_ever_watched": "yes"}, "true or false"),
+        ],
+    )
+    def test_invalid_raises(self, changes, message):
+        with pytest.raises(ValueError, match=message):
+            _build_arr_config({"removers": [movie_remover(**changes)]}, False, "radarr")
+
+    def test_missing_min_age_raises(self):
+        data = movie_remover()
+        del data["min_age"]
+        with pytest.raises(ValueError, match="'min_age' is required"):
+            _build_arr_config({"removers": [data]}, False, "radarr")
+
+    def test_repr(self):
+        rule = _build_arr_config({"removers": [movie_remover(skip_if_ever_watched=True)]}, False, "radarr").removers[0]
+        assert repr(rule) == (
+            "MovieRemoverRule(path=/data/media/movies/movies-hallmark,min_age=730 days, 0:00:00,"
+            "skip_if_ever_watched=True)"
+        )

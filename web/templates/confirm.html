@@ -6,7 +6,7 @@
 {% if config_error %}
 <p class="banner banner-bad">The settings can't be loaded, so this run will fail: {{ config_error }}</p>
 {% elif mode is none and auto_rules %}
-<p class="banner banner-warn">Removers plan for review, but <strong>auto-approve is on</strong> for {{ auto_rules | length }} remover{{ "s" if auto_rules | length != 1 }} ({% for rule in auto_rules %}{{ rule.tags | join(", ") }}{{ "; " if not loop.last }}{% endfor %}). Their removals <strong>will be deleted</strong> without review, the rest are planned for review.</p>
+<p class="banner banner-warn">Removers plan for review, but <strong>auto-approve is on</strong> for {{ auto_rules | length }} remover{{ "s" if auto_rules | length != 1 }} ({% for rule in auto_rules %}{{ rule.label }}{{ "; " if not loop.last }}{% endfor %}). Their removals <strong>will be deleted</strong> without review, the rest are planned for review.</p>
 {% elif mode is none %}
 <p class="banner banner-warn">The settings are <strong>live for some *arrs</strong> and dry run for others. Changes will be made where it's live.</p>
 {% elif mode and job == "removers" %}

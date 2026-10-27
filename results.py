@@ -32,16 +32,18 @@ class PlannedFile:
 
 @dataclass
 class PlannedRemoval:
-    """one series' removal as planned, kept with the run so it can be reviewed and its
-    series approved (see remover.run_removers' `approved`)"""
+    """one series' or movie's removal as planned, kept with the run so it can be reviewed
+    and approved (see remover.run_removers' and movie_remover.run_movie_removers'
+    `approved`)"""
 
-    series_id: int
+    media_id: int  # the series id in sonarr, or the movie id in radarr
     title: str
     rule: str
     labels: list[str]
     files: list[PlannedFile]
     status: Status
     detail: str = ""
+    service: str = "SONARR"  # SONARR or RADARR, runs stored before radarr removers have none
 
 
 @dataclass

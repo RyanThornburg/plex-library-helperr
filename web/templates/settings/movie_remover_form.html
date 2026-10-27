@@ -1,0 +1,26 @@
+{% extends "settings/_rule_form.html" %}
+{% block fields %}
+{% set watched = values.get("watched") or ("ever" if values.get("skip_if_ever_watched") else "within" if values.get("skip_if_watched_within") else "always") %}
+{{ f.choice("path", "Root folder", values.get("path"), library.paths if library else [], blank="Choose a root folder", required=True, hint="Movies in this root folder are checked. A root folder can only belong to one remover.") }}
+<label for="min_age">Older than</label>
+<div>
+  <input id="min_age" name="min_age" value="{{ values.get('min_age', '') }}" placeholder="730d" spellcheck="false" required>
+  <p class="hint">A movie goes once it was both added to Radarr and released longer ago than this, e.g. 730d for two years.</p>
+</div>
+<label for="watched">Watched movies</label>
+<div>
+  <select id="watched" name="watched">
+    <option value="always"{% if watched == "always" %} selected{% endif %}>Remove them too</option>
+    <option value="ever"{% if watched == "ever" %} selected{% endif %}>Keep if anyone ever played it</option>
+    <option value="within"{% if watched == "within" %} selected{% endif %}>Keep if played within…</option>
+  </select>
+  <p class="hint">Plays by any user, partial ones too, from the Tautulli history the Requests page copies. A movie Plex doesn't have is kept when this checks plays.</p>
+</div>
+<label for="skip_if_watched_within">Played within</label>
+<div>
+  <input id="skip_if_watched_within" name="skip_if_watched_within" value="{{ values.get('skip_if_watched_within') or '' }}" placeholder="180d" spellcheck="false">
+  <p class="hint">Only with "Keep if played within…".</p>
+</div>
+{{ f.chips("exclude_tags", "Not tagged", values.get("exclude_tags"), library.tags if library else [], "Movies with any of these tags are kept.") }}
+{{ f.choice("plex_library", "Plex library", values.get("plex_library"), plex_libraries, blank="None", hint="Refreshed after removing when Autoscan isn't set up.") }}
+{% endblock %}

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 import config
 from config.models import ConfigSettings, WebDefaults
+from movie_remover import PlayLookup
 from results import JOBS, JobResult
 from web.db import JobRun, RemoverRuleSetting
 
@@ -27,10 +28,12 @@ APPROVABLE = ("dry_run", "blocked")
 REMOVED_FILES_MAX_AGE = timedelta(days=90)
 
 # run_job(job, settings), run_job("removers", settings, approved) to apply a plan, or
-# run_job("removers", settings, auto_approve=keys) for removers that skip review
+# run_job("removers", settings, auto_approve=keys) for removers that skip review. Removers
+# runs also get movie_plays, for radarr removers that check plays
 RunJob = Callable[..., JobResult]
 LoadConfig = Callable[[], ConfigSettings]
 LoadDefaults = Callable[[], WebDefaults]
+MoviePlays = Callable[[ConfigSettings], PlayLookup]
 
 
 def no_config() -> ConfigSettings:
@@ -51,6 +54,18 @@ class AlreadyActive(Exception):
 
 class ApplyRefused(Exception):
     """a plan can't be applied, the message says why and is shown to the user"""
+
+
+def removal_service(removal: dict[str, Any]) -> str:
+    """SONARR or RADARR. Runs stored before radarr removers only had sonarr's"""
+    return removal.get("service", "SONARR")
+
+
+def removal_key(removal: dict[str, Any]) -> str:
+    """how a planned removal is selected for approval: sonarr:<series id> or
+    radarr:<movie id>. Runs stored before radarr removers called the id series_id"""
+    media_id = removal.get("media_id", removal.get("series_id"))
+    return f"{removal_service(removal).lower()}:{media_id}"
 
 
 def approvable(run: JobRun) -> list[dict[str, Any]]:
@@ -101,6 +116,7 @@ class JobRunner:
         load_config: LoadConfig = no_config,
         allow_apply: bool = False,
         defaults: LoadDefaults = WebDefaults,
+        movie_plays: MoviePlays | None = None,
     ):
         self.engine = engine
         self.load_config = load_config
@@ -113,6 +129,14 @@ class JobRunner:
 
             run_job = main_run_job
         self.run_job = run_job
+        if movie_plays is None:
+            from web.stats import movie_play_lookup
+
+            def movie_plays(settings: ConfigSettings) -> PlayLookup:
+                return movie_play_lookup(engine, settings)
+
+        # radarr removers' play history, from the plays table
+        self.movie_plays = movie_plays
         self._queue: queue.Queue[int | None] = queue.Queue()
         self._submit_lock = threading.Lock()
         # job -> (trigger, requested_by) to queue again when its running run finishes
@@ -241,29 +265,31 @@ class JobRunner:
         return None
 
     def submit_apply(
-        self, plan_run_id: int, series_ids: list[int], trigger: str, requested_by: str | None
+        self, plan_run_id: int, keys: list[str], trigger: str, requested_by: str | None
     ) -> int:
-        """queue a live removers run that removes the approved series of a plan, raises
-        ApplyRefused, AlreadyActive, or LookupError when there's no such run"""
+        """queue a live removers run that removes the approved series/movies of a plan,
+        selected by removal_key(). Raises ApplyRefused, AlreadyActive, or LookupError when
+        there's no such run"""
         with self._submit_lock, Session(self.engine) as session:
             plan = session.get(JobRun, plan_run_id)
             if plan is None:
                 raise LookupError(plan_run_id)
             if problem := self.apply_problem(session, plan):
                 raise ApplyRefused(problem)
-            removals = {r["series_id"]: r for r in approvable(plan)}
-            chosen = set(series_ids)
+            removals = {removal_key(r): r for r in approvable(plan)}
+            chosen = set(keys)
             if not chosen:
-                raise ApplyRefused("Select at least one series to remove.")
+                raise ApplyRefused("Select at least one series or movie to remove.")
             if chosen - removals.keys():
-                raise ApplyRefused("Some selected series aren't in this plan.")
+                raise ApplyRefused("Some selected series or movies aren't in this plan.")
             approved = [
                 {
-                    "series_id": series_id,
-                    "title": removals[series_id]["title"],
-                    "file_ids": [f["id"] for f in removals[series_id]["files"]],
+                    "service": removal_service(removals[key]),
+                    "media_id": int(key.split(":", 1)[1]),
+                    "title": removals[key]["title"],
+                    "file_ids": [f["id"] for f in removals[key]["files"]],
                 }
-                for series_id in sorted(chosen)
+                for key in sorted(chosen)
             ]
             run_id = self._queue_run(
                 session,
@@ -277,7 +303,7 @@ class JobRunner:
                 ),
             )
         logger.info(
-            "WEB\t Queued run %s applying %s series of plan %s for %s",
+            "WEB\t Queued run %s applying %s removals of plan %s for %s",
             run_id,
             len(approved),
             plan_run_id,
@@ -340,7 +366,10 @@ class JobRunner:
                 # only submit_apply queues these, checked again in case anything else does
                 if not self.allow_apply:
                     raise ApplyRefused("REMOVERS_ALLOW_APPLY is off, not applying the plan")
-                kwargs["approved"] = {a["series_id"]: set(a["file_ids"]) for a in approved}
+                by_service: dict[str, dict[int, set[int]]] = {}
+                for a in approved:
+                    by_service.setdefault(a["service"], {})[a["media_id"]] = set(a["file_ids"])
+                kwargs["approved"] = by_service
             elif job == "removers" and not dry_run:
                 # a forced dry run never deletes, so auto-approve only counts without one
                 if auto := self.auto_approved_rules():
@@ -348,6 +377,8 @@ class JobRunner:
                         "WEB\t Auto-approve on for removers %s", "; ".join(sorted(auto))
                     )
                     kwargs["auto_approve"] = auto
+            if job == "removers" and settings.radarr and settings.radarr.removers:
+                kwargs["movie_plays"] = self.movie_plays(settings)
             if job == "empty_trash" and (removed := self.removed_files()):
                 kwargs["removed_files"] = removed
             result = self.run_job(job, settings, **kwargs)

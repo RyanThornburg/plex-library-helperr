@@ -1,10 +1,39 @@
 {% extends "base.html" %}
+{% macro auto_approve(rule, edit_url) %}
+{% set setting = settings.get(rule.key) %}
+{% set on = setting and setting.auto_approve %}
+<td>
+  {% if on %}<span class="tag tag-live">on</span>{% else %}<span class="tag">off</span>{% endif %}
+  {% if setting %}<br><span class="muted">{{ setting.updated_at | localtime }}</span>{% endif %}
+</td>
+<td>
+  <div class="actions row-actions">
+    <a class="button button-secondary" href="{{ edit_url }}">Edit</a>
+    {% if on %}
+    <form method="post" action="/removers/auto-approve?{{ {'rule': rule.key, 'enabled': 'false'} | urlencode }}">
+      <button type="submit" class="button-secondary">Turn off</button>
+    </form>
+    {% else %}
+    <a class="button button-secondary" href="/removers/auto-approve?{{ {'rule': rule.key} | urlencode }}">Auto-approve…</a>
+    {% endif %}
+  </div>
+</td>
+{% endmacro %}
+{% macro max_deletes_form(arr, value, unit) %}
+<form method="post" action="/settings/{{ arr }}/remover-settings" class="form">
+  <input type="hidden" name="version" value="{{ version }}">
+  <label for="{{ arr }}_max_deletes">Max deletes per run</label>
+  <div>
+    <input id="{{ arr }}_max_deletes" name="max_deletes" type="number" min="1" value="{{ value or '' }}" placeholder="no limit">
+    <p class="hint">A run that would delete more {{ unit }} than this deletes none of them. Plans waiting for review don't count.</p>
+  </div>
+  <span></span>
+  <div class="actions"><button type="submit">Save</button></div>
+</form>
+{% endmacro %}
 {% block content %}
-<div class="heading">
-  <h1>Removers</h1>
-  <a class="button" href="/settings/sonarr/removers/new">Add remover</a>
-</div>
-<p class="muted">Unmonitor and delete old seasons/episodes of Sonarr series with a remover's tag. Removers runs only plan: you approve a plan on its run's page. With auto-approve on, a run that isn't forced dry (Run…, or a schedule without "Force dry run") deletes that rule's removals without review, and <code>max_deletes</code> still applies. Other rules' removals wait in the run's plan.</p>
+<h1>Removers</h1>
+<p class="muted">Removers runs only plan: you approve a plan on its run's page. With auto-approve on, a run that isn't forced dry (Run…, or a schedule without "Force dry run") deletes that rule's removals without review, and <code>max_deletes</code> still applies. Other rules' removals wait in the run's plan.</p>
 
 {% if saved %}<p class="banner banner-ok">Saved.</p>{% endif %}
 {% if not allow_apply %}
@@ -12,8 +41,15 @@
 {% endif %}
 {% if config_error %}
 <p class="banner banner-bad">The settings can't be loaded: {{ config_error }}</p>
-{% elif not rules %}
-<p class="empty">No removers yet.</p>
+{% else %}
+
+<div class="heading">
+  <h2>Sonarr</h2>
+  <a class="button" href="/settings/sonarr/removers/new">Add Sonarr remover</a>
+</div>
+<p class="muted">Unmonitor and delete old seasons/episodes of series with a remover's tag.</p>
+{% if not rules %}
+<p class="empty">No Sonarr removers yet.</p>
 {% else %}
 <table>
   <thead>
@@ -21,45 +57,44 @@
   </thead>
   <tbody>
     {% for rule in rules %}
-    {% set setting = settings.get(rule.key) %}
-    {% set on = setting and setting.auto_approve %}
     <tr>
       <td>{{ rule.tags | join(", ") }}{% if rule.exclude_tags %}<br><span class="muted">not {{ rule.exclude_tags | join(", ") }}</span>{% endif %}</td>
       <td>{{ rule.type }}{% if rule.include_specials %}, specials too{% endif %}</td>
       <td>latest {{ rule.keep }}</td>
       <td>{{ rule.min_age | span }}</td>
       <td>{{ rule.skip_if_watched_within | span if rule.skip_if_watched_within else "-" }}</td>
-      <td>
-        {% if on %}<span class="tag tag-live">on</span>{% else %}<span class="tag">off</span>{% endif %}
-        {% if setting %}<br><span class="muted">{{ setting.updated_at | localtime }}</span>{% endif %}
-      </td>
-      <td>
-        <div class="actions row-actions">
-          <a class="button button-secondary" href="/settings/sonarr/removers/{{ loop.index }}">Edit</a>
-          {% if on %}
-          <form method="post" action="/removers/auto-approve?{{ {'rule': rule.key, 'enabled': 'false'} | urlencode }}">
-            <button type="submit" class="button-secondary">Turn off</button>
-          </form>
-          {% else %}
-          <a class="button button-secondary" href="/removers/auto-approve?{{ {'rule': rule.key} | urlencode }}">Auto-approve…</a>
-          {% endif %}
-        </div>
-      </td>
+      {{ auto_approve(rule, "/settings/sonarr/removers/" ~ loop.index) }}
     </tr>
     {% endfor %}
   </tbody>
 </table>
 {% endif %}
+{{ max_deletes_form("sonarr", max_deletes, "files") }}
 
-<h2>Max deletes</h2>
-<form method="post" action="/settings/sonarr/remover-settings" class="form">
-  <input type="hidden" name="version" value="{{ version }}">
-  <label for="max_deletes">Per run</label>
-  <div>
-    <input id="max_deletes" name="max_deletes" type="number" min="1" value="{{ max_deletes or '' }}" placeholder="no limit">
-    <p class="hint">A run that would delete more files than this deletes nothing. Plans waiting for review don't count.</p>
-  </div>
-  <span></span>
-  <div class="actions"><button type="submit">Save</button></div>
-</form>
+<div class="heading">
+  <h2>Radarr</h2>
+  <a class="button" href="/settings/radarr/removers/new">Add Radarr remover</a>
+</div>
+<p class="muted">Delete movies, with their files, from a root folder once they were both added to Radarr and released longer ago than the rule's age.</p>
+{% if not movie_rules %}
+<p class="empty">No Radarr removers yet.</p>
+{% else %}
+<table>
+  <thead>
+    <tr><th>Root folder</th><th>Older than</th><th>Watched movies</th><th>Auto-approve</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for rule in movie_rules %}
+    <tr>
+      <td>{{ rule.root }}{% if rule.exclude_tags %}<br><span class="muted">not {{ rule.exclude_tags | join(", ") }}</span>{% endif %}</td>
+      <td>{{ rule.min_age | span }}</td>
+      <td>{% if rule.skip_if_ever_watched %}kept if ever played{% elif rule.skip_if_watched_within %}kept if played within {{ rule.skip_if_watched_within | span }}{% else %}removed too{% endif %}</td>
+      {{ auto_approve(rule, "/settings/radarr/removers/" ~ loop.index) }}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{{ max_deletes_form("radarr", movie_max_deletes, "movies") }}
+{% endif %}
 {% endblock %}

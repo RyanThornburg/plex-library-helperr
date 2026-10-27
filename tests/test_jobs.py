@@ -247,7 +247,7 @@ class TestJobRunner:
 
 def removal(series_id: int, status="dry_run", files=(1,)) -> PlannedRemoval:
     return PlannedRemoval(
-        series_id=series_id,
+        media_id=series_id,
         title=f"Show {series_id}",
         rule="seasons, keep 2 (rm)",
         labels=["S01"],
@@ -283,18 +283,18 @@ class TestApply:
     def test_queues_a_live_run_with_the_approved_files(self, engine):
         plan_id = add_plan(engine, removal(1, files=(1, 2)), removal(2), removal(3, "blocked"))
         runner = make_runner(engine, self.run_job, allow_apply=True)
-        run_id = runner.submit_apply(plan_id, [3, 1], "manual", "me@example.com")
+        run_id = runner.submit_apply(plan_id, ["sonarr:3", "sonarr:1"], "manual", "me@example.com")
         runner.wait_idle()
         run = get(engine, run_id)
         assert run.plan_run_id == plan_id
         assert run.dry_run is False
         assert run.approved == [
-            {"series_id": 1, "title": "Show 1", "file_ids": [1, 2]},
-            {"series_id": 3, "title": "Show 3", "file_ids": [1]},
+            {"service": "SONARR", "media_id": 1, "title": "Show 1", "file_ids": [1, 2]},
+            {"service": "SONARR", "media_id": 3, "title": "Show 3", "file_ids": [1]},
         ]
         [(job, approved, dry_runs)] = self.calls
         assert job == "removers"
-        assert approved == {1: {1, 2}, 3: {1}}
+        assert approved == {"SONARR": {1: {1, 2}, 3: {1}}}
         # the config's settings, not forced dry
         assert not any(dry_runs)
         runner.stop()
@@ -303,19 +303,20 @@ class TestApply:
         plan_id = add_plan(engine, removal(1))
         runner = make_runner(engine, self.run_job, allow_apply=False)
         with pytest.raises(ApplyRefused, match="REMOVERS_ALLOW_APPLY"):
-            runner.submit_apply(plan_id, [1], "manual", None)
+            runner.submit_apply(plan_id, ["sonarr:1"], "manual", None)
         runner.stop()
 
     @pytest.mark.parametrize(
         "plan, series, message",
         [
-            ({"age": timedelta(days=8)}, [1], "older than 7d"),
-            ({"job": "movers"}, [1], "no planned removals"),
-            ({"status": "running"}, [1], "no planned removals"),
+            ({"age": timedelta(days=8)}, ["sonarr:1"], "older than 7d"),
+            ({"job": "movers"}, ["sonarr:1"], "no planned removals"),
+            ({"status": "running"}, ["sonarr:1"], "no planned removals"),
             ({}, [], "Select at least one"),
-            ({}, [1, 9], "aren't in this plan"),
+            ({}, ["sonarr:1", "sonarr:9"], "aren't in this plan"),
+            ({}, ["radarr:1"], "aren't in this plan"),
         ],
-        ids=["expired", "not-removers", "still-running", "nothing-selected", "unknown-series"],
+        ids=["expired", "not-removers", "still-running", "nothing-selected", "unknown-series", "wrong-arr"],
     )
     def test_refused(self, engine, plan, series, message):
         # started first, or it would mark a running plan as interrupted
@@ -329,35 +330,35 @@ class TestApply:
         plan_id = add_plan(engine, removal(1, "done"))
         runner = make_runner(engine, self.run_job, allow_apply=True)
         with pytest.raises(ApplyRefused, match="no planned removals"):
-            runner.submit_apply(plan_id, [1], "manual", None)
+            runner.submit_apply(plan_id, ["sonarr:1"], "manual", None)
         runner.stop()
 
     def test_applied_once(self, engine):
         plan_id = add_plan(engine, removal(1), removal(2))
         runner = make_runner(engine, self.run_job, allow_apply=True)
-        first = runner.submit_apply(plan_id, [1], "manual", None)
+        first = runner.submit_apply(plan_id, ["sonarr:1"], "manual", None)
         runner.wait_idle()
         with pytest.raises(ApplyRefused, match=f"already applied by run {first}"):
-            runner.submit_apply(plan_id, [2], "manual", None)
+            runner.submit_apply(plan_id, ["sonarr:2"], "manual", None)
         runner.stop()
 
     def test_an_apply_run_isnt_a_plan(self, engine):
         plan_id = add_plan(engine, removal(1))
         runner = make_runner(engine, self.run_job, allow_apply=True)
-        run_id = runner.submit_apply(plan_id, [1], "manual", None)
+        run_id = runner.submit_apply(plan_id, ["sonarr:1"], "manual", None)
         runner.wait_idle()
         with Session(engine) as session:
             run = session.get_one(JobRun, run_id)
             run.result = JobResult("removers", removals=[removal(1)]).to_dict()
             session.commit()
         with pytest.raises(ApplyRefused, match="no planned removals"):
-            runner.submit_apply(run_id, [1], "manual", None)
+            runner.submit_apply(run_id, ["sonarr:1"], "manual", None)
         runner.stop()
 
     def test_missing_plan(self, engine):
         runner = make_runner(engine, self.run_job, allow_apply=True)
         with pytest.raises(LookupError):
-            runner.submit_apply(42, [1], "manual", None)
+            runner.submit_apply(42, ["sonarr:1"], "manual", None)
         runner.stop()
 
     def test_waits_for_an_active_removers_run(self, engine):
@@ -371,11 +372,66 @@ class TestApply:
         runner = make_runner(engine, slow, allow_apply=True)
         active = runner.submit("removers", True, "manual", None)
         with pytest.raises(AlreadyActive) as e:
-            runner.submit_apply(plan_id, [1], "manual", None)
+            runner.submit_apply(plan_id, ["sonarr:1"], "manual", None)
         assert e.value.run_id == active
         release.set()
         runner.wait_idle()
         runner.stop()
+
+
+class TestApplyMovies:
+    def setup_method(self):
+        self.calls: list[tuple] = []
+
+    def run_job(self, job, settings, approved=None, movie_plays=None):
+        self.calls.append((job, approved, movie_plays))
+        return JobResult(job)
+
+    def test_approvals_are_grouped_by_arr(self, engine):
+        movie = dataclasses.replace(removal(1, files=(10,)), title="Old (2024)", service="RADARR")
+        plan_id = add_plan(engine, removal(1), movie)
+        runner = make_runner(engine, self.run_job, movie_settings, allow_apply=True)
+        run_id = runner.submit_apply(plan_id, ["radarr:1", "sonarr:1"], "manual", None)
+        runner.wait_idle()
+        assert get(engine, run_id).approved == [
+            {"service": "RADARR", "media_id": 1, "title": "Old (2024)", "file_ids": [10]},
+            {"service": "SONARR", "media_id": 1, "title": "Show 1", "file_ids": [1]},
+        ]
+        [(_, approved, movie_plays)] = self.calls
+        assert approved == {"RADARR": {1: {10}}, "SONARR": {1: {1}}}
+        assert callable(movie_plays)
+        runner.stop()
+
+    def test_plans_stored_before_radarr_removers_are_sonarrs(self, engine):
+        plan_id = add_plan(engine)
+        with Session(engine) as session:
+            run = session.get_one(JobRun, plan_id)
+            old = JobResult("removers", removals=[removal(4)]).to_dict()
+            for r in old["removals"]:
+                r["series_id"] = r.pop("media_id")
+                del r["service"]
+            run.result = old
+            session.commit()
+        runner = make_runner(engine, self.run_job, allow_apply=True)
+        run_id = runner.submit_apply(plan_id, ["sonarr:4"], "manual", None)
+        runner.wait_idle()
+        assert get(engine, run_id).approved[0]["service"] == "SONARR"
+        runner.stop()
+
+    def test_movie_plays_only_with_radarr_removers(self, engine):
+        runner = make_runner(engine, lambda job, settings: self.calls.append(job) or JobResult(job))
+        runner.submit("removers", False, "manual", None)
+        runner.wait_idle()
+        assert self.calls == ["removers"]
+        runner.stop()
+
+
+def movie_settings() -> ConfigSettings:
+    from config.models import MovieRemoverRule
+
+    settings = live_settings()
+    settings.radarr.removers = [MovieRemoverRule(path="/movies/hallmark", min_age=timedelta(days=730))]
+    return settings
 
 
 class TestAutoApproveRunner:

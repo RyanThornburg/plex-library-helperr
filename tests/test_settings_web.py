@@ -274,7 +274,8 @@ class TestRules:
 
     def test_unknown_rule(self, client):
         assert client.get("/settings/radarr/movers/1", headers=auth()).status_code == 404
-        assert client.get("/settings/radarr/removers/new", headers=auth()).status_code == 404
+        assert client.get("/settings/radarr/removers/1", headers=auth()).status_code == 404
+        assert client.get("/settings/radarr/pruners/new", headers=auth()).status_code == 404
         assert client.get("/settings/lidarr", headers=auth()).status_code == 404
 
     def test_preview_saves_nothing(self, client):
@@ -359,6 +360,74 @@ class TestRemovers:
         assert document(client)["sonarr"]["remover_settings"] == {"max_deletes": 50}
         post(client, "/settings/sonarr/remover-settings", {"version": version(client), "max_deletes": ""})
         assert document(client)["sonarr"] == {}
+
+
+class TestMovieRemovers:
+    REMOVER = {"path": "/movies/kids", "min_age": "730d", "watched": "always", "plex_library": "Kids Movies"}
+
+    def test_form_offers_root_folders(self, client):
+        connect_radarr(client)
+        page = client.get("/settings/radarr/removers/new", headers=auth()).text
+        assert 'value="/movies/kids"' in page and "Keep if anyone ever played it" in page
+
+    def test_create(self, client):
+        response = post(client, "/settings/radarr/removers/new", {**self.REMOVER, "version": 0})
+        assert response.status_code == 303 and response.headers["location"] == "/removers?saved=1"
+        assert document(client)["radarr"]["removers"] == [
+            {"path": "/movies/kids", "min_age": "730d", "plex_library": "Kids Movies"}
+        ]
+        page = client.get("/removers", headers=auth()).text
+        assert "/movies/kids" in page and "/settings/radarr/removers/1" in page and "removed too" in page
+
+    @pytest.mark.parametrize(
+        "watched, within, saved",
+        [("ever", "", {"skip_if_ever_watched": True}), ("within", "180d", {"skip_if_watched_within": "180d"}),
+         # a window typed in but not chosen isn't saved
+         ("always", "180d", {})],
+    )
+    def test_watched_choice(self, client, watched, within, saved):
+        fields = {**self.REMOVER, "version": 0, "watched": watched, "skip_if_watched_within": within}
+        assert post(client, "/settings/radarr/removers/new", fields).status_code == 303
+        rule = document(client)["radarr"]["removers"][0]
+        assert {k: v for k, v in rule.items() if k.startswith("skip_")} == saved
+        # the edit form shows the choice again
+        page = client.get("/settings/radarr/removers/1", headers=auth()).text
+        assert f'<option value="{watched}" selected' in page
+
+    @pytest.mark.parametrize(
+        "fields, error",
+        [({"path": ""}, "Root folder is required"), ({"min_age": "2y"}, "invalid duration"),
+         ({"watched": "within"}, "Played within is required"), ({"watched": "within", "skip_if_watched_within": "x"}, "invalid duration")],
+    )
+    def test_invalid(self, client, fields, error):
+        response = post(client, "/settings/radarr/removers/new", {**self.REMOVER, "version": 0, **fields})
+        assert response.status_code == 400
+        assert error in response.text
+        # the choice survives the error
+        if fields.get("watched") == "within":
+            assert '<option value="within" selected' in response.text
+
+    def test_folder_used_twice_refused(self, client):
+        post(client, "/settings/radarr/removers/new", {**self.REMOVER, "version": 0})
+        response = post(client, "/settings/radarr/removers/new", {**self.REMOVER, "version": version(client), "path": "/movies/kids/"})
+        assert "already used by remover #1" in response.text
+
+    def test_auto_approve_and_editing_turns_it_off(self, client):
+        post(client, "/settings/radarr/removers/new", {**self.REMOVER, "version": 0})
+        key = "radarr:/movies/kids"
+        page = client.get("/removers/auto-approve?" + urlencode({"rule": key}), headers=auth()).text
+        assert "delete movies and their files" in page and "watched or not" in page
+        response = client.post("/removers/auto-approve?" + urlencode({"rule": key, "enabled": "true"}), headers={**auth(), **ORIGIN}, follow_redirects=False)
+        assert response.status_code == 303
+        assert {"rule": key, "auto_approve": True, "service": "RADARR", "path": "/movies/kids"} in client.get("/api/removers", headers=auth()).json()
+        post(client, "/settings/radarr/removers/1", {**self.REMOVER, "version": version(client), "min_age": "365d"})
+        with Session(client.app.state.engine) as session:
+            assert session.get_one(RemoverRuleSetting, key).auto_approve is False
+
+    def test_max_deletes(self, client):
+        post(client, "/settings/radarr/remover-settings", {"version": 0, "max_deletes": "5"})
+        assert document(client)["radarr"]["remover_settings"] == {"max_deletes": 5}
+        assert 'id="radarr_max_deletes" name="max_deletes" type="number" min="1" value="5"' in client.get("/removers", headers=auth()).text
 
 
 class TestTrash:

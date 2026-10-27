@@ -17,14 +17,8 @@ from markupsafe import escape
 from pydantic import BaseModel
 
 import config
-from config.document import SECRET_FIELDS, rule_to_dict
-from config.models import (
-    REMOVER_TYPES,
-    ConfigSettings,
-    MoverRule,
-    ProfileRule,
-    RemoverRule,
-)
+from config.document import RULE_TYPES, SECRET_FIELDS, Rule, rule_class, rule_to_dict
+from config.models import REMOVER_TYPES, ConfigSettings
 from web.config_store import ConfigConflict, ConfigStore
 from web.db import ConfigVersion
 from web.lookups import (
@@ -47,11 +41,6 @@ router = APIRouter()
 ARRS = ("radarr", "sonarr")
 # the media field each arr matches that the other doesn't
 ARR_FIELD = {"radarr": "studios", "sonarr": "networks"}
-RULE_KINDS: dict[str, type[MoverRule | ProfileRule | RemoverRule]] = {
-    "movers": MoverRule,
-    "profilers": ProfileRule,
-    "removers": RemoverRule,
-}
 RULE_NAMES = {"movers": "mover", "profilers": "profiler", "removers": "remover"}
 # the jobs whose dry run settings live in the config, removers only delete approvals
 DRY_RUN_JOBS = ("movers", "empty_trash")
@@ -132,7 +121,7 @@ def check_arr(arr: str) -> None:
 
 def check_kind(arr: str, kind: str) -> None:
     check_arr(arr)
-    if kind not in RULE_KINDS or (kind == "removers" and arr != "sonarr"):
+    if kind not in RULE_TYPES:
         raise HTTPException(status_code=404)
 
 
@@ -729,9 +718,11 @@ def rule_form(
         request, arr, request.query_params.get("refresh") == "1"
     )
     settings, _ = current_settings(request)
+    # radarr removers remove movies by root folder, a form of their own
+    form = "movie_remover" if (arr, kind) == ("radarr", "removers") else RULE_NAMES[kind]
     return page(
         request,
-        f"{RULE_NAMES[kind]}_form",
+        f"{form}_form",
         {
             "arr": arr,
             "label": SERVICES[arr][0],
@@ -757,7 +748,7 @@ def rule_values(kind: str, arr: str, fields: dict[str, list[str]]) -> dict[str, 
         "movers": ["exclude_paths", "certifications", "exclude_certifications", "genres",
                    "exclude_genres", ARR_FIELD[arr], "tags", "exclude_tags"],
         "profilers": ["titles", ARR_FIELD[arr]],
-        "removers": ["tags", "exclude_tags"],
+        "removers": ["exclude_tags"] if arr == "radarr" else ["tags", "exclude_tags"],
     }[kind]
     values: dict[str, Any] = {name: lines(fields, name) for name in lists}
     if kind == "movers":
@@ -773,6 +764,19 @@ def rule_values(kind: str, arr: str, fields: dict[str, list[str]]) -> dict[str, 
             profile=first(fields, "profile"),
             monitored=None if monitored == "" else monitored == "true",
         )
+    elif arr == "radarr":
+        # always, ever or within, kept so the form shows it again after an error
+        watched = first(fields, "watched") or "always"
+        values.update(
+            path=first(fields, "path"),
+            min_age=first(fields, "min_age"),
+            watched=watched,
+            skip_if_ever_watched=watched == "ever",
+            skip_if_watched_within=(
+                first(fields, "skip_if_watched_within") or None if watched == "within" else None
+            ),
+            plex_library=first(fields, "plex_library") or None,
+        )
     else:
         values.update(
             type=first(fields, "type"),
@@ -785,16 +789,22 @@ def rule_values(kind: str, arr: str, fields: dict[str, list[str]]) -> dict[str, 
     return values
 
 
-def build_rule(kind: str, values: dict[str, Any]) -> MoverRule | ProfileRule | RemoverRule:
+def build_rule(arr: str, kind: str, values: dict[str, Any]) -> Rule:
     """the rule from a form's values, ValueError saying what's wrong"""
     data = dict(values)
     if kind == "movers" and not data["path"]:
         raise ValueError("Move to is required")
     if kind == "profilers" and not data["profile"]:
         raise ValueError("Quality profile is required")
+    if kind == "removers" and arr == "radarr":
+        if not data["path"]:
+            raise ValueError("Root folder is required")
+        if data.pop("watched") == "within" and not data["skip_if_watched_within"]:
+            raise ValueError("Played within is required to keep movies played recently")
     if kind == "removers":
         errors: list[str] = []
-        data["keep"] = checked_int(data["keep"], "Keep", errors, 1)
+        if arr == "sonarr":
+            data["keep"] = checked_int(data["keep"], "Keep", errors, 1)
         data["min_age"] = checked_duration(data["min_age"], "Older than", errors)
         if data["skip_if_watched_within"]:
             checked_duration(data["skip_if_watched_within"], "Watched within", errors)
@@ -805,7 +815,7 @@ def build_rule(kind: str, values: dict[str, Any]) -> MoverRule | ProfileRule | R
             data["skip_if_watched_within"] = config.parse_duration(
                 data["skip_if_watched_within"], "Watched within"
             )
-    return RULE_KINDS[kind](**data)
+    return rule_class(arr, kind)(**data)
 
 
 @router.get("/settings/{arr}/{kind}/new", response_class=HTMLResponse)
@@ -841,7 +851,7 @@ async def save_rule(request: Request, arr: str, kind: str, number: int | None) -
         return rule_form(request, arr, kind, number, values, [message])
 
     try:
-        rule = build_rule(kind, values)
+        rule = build_rule(arr, kind, values)
     except (TypeError, ValueError) as e:
         return failed(str(e))
 
@@ -918,21 +928,22 @@ async def move_rule(request: Request, arr: str, kind: str, number: int, directio
     )
 
 
-@router.post("/settings/sonarr/remover-settings")
-async def save_remover_settings(request: Request) -> Response:
+@router.post("/settings/{arr}/remover-settings")
+async def save_remover_settings(request: Request, arr: str) -> Response:
+    check_arr(arr)
     fields = await form_lists(request)
     errors: list[str] = []
     max_deletes = checked_int(first(fields, "max_deletes"), "Max deletes", errors, 1, optional=True)
     if errors:
         return HTMLResponse(escape(errors[0]), status_code=400)
     _, document = store(request).document()
-    section = document.setdefault("sonarr", {})
+    section = document.setdefault(arr, {})
     if max_deletes is None:
         section.pop("remover_settings", None)
     else:
         section["remover_settings"] = {"max_deletes": max_deletes}
     return commit(
-        request, fields, document, "Remover max deletes",
+        request, fields, document, f"{SERVICES[arr][0]} remover max deletes",
         lambda e: HTMLResponse(escape(e), status_code=400), "/removers", check_live=False,
     )
 

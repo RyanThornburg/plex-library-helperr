@@ -7,7 +7,7 @@ from datetime import timedelta
 from typing import Any
 
 from config import build_config, format_duration
-from config.models import MoverRule, ProfileRule, RemoverRule
+from config.models import MoverRule, MovieRemoverRule, ProfileRule, RemoverRule
 
 # (section, key) of every secret. They're kept out of the document, so history and
 # diffs never hold one
@@ -25,21 +25,28 @@ SECRET_FIELDS: dict[str, tuple[str, str]] = {
 DEFAULT_DOCUMENT: dict[str, Any] = {"settings": {"dry_run": True}}
 
 ARRS = ("radarr", "sonarr")
-RULE_TYPES: dict[str, type[MoverRule | ProfileRule | RemoverRule]] = {
-    "movers": MoverRule,
-    "profilers": ProfileRule,
-    "removers": RemoverRule,
-}
+RULE_TYPES = ("movers", "profilers", "removers")
+# flags that are off unless set, left out of the document when off
+OFF_FLAGS = ("include_specials", "skip_if_ever_watched")
+
+Rule = MoverRule | ProfileRule | RemoverRule | MovieRemoverRule
 
 
-def rule_to_dict(rule: MoverRule | ProfileRule | RemoverRule) -> dict[str, Any]:
+def rule_class(arr_name: str, rule_type: str) -> type[Rule]:
+    """radarr removers remove movies by root folder, sonarr's seasons/episodes by tag"""
+    if rule_type == "removers":
+        return MovieRemoverRule if arr_name == "radarr" else RemoverRule
+    return {"movers": MoverRule, "profilers": ProfileRule}[rule_type]
+
+
+def rule_to_dict(rule: Rule) -> dict[str, Any]:
     """a rule's fields without defaults/empties, durations as 7d etc, like config.toml"""
     data: dict[str, Any] = {}
     for f in fields(rule):
         value = getattr(rule, f.name)
         if value is None or value == [] or (f.name.endswith("_match") and value == "any"):
             continue
-        if f.name == "include_specials" and value is False:
+        if f.name in OFF_FLAGS and value is False:
             continue
         data[f.name] = format_duration(value) if isinstance(value, timedelta) else value
     return data

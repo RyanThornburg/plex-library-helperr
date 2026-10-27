@@ -123,6 +123,23 @@ networks = [
 ]
 
 #############################################################
+# RADARR REMOVERS
+#   DELETE old movies (and their files) from a radarr root folder. Removers
+#   only plan: the web app deletes what you approve, or a rule's removals with
+#   auto-approve on.
+#############################################################
+[radarr.remover_settings]
+max_deletes = 20  # remove no movies if a run would delete more than this
+
+# movies added and released more than two years ago, unless anyone ever played them
+[[radarr.removers]]
+path = '/data/media/movies/movies-hallmark'
+min_age = '730d'  # required
+skip_if_ever_watched = true  # or skip_if_watched_within = '180d', or neither to remove watched ones too
+exclude_tags = ['keep-forever']
+plex_library = 'Hallmark'
+
+#############################################################
 # SONARR REMOVERS
 #   Unmonitor then DELETE files of old seasons/episodes from series
 #   tagged in sonarr. filter_time is not used. Removers only plan: the web

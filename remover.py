@@ -229,7 +229,7 @@ class RemovalPlan:
     def planned(self, status: Status, detail: str) -> PlannedRemoval:
         rule = self.rule
         return PlannedRemoval(
-            series_id=self.series.id,
+            media_id=self.series.id,
             title=self.series.title,
             rule=f"{rule.type}, keep {rule.keep} ({', '.join(rule.tags)})",
             labels=self.labels,

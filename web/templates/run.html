@@ -43,23 +43,23 @@
 {% elif apply_problem %}
 <p class="banner banner-warn">{{ apply_problem }}</p>
 {% elif selectable %}
-<p class="muted">Select the series to remove, then review. Applying plans each selected series again from fresh Sonarr data and only removes what was approved and is still eligible.</p>
+<p class="muted">Select what to remove, then review. Applying plans each selected series or movie again from fresh Sonarr/Radarr data and only removes what was approved and is still eligible.</p>
 {% endif %}
 {% if selectable %}<form method="get" action="/runs/{{ run.id }}/apply">{% endif %}
 <table>
   <thead>
     <tr>
-      {% if selectable %}<th><input type="checkbox" data-select-all="series" aria-label="Select all"></th>{% endif %}
-      <th>Series</th><th>Rule</th><th>Remove</th><th>Files</th><th>Status</th><th>Detail</th>
+      {% if selectable %}<th><input type="checkbox" data-select-all="item" aria-label="Select all"></th>{% endif %}
+      <th>Series / movie</th><th>Rule</th><th>Remove</th><th>Files</th><th>Status</th><th>Detail</th>
     </tr>
   </thead>
   <tbody>
     {% for removal in removals %}
     <tr>
       {% if selectable %}
-      <td>{% if removal.status in APPROVABLE %}<input type="checkbox" name="series" value="{{ removal.series_id }}" aria-label="Remove from {{ removal.title }}">{% endif %}</td>
+      <td>{% if removal.status in APPROVABLE %}<input type="checkbox" name="item" value="{{ removal_key(removal) }}" aria-label="Remove {{ removal.title }}">{% endif %}</td>
       {% endif %}
-      <td>{{ removal.title }}</td>
+      <td>{{ removal.title }}{% if removal_service(removal) == "RADARR" %} <span class="tag">movie</span>{% endif %}</td>
       <td class="muted">{{ removal.rule }}</td>
       <td>{{ removal.labels | join(", ") }}</td>
       <td>

@@ -495,7 +495,7 @@ def planning_job(job: str, settings: ConfigSettings, approved=None) -> JobResult
         PlannedRemoval(2, "Big Brother", "seasons, keep 2 (rm)", ["S01", "S02"], [PlannedFile(21, "/tv/BB/a.mkv"), PlannedFile(22, "/tv/BB/b.mkv")], "dry_run", "2 files"),
     ]
     if approved is not None:
-        removals = [dataclasses.replace(r, status="done") for r in removals if r.series_id in approved]
+        removals = [dataclasses.replace(r, status="done") for r in removals if r.media_id in approved.get("SONARR", {})]
     changes = [Change("SONARR", "remove", r.title, r.labels, r.status, r.detail) for r in removals]
     return JobResult(job, changes=changes, removals=removals)
 
@@ -519,7 +519,7 @@ class TestPlanReview:
     def test_plan_page_lists_series_to_select(self, plan_client):
         page = plan_client.get("/runs/1", headers=auth()).text
         assert 'action="/runs/1/apply"' in page
-        assert 'name="series" value="1"' in page and 'name="series" value="2"' in page
+        assert 'name="item" value="sonarr:1"' in page and 'name="item" value="sonarr:2"' in page
         assert "/tv/BB/b.mkv" in page
         # removals aren't listed again as changes
         assert "Other changes" not in page and "Nothing to change" not in page
@@ -530,15 +530,15 @@ class TestPlanReview:
         wait(client)
         page = client.get("/runs/1", headers=auth()).text
         assert "REMOVERS_ALLOW_APPLY=true" in page
-        assert 'name="series"' not in page
+        assert 'name="item"' not in page
         response = client.post("/api/runs/1/apply", json={"series_ids": [1]}, headers={**auth(), **ORIGIN})
         assert response.status_code == 422
 
     def test_confirm_page_totals_the_selection(self, plan_client):
-        page = plan_client.get("/runs/1/apply?series=2", headers=auth()).text
+        page = plan_client.get("/runs/1/apply?item=sonarr:2", headers=auth()).text
         assert "deletes up to 2 episode files" in page
         assert "Big Brother" in page and "Survivor" not in page
-        assert 'action="/runs/1/apply?series=2"' in page
+        assert 'action="/runs/1/apply?item=sonarr%3A2"' in page
 
     def test_confirm_page_needs_a_selection(self, plan_client):
         page = plan_client.get("/runs/1/apply", headers=auth()).text
@@ -559,36 +559,36 @@ class TestPlanReview:
         with TestClient(app) as c:
             c.post("/jobs/removers?dry_run=true", headers={**auth(), **ORIGIN})
             wait(c)
-            page = c.get("/runs/1/apply?series=1&series=2", headers=auth()).text
-        assert "more than max_deletes (2)" in page
+            page = c.get("/runs/1/apply?item=sonarr:1&item=sonarr:2", headers=auth()).text
+        assert "3 Sonarr files is more than its max_deletes (2)" in page
         assert "Delete 3 files" not in page
 
     def test_apply_runs_the_approved_series(self, plan_client):
         response = plan_client.post(
-            "/runs/1/apply?series=2", headers={**auth(), **ORIGIN}, follow_redirects=False
+            "/runs/1/apply?item=sonarr:2", headers={**auth(), **ORIGIN}, follow_redirects=False
         )
         assert response.status_code == 303
         assert response.headers["location"] == "/runs/2"
         wait(plan_client)
         run = plan_client.get("/api/runs/2", headers=auth()).json()
         assert run["plan_run_id"] == 1
-        assert run["approved"] == [{"series_id": 2, "title": "Big Brother", "file_ids": [21, 22]}]
+        assert run["approved"] == [{"service": "SONARR", "media_id": 2, "title": "Big Brother", "file_ids": [21, 22]}]
         assert run["requested_by"] == EMAIL
         assert [r["title"] for r in run["result"]["removals"]] == ["Big Brother"]
         page = plan_client.get("/runs/2", headers=auth()).text
         assert 'href="/runs/1">plan #1' in page
         # an apply run isn't a plan to approve
-        assert 'name="series"' not in page
+        assert 'name="item"' not in page
         # the plan says it was applied and can't be applied again
         plan_page = plan_client.get("/runs/1", headers=auth()).text
         assert 'Applied by run <a href="/runs/2">#2</a>' in plan_page
-        assert 'name="series"' not in plan_page
-        again = plan_client.post("/runs/1/apply?series=1", headers={**auth(), **ORIGIN})
+        assert 'name="item"' not in plan_page
+        again = plan_client.post("/runs/1/apply?item=sonarr:1", headers={**auth(), **ORIGIN})
         assert again.status_code == 400
         assert "already applied by run 2" in again.text
 
     def test_apply_needs_same_origin(self, plan_client):
-        assert plan_client.post("/runs/1/apply?series=1", headers=auth()).status_code == 403
+        assert plan_client.post("/runs/1/apply?item=sonarr:1", headers=auth()).status_code == 403
 
     def test_api_apply(self, plan_client):
         headers = {**auth(), **ORIGIN}
@@ -603,6 +603,33 @@ class TestPlanReview:
         assert refused.status_code == 422
         assert "already applied" in refused.json()["error"]
 
+    def test_movies_in_a_plan(self, settings):
+        def movie_plan(job, s, approved=None, movie_plays=None):
+            movie = PlannedRemoval(
+                7, "Old (2024)", "older than 730d in /movies/hallmark", ["released 2024-01-01", "added 2024-02-01", "never played"],
+                [PlannedFile(70, "/movies/hallmark/Old (2024)/Old.mkv")], "done" if approved else "dry_run", service="RADARR",
+            )
+            if approved is not None and 7 not in approved.get("RADARR", {}):
+                return JobResult(job)
+            return JobResult(job, removals=[movie])
+
+        app = create_app(
+            dataclasses.replace(settings, allow_remover_apply=True),
+            keys=FakeKeys(), run_job=movie_plan, load_config=live_config, run_scheduler=False,
+        )
+        with TestClient(app) as c:
+            c.post("/jobs/removers?dry_run=true", headers={**auth(), **ORIGIN})
+            wait(c)
+            page = c.get("/runs/1", headers=auth()).text
+            assert 'name="item" value="radarr:7"' in page and "never played" in page
+            confirm = c.get("/runs/1/apply?item=radarr:7", headers=auth()).text
+            assert "deletes 1 movie and its file" in confirm and "episode files" not in confirm
+            c.post("/api/runs/1/apply", json={"items": ["radarr:7"]}, headers={**auth(), **ORIGIN})
+            wait(c)
+            run = c.get("/api/runs/2", headers=auth()).json()
+        assert run["approved"] == [{"service": "RADARR", "media_id": 7, "title": "Old (2024)", "file_ids": [70]}]
+        assert run["result"]["removals"][0]["status"] == "done"
+
     def test_paths_are_escaped(self, settings):
         def xss_plan(job, s, approved=None):
             r = PlannedRemoval(1, "<b>x</b>", "r", ["S01"], [PlannedFile(1, "<script>y</script>")], "dry_run")
@@ -615,7 +642,7 @@ class TestPlanReview:
         with TestClient(app) as c:
             c.post("/jobs/removers?dry_run=true", headers={**auth(), **ORIGIN})
             wait(c)
-            pages = [c.get(url, headers=auth()).text for url in ("/runs/1", "/runs/1/apply?series=1")]
+            pages = [c.get(url, headers=auth()).text for url in ("/runs/1", "/runs/1/apply?item=sonarr:1")]
         for page in pages:
             assert "<script>y</script>" not in page and "<b>x</b>" not in page
             assert "&lt;script&gt;y&lt;/script&gt;" in page

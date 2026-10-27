@@ -121,7 +121,7 @@ class JobRun(Base):
     # joined: runs are shown after their session has closed
     schedule: Mapped[Schedule | None] = relationship(lazy="joined")
     # set on a run that applies a reviewed removers plan: the plan's run, and the
-    # approved series as [{"series_id", "title", "file_ids"}]
+    # approved series/movies as [{"service", "media_id", "title", "file_ids"}]
     plan_run_id: Mapped[int | None] = mapped_column(
         ForeignKey("job_runs.id", ondelete="SET NULL"), index=True
     )

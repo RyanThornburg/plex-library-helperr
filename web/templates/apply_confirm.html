@@ -6,18 +6,26 @@
 {% if problem %}
 <p class="banner banner-bad">{{ problem }}</p>
 {% elif over_max %}
-<p class="banner banner-bad">{{ total }} files is more than max_deletes ({{ max_deletes }}), so the run would remove nothing. Select fewer series.</p>
+{% for arr in arrs if arr.over_max %}
+<p class="banner banner-bad">{{ arr.files }} {{ arr.service | title }} files is more than its max_deletes ({{ arr.max_deletes }}), so the run would remove none of them. Select fewer.</p>
+{% endfor %}
 {% else %}
-<p class="banner banner-warn">This <strong>unmonitors and deletes up to {{ total }} episode files</strong> from {{ selected | length }} series in Sonarr. Each series is planned again first: anything watched, replaced, downloading or no longer outside the keep window since this plan is skipped and reported.</p>
+{% for arr in arrs %}
+{% if arr.service == "SONARR" %}
+<p class="banner banner-warn">This <strong>unmonitors and deletes up to {{ arr.files }} episode files</strong> from {{ arr.removals | length }} series in Sonarr. Each series is planned again first: anything watched, replaced, downloading or no longer outside the keep window since this plan is skipped and reported.</p>
+{% else %}
+<p class="banner banner-warn">{% set n = arr.removals | length %}This <strong>deletes {{ n }} movie{{ "s" if n != 1 }} and {{ "their files" if n != 1 else "its file" }}</strong> from Radarr. Each movie is checked again first: one that was played (when its rule checks plays), replaced, is downloading or left its root folder since this plan is skipped and reported.</p>
+{% endif %}
+{% endfor %}
 {% endif %}
 
 {% if selected %}
 <table>
-  <thead><tr><th>Series</th><th>Remove</th><th>Files</th></tr></thead>
+  <thead><tr><th>Series / movie</th><th>Remove</th><th>Files</th></tr></thead>
   <tbody>
     {% for removal in selected %}
     <tr>
-      <td>{{ removal.title }}</td>
+      <td>{{ removal.title }}{% if removal_service(removal) == "RADARR" %} <span class="tag">movie</span>{% endif %}</td>
       <td>{{ removal.labels | join(", ") }}</td>
       <td>
         <details>

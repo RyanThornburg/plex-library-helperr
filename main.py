@@ -26,6 +26,7 @@ from autoscan import trigger_autoscan
 from config.models import ArrConfig, ConfigSettings, MoverRule, ProfileRule
 from logging_config import logging_config
 from plex import empty_plex_trash, refresh_plex_libraries
+from movie_remover import PlayLookup, run_movie_removers
 from remover import Approved, run_removers
 from results import JOBS, Change, JobResult
 
@@ -340,7 +341,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     jobs.add_argument(
         "--remove",
         action="store_true",
-        help="run sonarr removers (unmonitor and delete stale seasons/episodes) instead of movers/profilers",
+        help="run removers (plan removing stale sonarr seasons/episodes and old radarr movies) instead of movers/profilers",
     )
     jobs.add_argument(
         "--empty-trash",
@@ -386,17 +387,61 @@ def load_settings() -> ConfigSettings:
     return open_store().load_settings()
 
 
+def run_all_removers(
+    settings: ConfigSettings,
+    result: JobResult,
+    approved: Mapping[str, Approved] | None,
+    auto_approve: frozenset[str],
+    movie_plays: PlayLookup | None,
+) -> None:
+    """sonarr's then radarr's removers. Applying a plan only touches the arrs it approved
+    media of. Radarr removers are optional: radarr is skipped quietly without them"""
+    any_removers = any(a and a.removers for a in (settings.sonarr, settings.radarr))
+    for arr_config, log_name in ((settings.sonarr, "SONARR"), (settings.radarr, "RADARR")):
+        arr_approved = None if approved is None else approved.get(log_name)
+        if approved is not None and not arr_approved:
+            continue
+        if approved is None and log_name == "RADARR" and not (arr_config and arr_config.removers):
+            continue
+        if arr_config is None:
+            # an error when it was needed: applying its media, or no removers anywhere
+            if approved is not None or not any_removers:
+                logger.warning("%s not configured. Skipping...", log_name)
+                result.errors.append(f"{log_name} not configured")
+            continue
+        logger.info("-" * 90)
+        logger.info("STARTING %s REMOVERS", log_name)
+        try:
+            if log_name == "SONARR":
+                run_removers(
+                    arr_config,
+                    settings.tautulli,
+                    settings.plex,
+                    result,
+                    arr_approved,
+                    auto_approve,
+                )
+            else:
+                run_movie_removers(arr_config, result, arr_approved, auto_approve, movie_plays)
+        except (ArrException, requests.exceptions.RequestException) as e:
+            logger.exception("%s\t Removers failed", log_name)
+            result.errors.append(f"{log_name} removers failed: {e}")
+
+
 def run_job(
     job: str,
     settings: ConfigSettings,
-    approved: Approved | None = None,
+    approved: Mapping[str, Approved] | None = None,
     auto_approve: frozenset[str] = frozenset(),
     removed_files: Mapping[str, int] | None = None,
+    movie_plays: PlayLookup | None = None,
 ) -> JobResult:
     """run one job (movers, removers or empty_trash) and return what it changed.
-    `approved` applies a reviewed removers plan and `auto_approve` holds the keys of
-    removers that delete without review, see remover.run_removers. `removed_files` maps
-    file names the removers deleted to their run, see plex.empty_plex_trash"""
+    `approved` applies a reviewed removers plan ({"SONARR"/"RADARR": approved}) and
+    `auto_approve` holds the keys of removers that delete without review, see
+    remover.run_removers and movie_remover.run_movie_removers, which `movie_plays` tells
+    when movies were played. `removed_files` maps file names the removers deleted to
+    their run, see plex.empty_plex_trash"""
     if job not in JOBS:
         raise ValueError(f"unknown job '{job}', expected one of {', '.join(JOBS)}")
     if approved is not None and job != "removers":
@@ -410,24 +455,7 @@ def run_job(
         return result
 
     if job == "removers":
-        logger.info("-" * 90)
-        logger.info("STARTING SONARR REMOVERS")
-        if settings.sonarr is None:
-            logger.warning("SONARR not configured. Skipping...")
-            result.errors.append("SONARR not configured")
-        else:
-            try:
-                run_removers(
-                    settings.sonarr,
-                    settings.tautulli,
-                    settings.plex,
-                    result,
-                    approved,
-                    auto_approve,
-                )
-            except (ArrException, requests.exceptions.RequestException) as e:
-                logger.exception("SONARR\t Removers failed")
-                result.errors.append(f"SONARR removers failed: {e}")
+        run_all_removers(settings, result, approved, auto_approve, movie_plays)
         scan_changed(settings, result)
         return result
 

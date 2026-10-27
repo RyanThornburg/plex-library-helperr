@@ -46,13 +46,20 @@ class SecretInfo:
     readable: bool
 
 
-def remover_key(rule: Mapping[str, Any]) -> str:
-    """config.models.RemoverRule.key, from a rule's document form"""
+def remover_key(rule: Mapping[str, Any], arr: str = "sonarr") -> str:
+    """config.models.RemoverRule.key (MovieRemoverRule.key for radarr), from a rule's
+    document form"""
+    if arr == "radarr":
+        return f"radarr:{rule.get('path', '').rstrip('/')}"
     return ",".join(sorted({t.casefold() for t in rule.get("tags", [])}))
 
 
 def removers_of(document: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
-    return {remover_key(r): r for r in document.get("sonarr", {}).get("removers", [])}
+    return {
+        remover_key(r, arr): r
+        for arr in ("sonarr", "radarr")
+        for r in document.get(arr, {}).get("removers", [])
+    }
 
 
 class ConfigStore:

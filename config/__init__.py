@@ -15,6 +15,7 @@ from config.models import (
     ConfigSettings,
     EmptyTrashSettings,
     MoverRule,
+    MovieRemoverRule,
     PlexConfig,
     ProfileRule,
     RemoverRule,
@@ -59,10 +60,40 @@ def _build_remover(raw: Mapping[str, Any], label: str) -> RemoverRule:
     return _build(RemoverRule, data, label)
 
 
-def _build_removers(data: Mapping[str, Any], arr_name: str) -> list[RemoverRule]:
+def _build_movie_remover(raw: Mapping[str, Any], label: str) -> MovieRemoverRule:
+    data = dict(raw)
+    if "min_age" not in data:
+        raise ValueError(f"{label}: 'min_age' is required")
+    data["min_age"] = parse_duration(data["min_age"], f"{label} min_age")
+    if data.get("skip_if_watched_within") is not None:
+        data["skip_if_watched_within"] = parse_duration(
+            data["skip_if_watched_within"], f"{label} skip_if_watched_within"
+        )
+    return _build(MovieRemoverRule, data, label)
+
+
+def _build_movie_removers(data: Mapping[str, Any]) -> list[MovieRemoverRule]:
+    removers = [
+        _build_movie_remover(r, f"[[radarr.removers]] #{i}")
+        for i, r in enumerate(data.get("removers", []), start=1)
+    ]
+    # a root folder may only belong to one remover, like sonarr removers' tags
+    seen: dict[str, int] = {}
+    for i, remover in enumerate(removers, start=1):
+        if remover.root in seen:
+            raise ValueError(
+                f"[[radarr.removers]] #{i}: path '{remover.root}' is already used by remover #{seen[remover.root]}"
+            )
+        seen[remover.root] = i
+    return removers
+
+
+def _build_removers(
+    data: Mapping[str, Any], arr_name: str
+) -> list[RemoverRule | MovieRemoverRule]:
+    if arr_name == "radarr":
+        return list(_build_movie_removers(data))
     raw_removers = data.get("removers", [])
-    if raw_removers and arr_name != "sonarr":
-        raise ValueError(f"[[{arr_name}.removers]] is only supported for sonarr")
 
     removers = [
         _build_remover(r, f"[[{arr_name}.removers]] #{i}")
@@ -78,7 +109,7 @@ def _build_removers(data: Mapping[str, Any], arr_name: str) -> list[RemoverRule]
                     f"[[{arr_name}.removers]] #{i}: tag '{tag}' is already used by remover #{seen[tag]}"
                 )
             seen[tag] = i
-    return removers
+    return list(removers)
 
 
 def _build_arr_config(data: Mapping[str, Any], dry_run: bool, arr_name: str) -> ArrConfig:

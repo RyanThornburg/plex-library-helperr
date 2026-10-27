@@ -168,6 +168,11 @@ class RemoverRule:
         app's database. Removers can't share a tag, so their tag sets are unique"""
         return ",".join(sorted({t.casefold() for t in self.tags}))
 
+    @property
+    def label(self) -> str:
+        """how pages name the rule"""
+        return ", ".join(self.tags)
+
     def __repr__(self):
         fields: list[tuple[str, str | int | bool | None | list[str] | timedelta]] = [
             ("type", self.type),
@@ -181,6 +186,79 @@ class RemoverRule:
         ]
         return (
             f"RemoverRule({','.join(f'{k}={v}' for k, v in fields if v is not None)})"
+        )
+
+
+@dataclass
+class MovieRemoverRule:
+    """Radarr removers: delete old movies (and their files) from a root folder
+    path: (str) Radarr root folder the rule checks, e.g. /data/media/movies/movies-hallmark
+    min_age: (timedelta) Added to Radarr and released longer ago than this
+    exclude_tags: (list[str]) Skip movies with any of these tags
+    skip_if_ever_watched: (bool) Keep movies anyone has ever played
+    skip_if_watched_within: (timedelta) Keep movies played within this
+    plex_library: (str) Plex library to refresh after removing (if autoscan is not setup)
+    """
+
+    path: str
+    min_age: timedelta
+    exclude_tags: list[str] = field(default_factory=list[str])
+    skip_if_ever_watched: bool = False
+    skip_if_watched_within: timedelta | None = None
+    plex_library: str | None = None
+
+    def __post_init__(self):
+        if not isinstance(self.path, str) or not self.path.strip("/ "):
+            raise ValueError("MovieRemoverRule requires a root folder path")
+        if not isinstance(self.min_age, timedelta) or self.min_age <= timedelta(0):
+            raise ValueError("MovieRemoverRule.min_age must be greater than 0")
+        if not isinstance(self.skip_if_ever_watched, bool):
+            raise ValueError(
+                "MovieRemoverRule.skip_if_ever_watched must be true or false, "
+                f"got '{self.skip_if_ever_watched}'"
+            )
+        if (
+            self.skip_if_watched_within is not None
+            and self.skip_if_watched_within <= timedelta(0)
+        ):
+            raise ValueError(
+                "MovieRemoverRule.skip_if_watched_within must be greater than 0"
+            )
+        if self.skip_if_ever_watched and self.skip_if_watched_within is not None:
+            raise ValueError(
+                "MovieRemoverRule: use skip_if_ever_watched or skip_if_watched_within, not both"
+            )
+
+    @property
+    def root(self) -> str:
+        return self.path.rstrip("/")
+
+    @property
+    def watch_check(self) -> bool:
+        return self.skip_if_ever_watched or self.skip_if_watched_within is not None
+
+    @property
+    def key(self) -> str:
+        """like RemoverRule.key. Removers can't share a root folder, and sonarr tags
+        can't hold a ':', so this never matches a sonarr remover's key"""
+        return f"radarr:{self.root}"
+
+    @property
+    def label(self) -> str:
+        """how pages name the rule"""
+        return self.root
+
+    def __repr__(self):
+        fields: list[tuple[str, str | bool | None | list[str] | timedelta]] = [
+            ("path", self.path),
+            ("min_age", self.min_age),
+            ("exclude_tags", self.exclude_tags or None),
+            ("skip_if_ever_watched", self.skip_if_ever_watched or None),
+            ("skip_if_watched_within", self.skip_if_watched_within),
+            ("plex_library", self.plex_library or None),
+        ]
+        return (
+            f"MovieRemoverRule({','.join(f'{k}={v}' for k, v in fields if v is not None)})"
         )
 
 
@@ -351,7 +429,10 @@ class ArrConfig:
     tag: str | None
     movers: list[MoverRule] = field(default_factory=list[MoverRule])
     profilers: list[ProfileRule] = field(default_factory=list[ProfileRule])
-    removers: list[RemoverRule] = field(default_factory=list[RemoverRule])
+    # sonarr's are RemoverRules, radarr's MovieRemoverRules
+    removers: list[RemoverRule | MovieRemoverRule] = field(
+        default_factory=list[RemoverRule | MovieRemoverRule]
+    )
     remover_settings: RemoverSettings = field(default_factory=RemoverSettings)
     dry_run: bool = False
 
@@ -364,7 +445,7 @@ class ArrConfig:
                 | None
                 | list[MoverRule]
                 | list[ProfileRule]
-                | list[RemoverRule]
+                | list[RemoverRule | MovieRemoverRule]
                 | RemoverSettings,
             ]
         ] = [

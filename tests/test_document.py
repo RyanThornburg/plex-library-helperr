@@ -12,7 +12,7 @@ from config.document import (
     strip_secrets,
     with_secrets,
 )
-from config.models import MoverRule, ProfileRule, RemoverRule
+from config.models import MoverRule, MovieRemoverRule, ProfileRule, RemoverRule
 
 TOML = {
     "settings": {"dry_run": False, "filter_time": "1d"},
@@ -139,6 +139,18 @@ class TestCanonical:
                 "skip_if_watched_within": config.parse_duration(data["skip_if_watched_within"], "x"),
             }
         assert type(rule)(**data) == rule
+
+    def test_movie_remover_is_canonical(self):
+        document = {
+            "radarr": {
+                "removers": [
+                    {"path": "/movies/hallmark", "min_age": "17520h", "skip_if_ever_watched": False, "exclude_tags": []}
+                ]
+            }
+        }
+        assert canonical(document)["radarr"]["removers"] == [{"path": "/movies/hallmark", "min_age": "730d"}]
+        rule = MovieRemoverRule(path="/m", min_age=timedelta(days=730), skip_if_ever_watched=True)
+        assert rule_to_dict(rule) == {"path": "/m", "min_age": "730d", "skip_if_ever_watched": True}
 
     def test_empty_rule_lists_are_dropped(self):
         assert canonical({"radarr": {"movers": [], "baseurl": "http://r"}}) == {

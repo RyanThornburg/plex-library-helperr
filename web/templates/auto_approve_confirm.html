@@ -1,8 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
 <p><a href="/removers">← Removers</a></p>
-<h1>Auto-approve {{ rule.tags | join(", ") }}?</h1>
+<h1>Auto-approve {{ rule.label }}?</h1>
+{% if rule.tags is defined %}
 <p class="banner banner-warn">Removers runs that aren't forced dry (Run…, or a schedule without "Force dry run") will <strong>unmonitor and delete</strong> this rule's removals <strong>without review</strong>: {{ rule.type }} outside the latest {{ rule.keep }}, older than {{ rule.min_age | span }}{% if rule.skip_if_watched_within %}, not watched within {{ rule.skip_if_watched_within | span }}{% endif %}. Forced dry runs never delete, and <code>max_deletes</code> still applies.</p>
+{% else %}
+<p class="banner banner-warn">Removers runs that aren't forced dry (Run…, or a schedule without "Force dry run") will <strong>delete movies and their files</strong> from {{ rule.root }} <strong>without review</strong>: added and released more than {{ rule.min_age | span }} ago{% if rule.skip_if_ever_watched %}, never played by anyone{% elif rule.skip_if_watched_within %}, not played within {{ rule.skip_if_watched_within | span }}{% else %}, watched or not{% endif %}. Forced dry runs never delete, and Radarr's <code>max_deletes</code> still applies.</p>
+{% endif %}
 {% if not allow_apply %}
 <p class="banner">Deleting from the app is off (<code>REMOVERS_ALLOW_APPLY</code>), so this has no effect until it's turned on.</p>
 {% endif %}

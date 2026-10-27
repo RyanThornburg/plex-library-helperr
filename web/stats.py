@@ -21,6 +21,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from config.models import ConfigSettings, PlexConfig, SeerrConfig, TautulliConfig
+from movie_remover import PlayLookup, RadarrMovie
 from web.db import AppSetting, MediaRequest, Play
 from web.jobs import utc_now
 from web.lookups import redact
@@ -310,11 +311,11 @@ def match_user(requester: Requester, users: Iterable[Mapping[str, Any]]) -> int 
 class PlexIndex:
     """plex's movies and shows by tmdb/tvdb guid, read once per sync"""
 
-    def __init__(self, plex: Any):
+    def __init__(self, plex: Any, types: tuple[str, ...] = ("movie", "show")):
         self.plex = plex
         self.by_guid: dict[tuple[str, str], list[Any]] = defaultdict(list)
         for section in plex.library.sections():
-            if section.type not in ("movie", "show"):
+            if section.type not in types:
                 continue
             for item in section.search(includeGuids=True):
                 for guid in item.guids:
@@ -392,6 +393,52 @@ def wanted(request: ParsedRequest, items: list[Any], index: PlexIndex) -> Wanted
             for tvdb_id in tvdb_ids:
                 result.guids[f"{LEGACY_AGENT}thetvdb://{tvdb_id}/{season}/{number}"] = (season, number)
     return result
+
+
+def movie_guids(items: list[Any], tmdb_id: int | None, imdb_id: str | None) -> set[str]:
+    """the guids a movie's plays can have: its plex items' guids, and the legacy agents'
+    guids of its tmdb/imdb ids (radarr's, and the items')"""
+    guids = {item.guid for item in items if item.guid}
+    ids = {"tmdb": {str(tmdb_id)} if tmdb_id else set(), "imdb": {imdb_id} if imdb_id else set()}
+    for item in items:
+        for scheme in ids:
+            ids[scheme].update(_external_ids(item, scheme))
+    for scheme, agent in (("tmdb", "themoviedb"), ("imdb", "imdb")):
+        guids.update(f"{LEGACY_AGENT}{agent}://{external_id}" for external_id in ids[scheme])
+    return guids
+
+
+def movie_play_lookup(engine: Engine, settings: ConfigSettings) -> PlayLookup:
+    """movie_remover's PlayLookup, from the plays table. It syncs new plays from Tautulli
+    first, so a play from the last hour counts. Movies plex doesn't have are left out
+    (their plays can't all be found), so removers that check plays keep them"""
+
+    def lookup(movies: list[RadarrMovie]) -> dict[int, list[datetime]]:
+        tautulli, plex = settings.tautulli, settings.plex
+        if tautulli is None or plex is None:
+            raise StatsError("needs Tautulli and Plex on Settings → Connections")
+        try:
+            sync_plays(engine, tautulli)
+            index = PlexIndex(PlexServer(plex.baseurl, plex.token, timeout=TIMEOUT), ("movie",))
+        except Exception as e:
+            # requests errors hold urls, and tautulli's key is a query param
+            raise StatsError(redact(f"{type(e).__name__}: {e}", tautulli.apikey, plex.token)) from None
+        found: dict[int, list[datetime]] = {}
+        with Session(engine) as session:
+            for movie in movies:
+                keys = [("movie", f"tmdb://{movie.tmdb_id}")] if movie.tmdb_id else []
+                keys += [("movie", f"imdb://{movie.imdb_id}")] if movie.imdb_id else []
+                items = next((index.by_guid[k] for k in keys if index.by_guid.get(k)), [])
+                if not items:
+                    logger.info("STATS\t %s isn't in Plex, its plays are unknown", movie.label)
+                    continue
+                guids = sorted(movie_guids(items, movie.tmdb_id, movie.imdb_id))
+                found[movie.id] = sorted(
+                    session.scalars(select(Play.started_at).where(Play.guid.in_(guids)))
+                )
+        return found
+
+    return lookup
 
 
 # ---------------------------------------------------------------------------

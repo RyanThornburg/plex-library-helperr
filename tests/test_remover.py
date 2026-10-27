@@ -487,7 +487,7 @@ class TestApplyPlan(SonarrFakes):
     def test_records_removed_files(self):
         self._apply([make_series()], {1: {1}})
         [removal] = self.result.removals
-        assert removal.series_id == 1
+        assert removal.media_id == 1
         assert removal.labels == ["S01"]
         assert [(f.id, f.path) for f in removal.files] == [(1, "/tv/Show/Season 01/S01E01.mkv")]
         assert removal.rule == "seasons, keep 2 (rm-seasons-2)"
