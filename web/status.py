@@ -41,6 +41,9 @@ class Refused(Exception):
 class Problem:
     level: str  # info, warn or bad
     text: str
+    # the same problem from one check to the next, for its history (web.health), when
+    # the text changes (a count, a countdown); empty means the text
+    key: str = ""
 
 
 @dataclass
@@ -67,9 +70,14 @@ class ServiceStatus:
     items_label: str = ""
     error: str | None = None
 
-    def problem(self, level: str, text: str) -> None:
-        self.problems.append(Problem(level, text))
+    def problem(self, level: str, text: str, key: str = "") -> None:
+        self.problems.append(Problem(level, text, key))
         self.raise_state(level)
+
+    def low_space(self, free_bytes: int, where: str, min_free_gb: int) -> None:
+        """a problem when free space is under the [web] min_free_gb (0 is off)"""
+        if min_free_gb and free_bytes < min_free_gb * 1024**3:
+            self.problem("warn", f"Low disk space: {size(free_bytes)} free on {where}", f"disk:{where}")
 
     def raise_state(self, level: str) -> None:
         if LEVELS.get(level, 0) > LEVELS.get(self.state, 0):
@@ -170,7 +178,7 @@ def arr_queue(status: ServiceStatus, records: list[dict[str, Any]], total: int) 
     status.facts.append(("Queue", queue))
 
 
-def arr_status(service: str, label: str, arr: ArrConfig | None) -> ServiceStatus:
+def arr_status(service: str, label: str, arr: ArrConfig | None, min_free_gb: int = 0) -> ServiceStatus:
     status = ServiceStatus(service, label)
     if arr is None or not arr.baseurl or not arr.apikey:
         status.state = "off"
@@ -206,6 +214,7 @@ def arr_status(service: str, label: str, arr: ArrConfig | None) -> ServiceStatus
     # root folders on one disk show once, and without their paths when all are on it
     for space, paths in free.items():
         status.facts.append(("Free", size(space) if len(free) == 1 else f"{size(space)} ({', '.join(paths)})"))
+        status.low_space(space, ", ".join(paths), min_free_gb)
     return status
 
 
@@ -221,7 +230,7 @@ def sab_warning(warning: object) -> str:
     return str(warning)
 
 
-def sab_queue(status: ServiceStatus, queue: dict[str, Any]) -> None:
+def sab_queue(status: ServiceStatus, queue: dict[str, Any], min_free_gb: int = 0) -> None:
     status.version = queue.get("version")
     paused = bool(queue.get("paused"))
     state = str(queue.get("status") or ("Paused" if paused else "Idle"))
@@ -230,6 +239,7 @@ def sab_queue(status: ServiceStatus, queue: dict[str, Any]) -> None:
         status.problem(
             "warn",
             f"Downloads are paused (resumes in {until})" if until and until != "0" else "Downloads are paused",
+            "paused",
         )
     slots = queue.get("slots") or []
     total = _int(queue.get("noofslots_total"), len(slots))
@@ -242,10 +252,14 @@ def sab_queue(status: ServiceStatus, queue: dict[str, Any]) -> None:
         status.facts.append(
             ("Left", f"{size(left * 1024 * 1024) if left is not None else '-'}, {queue.get('timeleft') or '-'}")
         )
-    for name, key in (("Free (incomplete)", "diskspace1"), ("Free (complete)", "diskspace2")):
+    for name, folder, key in (
+        ("Free (incomplete)", "the incomplete folder", "diskspace1"),
+        ("Free (complete)", "the complete folder", "diskspace2"),
+    ):
         free = _float(queue.get(key))
         if free is not None:
             status.facts.append((name, size(free * 1024**3)))
+            status.low_space(int(free * 1024**3), folder, min_free_gb)
     status.items_label = "Downloading" if slots else ""
     for slot in slots:
         status.items.append(
@@ -271,11 +285,15 @@ def sab_failures(status: ServiceStatus, slots: list[dict[str, Any]], now: dateti
     ]
     for slot in recent:
         reason = slot.get("fail_message")
-        status.problem("warn", f"Failed: {slot.get('name')}" + (f" ({reason})" if reason else ""))
+        status.problem(
+            "warn",
+            f"Failed: {slot.get('name')}" + (f" ({reason})" if reason else ""),
+            f"failed:{slot.get('nzo_id') or slot.get('name')}",
+        )
     status.facts.append((f"Failed, {SAB_FAILED_WITHIN.days} days", f"{len(recent)}"))
 
 
-def sabnzbd_status(sab: SabnzbdConfig | None, now: datetime) -> ServiceStatus:
+def sabnzbd_status(sab: SabnzbdConfig | None, now: datetime, min_free_gb: int = 0) -> ServiceStatus:
     status = ServiceStatus("sabnzbd", "SABnzbd")
     if sab is None:
         status.state = "off"
@@ -293,7 +311,7 @@ def sabnzbd_status(sab: SabnzbdConfig | None, now: datetime) -> ServiceStatus:
             raise Refused(f"SABnzbd refused: {body.get('error') or 'unknown error'}")
         return body
 
-    sab_queue(status, api("queue", limit=SAB_QUEUE_LIMIT).get("queue") or {})
+    sab_queue(status, api("queue", limit=SAB_QUEUE_LIMIT).get("queue") or {}, min_free_gb)
     history = api("history", limit=SAB_HISTORY_LIMIT, failed_only=1).get("history") or {}
     sab_failures(status, history.get("slots") or [], now)
     for warning in api("warnings").get("warnings") or []:
@@ -326,10 +344,10 @@ def seerr_status(seerr: SeerrConfig | None) -> ServiceStatus:
     counts = get("request/count")
     pending = _int(counts.get("pending"))
     if pending:
-        status.problem("warn", f"{pending} request{'s' if pending != 1 else ''} waiting for approval")
+        status.problem("warn", f"{pending} request{'s' if pending != 1 else ''} waiting for approval", "pending")
     issues = _int(get("issue/count").get("open"))
     if issues:
-        status.problem("warn", f"{issues} open issue{'s' if issues != 1 else ''}")
+        status.problem("warn", f"{issues} open issue{'s' if issues != 1 else ''}", "issues")
     status.facts += [
         ("Pending approval", f"{pending}"),
         # approved, not all of it in plex yet
@@ -438,11 +456,12 @@ def _checked(status: ServiceStatus, check: Callable[[], ServiceStatus], *secrets
 
 def check_all(settings: ConfigSettings, now: datetime) -> list[ServiceStatus]:
     """every service's status, in the page's order"""
+    min_free = settings.web.min_free_gb
     checks: list[tuple[ServiceStatus, Callable[[], ServiceStatus]]] = [
         (ServiceStatus("plex", "Plex"), lambda: plex_status(settings.tautulli)),
-        (ServiceStatus("radarr", "Radarr"), lambda: arr_status("radarr", "Radarr", settings.radarr)),
-        (ServiceStatus("sonarr", "Sonarr"), lambda: arr_status("sonarr", "Sonarr", settings.sonarr)),
-        (ServiceStatus("sabnzbd", "SABnzbd"), lambda: sabnzbd_status(settings.sabnzbd, now)),
+        (ServiceStatus("radarr", "Radarr"), lambda: arr_status("radarr", "Radarr", settings.radarr, min_free)),
+        (ServiceStatus("sonarr", "Sonarr"), lambda: arr_status("sonarr", "Sonarr", settings.sonarr, min_free)),
+        (ServiceStatus("sabnzbd", "SABnzbd"), lambda: sabnzbd_status(settings.sabnzbd, now, min_free)),
         (ServiceStatus("seerr", "Seerr"), lambda: seerr_status(settings.seerr)),
     ]
     # every key is redacted from every card's error

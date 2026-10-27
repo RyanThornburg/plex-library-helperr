@@ -353,3 +353,10 @@ button:disabled { opacity: 0.4; cursor: default; }
 .decision-unknown { color: var(--muted); }
 .hint-cell { color: var(--muted); font-size: 13px; max-width: 60ch; }
 .table-scroll { overflow-x: auto; }
+
+/* health history */
+.section-heading { margin-top: 24px; }
+.section-heading h2 { margin: 0; }
+.incidents tr.incident-bad td:first-child { border-left: 4px solid var(--bad); }
+.incidents tr.incident-warn td:first-child { border-left: 4px solid var(--accent); }
+.incident-text { word-break: break-word; }

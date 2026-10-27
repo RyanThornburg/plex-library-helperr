@@ -62,14 +62,15 @@ class TestSettings:
 
     def test_web_defaults(self):
         assert load("").web == WebDefaults()
-        web = load("[web]\nfollowup_delay = '1h'\nfollowup_attempts = 0\nplan_max_age = '3d'\n").web
+        web = load("[web]\nfollowup_delay = '1h'\nfollowup_attempts = 0\nplan_max_age = '3d'\nmin_free_gb = 0\n").web
         assert web.followup_delay == timedelta(hours=1)
         assert web.followup_attempts == 0
         assert web.plan_max_age == timedelta(days=3)
+        assert web.min_free_gb == 0 and WebDefaults().min_free_gb == 100
 
     @pytest.mark.parametrize(
         "toml",
-        ["followup_delay = '0m'", "followup_attempts = -1", "followup_attempts = 11", "plan_max_age = '7'", "other = 1"],
+        ["followup_delay = '0m'", "followup_attempts = -1", "followup_attempts = 11", "plan_max_age = '7'", "min_free_gb = -1", "min_free_gb = '100GB'", "other = 1"],
     )
     def test_bad_web_defaults_raise(self, toml):
         with pytest.raises(ValueError, match=r"\[web\]"):

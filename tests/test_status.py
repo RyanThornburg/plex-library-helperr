@@ -129,6 +129,20 @@ class TestArr:
         result, _ = run(lambda: status.arr_status("radarr", "Radarr", RADARR), arr_answers(**{"/api/v3/rootfolder": roots}))
         assert [v for k, v in result.facts if k == "Free"] == ["1.0 TB (/a)", "2.0 TB (/b)"]
 
+    def test_low_disk_space(self):
+        roots = [
+            {"path": "/a", "accessible": True, "freeSpace": 50 * 1024**3},
+            {"path": "/b", "accessible": True, "freeSpace": 50 * 1024**3},
+            {"path": "/c", "accessible": True, "freeSpace": 2 * 1024**4},
+        ]
+        answers = arr_answers(**{"/api/v3/rootfolder": roots})
+        result, _ = run(lambda: status.arr_status("radarr", "Radarr", RADARR, 100), answers)
+        assert result.state == "warn"
+        assert [(p.text, p.key) for p in result.problems] == [("Low disk space: 50.0 GB free on /a, /b", "disk:/a, /b")]
+        # 0 is off
+        result, _ = run(lambda: status.arr_status("radarr", "Radarr", RADARR, 0), answers)
+        assert result.problems == []
+
 
 class TestArrQueue:
     def test_stuck_imports_need_attention(self):
@@ -199,6 +213,12 @@ def ts(dt):
 
 
 class TestSabnzbd:
+    def test_low_disk_space(self):
+        result, _ = run(lambda: status.sabnzbd_status(SAB, NOW, 1000), sab_answers())
+        assert [(p.text, p.key) for p in result.problems] == [
+            ("Low disk space: 500.5 GB free on the incomplete folder", "disk:the incomplete folder")
+        ]
+
     def test_downloading(self):
         result, fake = run(lambda: status.sabnzbd_status(SAB, NOW), sab_answers())
         assert result.state == "ok"

@@ -108,12 +108,12 @@ class TestGeneral:
             client,
             "/settings",
             {"version": 0, "dry_run": "on", "filter_time": "2d", "followup_delay": "30m",
-             "followup_attempts": "0", "followup_lookback": "1d", "plan_max_age": "3d"},
+             "followup_attempts": "0", "followup_lookback": "1d", "plan_max_age": "3d", "min_free_gb": "250"},
         )
         assert (response.status_code, response.headers["location"]) == (303, "/settings?saved=1")
         assert document(client) == {
             "settings": {"dry_run": True, "filter_time": "2d"},
-            "web": {"followup_delay": "30m", "followup_attempts": 0, "followup_lookback": "1d", "plan_max_age": "3d"},
+            "web": {"followup_delay": "30m", "followup_attempts": 0, "followup_lookback": "1d", "plan_max_age": "3d", "min_free_gb": 250},
         }
         assert client.app.state.runner.defaults().plan_max_age == timedelta(days=3)
 
@@ -122,16 +122,17 @@ class TestGeneral:
             client,
             "/settings",
             {"version": 0, "dry_run": "on", "filter_time": "1 day", "followup_delay": "15m",
-             "followup_attempts": "x", "followup_lookback": "2d", "plan_max_age": "7d"},
+             "followup_attempts": "x", "followup_lookback": "2d", "plan_max_age": "7d", "min_free_gb": "-1"},
         )
         assert response.status_code == 400
         assert "invalid duration &#39;1 day&#39;" in response.text
         assert "Follow-up attempts must be a whole number" in response.text
+        assert "Low disk space must be at least 0" in response.text
         assert version(client) == 0
 
     def test_going_live_needs_confirming(self, client):
         fields = {"version": 0, "filter_time": "", "followup_delay": "15m", "followup_attempts": "3",
-                  "followup_lookback": "2d", "plan_max_age": "7d"}
+                  "followup_lookback": "2d", "plan_max_age": "7d", "min_free_gb": "100"}
         response = post(client, "/settings", fields)
         assert response.status_code == 200
         assert "Save and go live" in response.text
@@ -143,7 +144,7 @@ class TestGeneral:
 
     def test_stale_page_conflicts(self, client):
         fields = {"dry_run": "on", "filter_time": "", "followup_delay": "15m", "followup_attempts": "3",
-                  "followup_lookback": "2d", "plan_max_age": "7d"}
+                  "followup_lookback": "2d", "plan_max_age": "7d", "min_free_gb": "100"}
         assert post(client, "/settings", {**fields, "version": 0}).status_code == 303
         response = post(client, "/settings", {**fields, "version": 0})
         assert response.status_code == 400

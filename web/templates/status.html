@@ -53,4 +53,17 @@
   </article>
 {% endfor %}
 </section>
+
+<div class="heading section-heading">
+  <h2>Recent problems</h2>
+  <a href="/status/history">History</a>
+</div>
+<p class="muted">What the health checks (every {{ check_minutes }} minutes, even with this page closed) saw in the last 7 days.{% if health.finished_at %} Last check {{ health.finished_at | localtime }}.{% endif %}</p>
+{% if health.error %}<p class="banner banner-bad">The last health check failed: {{ health.error }}</p>{% endif %}
+{% if recent %}
+{% include "_incidents.html" %}
+{% if recent_total > recent | length %}<p class="muted"><a href="/status/history?days=7">{{ recent_total - recent | length }} more in the last 7 days</a></p>{% endif %}
+{% else %}
+<p class="empty">No problems in the last 7 days.</p>
+{% endif %}
 {% endblock %}

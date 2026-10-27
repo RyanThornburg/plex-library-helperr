@@ -252,12 +252,14 @@ class WebDefaults:
     followup_attempts: (int) Follow-ups tried in all when blocked (e.g. a scan running), 0 is off
     followup_lookback: (timedelta) Runs and upgrades older than this aren't followed up
     plan_max_age: (timedelta) A removers plan older than this can't be applied
+    min_free_gb: (int) Radarr/Sonarr root folders and SABnzbd's folders with less free space (GB) are a problem, 0 is off
     """
 
     followup_delay: timedelta = timedelta(minutes=15)
     followup_attempts: int = 3
     followup_lookback: timedelta = timedelta(days=2)
     plan_max_age: timedelta = timedelta(days=7)
+    min_free_gb: int = 100
 
     def __post_init__(self):
         _positive_span(self.followup_delay, "followup_delay")
@@ -271,6 +273,8 @@ class WebDefaults:
             raise ValueError(
                 f"web.followup_attempts must be an integer from 0 to 10, got '{self.followup_attempts}'"
             )
+        if not isinstance(self.min_free_gb, int) or isinstance(self.min_free_gb, bool) or self.min_free_gb < 0:
+            raise ValueError(f"web.min_free_gb must be a whole number of GB, 0 or more, got '{self.min_free_gb}'")
 
 
 @dataclass

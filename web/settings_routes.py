@@ -279,6 +279,7 @@ def general(request: Request, values: dict[str, Any] | None = None, errors: list
         "followup_attempts": web.followup_attempts,
         "followup_lookback": config.format_duration(web.followup_lookback),
         "plan_max_age": config.format_duration(web.plan_max_age),
+        "min_free_gb": web.min_free_gb,
     }
     return page(request, "general", {"values": values, **toml_status(request)}, errors)
 
@@ -294,12 +295,14 @@ async def save_general(request: Request) -> Response:
         "followup_attempts": first(fields, "followup_attempts"),
         "followup_lookback": first(fields, "followup_lookback"),
         "plan_max_age": first(fields, "plan_max_age"),
+        "min_free_gb": first(fields, "min_free_gb"),
     }
     checked_duration(values["filter_time"], "Only media added within", errors, optional=True)
     checked_duration(values["followup_delay"], "Follow-up delay", errors)
     attempts = checked_int(values["followup_attempts"], "Follow-up attempts", errors, 0)
     checked_duration(values["followup_lookback"], "Follow-up look back", errors)
     checked_duration(values["plan_max_age"], "Plan max age", errors)
+    min_free_gb = checked_int(values["min_free_gb"], "Low disk space", errors, 0)
     if errors:
         return general(request, values, errors)
 
@@ -315,6 +318,7 @@ async def save_general(request: Request) -> Response:
         "followup_attempts": attempts,
         "followup_lookback": values["followup_lookback"],
         "plan_max_age": values["plan_max_age"],
+        "min_free_gb": min_free_gb,
     }
     return commit(
         request,

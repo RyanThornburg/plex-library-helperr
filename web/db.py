@@ -274,6 +274,27 @@ class Playback(Base):
     hw_decoding: Mapped[bool | None]
     hw_encoding: Mapped[bool | None]
 
+
+class HealthIncident(Base):
+    """a problem a service had, from when web.health's checks first saw it to when it
+    cleared (ended_at None while it lasts). Kept for web.health.KEEP"""
+
+    __tablename__ = "health_incidents"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # radarr, sonarr, sabnzbd, seerr, plex
+    service: Mapped[str] = mapped_column(String(16), index=True)
+    # the same problem from one check to the next: "down", "disk:/data", a health
+    # message, "queue:<title>"...
+    key: Mapped[str] = mapped_column(String(500))
+    # the worst it was: warn or bad
+    level: Mapped[str] = mapped_column(String(8))
+    # the latest text
+    text: Mapped[str] = mapped_column(String(1000))
+    started_at: Mapped[datetime] = mapped_column(index=True)  # naive utc
+    last_seen_at: Mapped[datetime]
+    ended_at: Mapped[datetime | None] = mapped_column(index=True)
+
 def make_engine(path: pathlib.Path) -> Engine:
     engine = create_engine(f"sqlite:///{path}")
 

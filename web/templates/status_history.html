@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Status history · Helperr{% endblock %}
+{% block content %}
+<div class="heading">
+  <h1>Status history</h1>
+  <a class="button button-secondary" href="/status">Status</a>
+</div>
+<p class="muted">Problems the health checks saw, every {{ check_minutes }} minutes, from when they were first seen to when they cleared. A service that couldn't be checked counts as down, and its other problems stay open until it can be checked again. Kept for {{ keep_days }} days.{% if health.finished_at %} Last check {{ health.finished_at | localtime }}.{% endif %}</p>
+{% if health.error %}<p class="banner banner-bad">The last health check failed: {{ health.error }}</p>{% endif %}
+
+<form method="get" action="/status/history" class="filters">
+  <label>Period
+    <select name="days">
+      {% for value, label in HISTORY_DAYS.items() %}<option value="{{ value }}"{% if days == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Service
+    <select name="service">
+      <option value="">Any</option>
+      {% for key, label in LABELS.items() %}<option value="{{ key }}"{% if service == key %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
+  <div class="actions">
+    <button type="submit">Show</button>
+    {% if service or days != DEFAULT_HISTORY_DAYS %}<a class="button button-secondary" href="/status/history">Clear</a>{% endif %}
+  </div>
+</form>
+
+{% if summary %}
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Service</th><th>Problems</th><th>Ongoing</th><th>Down</th></tr></thead>
+  <tbody>
+    {% for s in summary %}
+    <tr>
+      <td><a href="/status/history?days={{ days }}&amp;service={{ s.service }}">{{ s.label }}</a></td>
+      <td>{{ s.incidents }}</td>
+      <td>{{ s.ongoing or "-" }}</td>
+      <td>{{ s.down or "-" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h2>Problems</h2>
+{% set recent = incidents %}
+{% include "_incidents.html" %}
+{% elif health.finished_at %}
+<p class="empty">No problems in the {{ HISTORY_DAYS[days] | lower }}.</p>
+{% else %}
+<p class="empty">No health checks yet. The first runs when the app starts.</p>
+{% endif %}
+{% endblock %}

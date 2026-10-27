@@ -46,6 +46,13 @@
     <p class="hint">An older removers plan can't be applied, run removers again for a fresh one.</p>
   </div>
 
+  <h2 class="form-heading">Health checks</h2>
+  <label for="min_free_gb">Low disk space below</label>
+  <div>
+    <input id="min_free_gb" name="min_free_gb" type="number" min="0" value="{{ values.min_free_gb }}" class="input-days" required> GB
+    <p class="hint">A Radarr/Sonarr root folder or SABnzbd download folder with less free space is a problem on Status and in its history. 0 turns it off.</p>
+  </div>
+
   <span></span>
   <div class="actions"><button type="submit">Save</button></div>
 </form>

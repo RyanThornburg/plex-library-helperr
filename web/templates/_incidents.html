@@ -1,0 +1,17 @@
+{# health incidents (web.health.incident_dict), as `recent` #}
+<div class="table-scroll">
+<table class="incidents">
+  <thead><tr><th>Service</th><th>Problem</th><th>Started</th><th>Cleared</th><th>Lasted</th></tr></thead>
+  <tbody>
+    {% for i in recent %}
+    <tr class="incident-{{ i.level }}">
+      <td>{{ i.label }}</td>
+      <td class="incident-text">{{ i.text }}</td>
+      <td>{{ i.started_at | localtime }}</td>
+      <td>{% if i.ongoing %}<span class="tag {{ 'tag-bad' if i.level == 'bad' else 'tag-warn' }}">ongoing</span>{% else %}{{ i.ended_at | localtime }}{% endif %}</td>
+      <td>{{ i.lasted }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
