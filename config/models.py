@@ -296,6 +296,17 @@ class SeerrConfig:
 
 
 @dataclass
+class SabnzbdConfig:
+    """SABnzbd's queue and history, for the status page"""
+
+    url: str
+    apikey: str
+
+    def __repr__(self):
+        return f"SabnzbdConfig(url={self.url},apikey={len(self.apikey) * '*'})"
+
+
+@dataclass
 class PlexConfig:
     """Plex class for refreshing library"""
 
@@ -376,8 +387,9 @@ class ConfigSettings:
     autoscan: AutoscanConfig | None = None
     tautulli: TautulliConfig | None = None
     seerr: SeerrConfig | None = None
+    sabnzbd: SabnzbdConfig | None = None
     empty_trash: EmptyTrashSettings = field(default_factory=EmptyTrashSettings)
     web: WebDefaults = field(default_factory=WebDefaults)
 
     def __repr__(self):
-        return f"ConfigSettings(filter_time={self.filter_time}, web={self.web}, plex={self.plex}, empty_trash={self.empty_trash}, tautulli={self.tautulli}, seerr={self.seerr}, autoscan={self.autoscan}, sonarr={self.sonarr}, radarr={self.radarr})"
+        return f"ConfigSettings(filter_time={self.filter_time}, web={self.web}, plex={self.plex}, empty_trash={self.empty_trash}, tautulli={self.tautulli}, seerr={self.seerr}, sabnzbd={self.sabnzbd}, autoscan={self.autoscan}, sonarr={self.sonarr}, radarr={self.radarr})"

@@ -21,6 +21,7 @@ from web.scheduler import Scheduler
 from web.settings_routes import router as settings_router
 from web.stats import StatsSync
 from web.stats_routes import router as stats_router
+from web.status_routes import router as status_router
 from web.secret_box import SecretBox
 from web.security import SecurityMiddleware
 from web.settings import WebSettings, load_web_settings
@@ -89,6 +90,7 @@ def create_app(
     app.include_router(settings_router)
     app.include_router(webhook_router)
     app.include_router(stats_router)
+    app.include_router(status_router)
     # added last runs first: security headers wrap the access check, so 403s get them too
     app.add_middleware(AccessMiddleware, verifier=AccessVerifier(settings, keys))
     app.add_middleware(SecurityMiddleware)

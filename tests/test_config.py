@@ -342,6 +342,16 @@ class TestTautulliConfig:
         assert settings.tautulli is None
 
 
+class TestSabnzbdConfig:
+    def test_configured(self):
+        settings = load("[sabnzbd]\nurl = 'http://sab:8080'\napikey = 'abc123'\n")
+        assert settings.sabnzbd.url == "http://sab:8080"
+        assert "abc123" not in repr(settings)
+
+    def test_missing_apikey_is_none(self):
+        assert load("[sabnzbd]\nurl = 'http://sab:8080'\n").sabnzbd is None
+
+
 class TestConfigTomlPath:
     def test_in_data_dir(self, tmp_path, monkeypatch):
         monkeypatch.setenv("DATA_DIR", str(tmp_path))

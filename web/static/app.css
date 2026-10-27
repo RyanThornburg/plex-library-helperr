@@ -312,3 +312,30 @@ button:disabled { opacity: 0.4; cursor: default; }
   .services { grid-template-columns: 1fr; }
   .form-compact { grid-template-columns: 1fr; }
 }
+
+/* status */
+.status-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; }
+.status-board .card { border-left-width: 4px; }
+.state-ok { border-left-color: var(--ok); }
+.state-warn { border-left-color: var(--accent); }
+.state-bad { border-left-color: var(--bad); }
+.status-board .facts { margin: 0; }
+.version { font-size: 13px; font-weight: 400; }
+.tag-ok { border-color: var(--ok); color: var(--ok); }
+.tag-bad { border-color: var(--bad); color: var(--bad); }
+.card h3 { font-size: 13px; margin: 4px 0 0; color: var(--muted); }
+.problems, .status-items { margin: 0; padding-left: 18px; }
+.problem-bad { color: var(--bad); }
+.problem-warn { color: var(--accent); }
+.problem-info { color: var(--muted); }
+.status-items { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.status-items li { display: flex; flex-direction: column; gap: 2px; padding-left: 8px; border-left: 2px solid var(--border); }
+.status-items .item-warn { border-left-color: var(--accent); }
+.status-items .item-bad { border-left-color: var(--bad); }
+.item-title { word-break: break-word; }
+.status-items .hint { margin: 0; }
+.status-items progress { width: 100%; height: 6px; accent-color: var(--accent); }
+
+@media (max-width: 700px) {
+  .status-board { grid-template-columns: 1fr; }
+}

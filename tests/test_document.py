@@ -18,6 +18,7 @@ TOML = {
     "settings": {"dry_run": False, "filter_time": "1d"},
     "plex": {"baseurl": "http://plex:32400", "token": "plex-token", "empty_trash": {"max_items": 10}},
     "tautulli": {"url": "http://tautulli:8181", "apikey": "tautulli-key"},
+    "sabnzbd": {"url": "http://sabnzbd:8080", "apikey": "sabnzbd-key"},
     "autoscan": {"url": "http://autoscan:3030", "username": "me", "password": "autoscan-pass"},
     "radarr": {
         "baseurl": "http://radarr:7878",
@@ -38,6 +39,7 @@ SECRETS = {
     "sonarr.apikey": "sonarr-key",
     "plex.token": "plex-token",
     "tautulli.apikey": "tautulli-key",
+    "sabnzbd.apikey": "sabnzbd-key",
     "autoscan.password": "autoscan-pass",
 }
 

@@ -19,6 +19,7 @@ from config.models import (
     ProfileRule,
     RemoverRule,
     RemoverSettings,
+    SabnzbdConfig,
     SeerrConfig,
     TautulliConfig,
     WebDefaults,
@@ -172,6 +173,7 @@ def build_config(data: Mapping[str, Any]) -> ConfigSettings:
     plex_config = data.get("plex", {})
     tautulli_config = data.get("tautulli", {})
     seerr_config = data.get("seerr", {})
+    sabnzbd_config = data.get("sabnzbd", {})
     autoscan_config = data.get("autoscan", {})
     radarr_config = data.get("radarr")
     sonarr_config = data.get("sonarr")
@@ -200,6 +202,11 @@ def build_config(data: Mapping[str, Any]) -> ConfigSettings:
     seerr = (
         SeerrConfig(url=seerr_config["url"], apikey=seerr_config["apikey"])
         if seerr_config.get("url") and seerr_config.get("apikey")
+        else None
+    )
+    sabnzbd = (
+        SabnzbdConfig(url=sabnzbd_config["url"], apikey=sabnzbd_config["apikey"])
+        if sabnzbd_config.get("url") and sabnzbd_config.get("apikey")
         else None
     )
     autoscan = (
@@ -231,6 +238,7 @@ def build_config(data: Mapping[str, Any]) -> ConfigSettings:
         autoscan=autoscan,
         tautulli=tautulli,
         seerr=seerr,
+        sabnzbd=sabnzbd,
         empty_trash=empty_trash,
         web=_build_web(data.get("web", {})),
     )

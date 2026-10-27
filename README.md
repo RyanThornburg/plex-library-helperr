@@ -102,8 +102,9 @@ docker image prune -f --filter "label=org.opencontainers.image.title=plex-librar
 
 `--serve` runs a web app for running and reviewing jobs:
 
-- **Settings** are made in the app and stored in its database: connections to Radarr, Sonarr, Plex, Tautulli, Seerr and Autoscan (with a Test button), dry run, movers and profilers per *arr, removers, empty trash, and the follow-up/plan defaults. Rule fields suggest values from Radarr/Sonarr/Plex (root folders, tags, genres, profiles, libraries…), and **Preview matches** shows what a mover or profiler would match in the whole library before you save it. Any change that turns a job's dry run off goes through a confirmation page.
+- **Settings** are made in the app and stored in its database: connections to Radarr, Sonarr, Plex, Tautulli, Seerr, SABnzbd and Autoscan (with a Test button), dry run, movers and profilers per *arr, removers, empty trash, and the follow-up/plan defaults. Rule fields suggest values from Radarr/Sonarr/Plex (root folders, tags, genres, profiles, libraries…), and **Preview matches** shows what a mover or profiler would match in the whole library before you save it. Any change that turns a job's dry run off goes through a confirmation page.
 - **History:** every save is a version with who and when. A version's page shows what changed, and can restore it (as a new version).
+- **Status:** one page with what each service is doing now, so you don't have to open each one. Plex (from Tautulli): who's playing what, direct play or transcode, and bandwidth. Radarr and Sonarr: their health warnings, queue downloads that need attention (stuck imports, failed downloads, with the reason), missing and cutoff-unmet counts, and free space. SABnzbd: status, speed, what's left, free space, warnings, failed downloads in the last 7 days and the queue. Seerr: requests waiting for approval, processing and available, and open issues. Each card is ok, warning, problem/down or not connected, and a service that's down only marks its own card. It refreshes every minute and only reads (`/api/status`).
 - **Secrets:** API keys, the Plex token and the Autoscan password are encrypted with `HELPERR_SECRET_KEY` before they're stored, kept out of the history, and never shown again: leave a key field empty to keep the saved one. If `HELPERR_SECRET_KEY` changes, the keys can't be decrypted and have to be entered again.
 - **config.toml** is imported once, on the first start with an empty database, then never read again. Delete it afterwards, it holds your keys in plain text. `remover_settings.dry_run` isn't imported (see auto-approve).
 - Each job has a **Dry run** button, which forces every dry run setting on, and a **Run…** button, which uses the settings as they are. Run… always goes to a confirmation page that says whether the run will make changes.
@@ -217,6 +218,15 @@ Seerr (or Overseerr): the requests and who made them, for the web app's Requests
 |-----     |-------------                                                 |
 | `url`    | URL to your Seerr instance (e.g. `http://192.168.1.1:5055`)   |
 | `apikey` | Seerr API key (Settings → General)                           |
+
+### `[sabnzbd]` (optional)
+
+SABnzbd's queue, speed, warnings and failed downloads, for the web app's Status page.
+
+| Key      | Description                                                  |
+|-----     |-------------                                                 |
+| `url`    | URL to your SABnzbd instance (e.g. `http://192.168.1.1:8080`) |
+| `apikey` | SABnzbd API key (Config → General, not the NZB key)          |
 
 ### `[autoscan]` (optional)
 

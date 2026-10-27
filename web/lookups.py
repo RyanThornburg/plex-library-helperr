@@ -316,6 +316,17 @@ def check_connection(service: str, values: dict[str, str]) -> str:
             status = requests.get(f"{url}/api/v1/status", headers=headers, timeout=TIMEOUT)
             status.raise_for_status()
             return f"Seerr {status.json().get('version', '')}"
+        if service == "sabnzbd":
+            # version answers without a key, the queue needs it. The key is a query param
+            response = requests.get(
+                f"{url}/api",
+                params={"mode": "queue", "limit": 1, "output": "json", "apikey": secret},
+                timeout=TIMEOUT,
+            )
+            if response.status_code in (401, 403):
+                raise LookupFailed(f"SABnzbd refused the API key (HTTP {response.status_code})")
+            response.raise_for_status()
+            return f"SABnzbd {response.json().get('queue', {}).get('version', '')}"
         if service == "autoscan":
             username = values.get("username", "")
             response = requests.get(

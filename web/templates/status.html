@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Status · Helperr{% endblock %}
+{% block head %}<meta http-equiv="refresh" content="{{ refresh }}">{% endblock %}
+{% block content %}
+<div class="heading">
+  <h1>Status</h1>
+  <a class="button button-secondary" href="/status">Refresh</a>
+</div>
+<p class="muted">Checked {{ checked_at | localtime }}, refreshes every minute.</p>
+{% if config_error %}
+<p class="banner banner-bad">The settings can't be loaded: {{ config_error }} <a href="/settings/connections">Connections</a></p>
+{% endif %}
+
+<section class="status-board">
+{% for s in services %}
+  <article class="card state-{{ s.state }}" id="{{ s.service }}">
+    <div class="heading">
+      <h2>{{ s.label }}{% if s.version %} <span class="muted version">{{ s.version }}</span>{% endif %}</h2>
+      {% if s.state == "off" %}<span class="tag">not connected</span>
+      {% elif s.state == "bad" %}<span class="tag tag-bad">{{ "down" if s.error else "problem" }}</span>
+      {% elif s.state == "warn" %}<span class="tag tag-warn">warning</span>
+      {% else %}<span class="tag tag-ok">ok</span>{% endif %}
+    </div>
+    {% if s.state == "off" %}
+    {% set name, section = needs[s.service] %}
+    <p class="muted">{% if s.service == "plex" %}Plex's activity comes from Tautulli. {% endif %}<a href="/settings/connections#{{ section }}">Connect {{ name }}</a></p>
+    {% else %}
+    {% if s.error %}<p class="errors">{{ s.error }}</p>{% endif %}
+    {% if s.facts %}
+    <dl class="facts">
+      {% for label, value in s.facts %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}
+    </dl>
+    {% endif %}
+    {% if s.problems %}
+    <ul class="problems">
+      {% for p in s.problems[:max_problems] %}<li class="problem-{{ p.level }}">{{ p.text }}</li>{% endfor %}
+      {% if s.problems | length > max_problems %}<li class="muted">and {{ s.problems | length - max_problems }} more</li>{% endif %}
+    </ul>
+    {% endif %}
+    {% if s.items %}
+    <h3>{{ s.items_label }}</h3>
+    <ul class="status-items">
+      {% for item in s.items %}
+      <li class="item-{{ item.level }}">
+        <span class="item-title">{{ item.title }}</span>
+        {% if item.detail %}<span class="hint">{{ item.detail }}</span>{% endif %}
+        {% if item.progress is not none %}<progress max="100" value="{{ item.progress }}" aria-label="{{ item.progress }}%">{{ item.progress }}%</progress>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% endif %}
+  </article>
+{% endfor %}
+</section>
+{% endblock %}

@@ -63,19 +63,21 @@ SERVICES: dict[str, tuple[str, str, str]] = {
     "plex": ("Plex", "Token", "baseurl"),
     "tautulli": ("Tautulli", "API key", "url"),
     "seerr": ("Seerr", "API key", "url"),
+    "sabnzbd": ("SABnzbd", "API key", "url"),
     "autoscan": ("Autoscan", "Password", "url"),
 }
 SERVICE_SECRETS = {
     service: name for name, (service, _) in SECRET_FIELDS.items()
 }
 # secrets a service can't work without (autoscan may have no password)
-REQUIRED_SECRETS = ("radarr", "sonarr", "plex", "tautulli", "seerr")
+REQUIRED_SECRETS = ("radarr", "sonarr", "plex", "tautulli", "seerr", "sabnzbd")
 SERVICE_HINTS = {
     "radarr": "Settings → General → API Key in Radarr.",
     "sonarr": "Settings → General → API Key in Sonarr.",
     "plex": "Your X-Plex-Token. Used to refresh libraries and empty the trash.",
     "tautulli": "Settings → Web Interface → API key. Watch history for removers' watch protection; without it, Plex history is used (completed plays only).",
     "seerr": "Settings → General → API Key in Seerr (or Overseerr). Requests and who made them, for the Requests page.",
+    "sabnzbd": "Config → General → API Key in SABnzbd (not the NZB key). Queue, speed, warnings and failed downloads, for the Status page.",
     "autoscan": "Moved folders go to Autoscan's manual trigger instead of refreshing whole Plex libraries. Leave the username empty if Autoscan has no auth.",
 }
 

@@ -24,7 +24,7 @@
   <form method="post" action="/settings/connections/{{ service }}#{{ service }}" class="form form-compact">
     {{ f.version_field() }}
     <label for="{{ service }}-url">URL</label>
-    <input id="{{ service }}-url" name="url" value="{{ values.url }}" placeholder="http://192.168.1.15:{{ {'radarr': 7878, 'sonarr': 8989, 'plex': 32400, 'tautulli': 8181, 'seerr': 5055, 'autoscan': 3030}[service] }}" spellcheck="false" autocomplete="off">
+    <input id="{{ service }}-url" name="url" value="{{ values.url }}" placeholder="http://192.168.1.15:{{ {'radarr': 7878, 'sonarr': 8989, 'plex': 32400, 'tautulli': 8181, 'seerr': 5055, 'sabnzbd': 8080, 'autoscan': 3030}[service] }}" spellcheck="false" autocomplete="off">
     {% if service == "autoscan" %}
     <label for="autoscan-username">Username</label>
     <input id="autoscan-username" name="username" value="{{ values.username }}" spellcheck="false" autocomplete="off">

@@ -166,6 +166,23 @@ class TestCheckConnection:
             with pytest.raises(LookupFailed, match="refused the API key"):
                 check_connection("seerr", {"url": "http://seerr:5055", "secret": "s3cret"})
 
+    def test_sabnzbd(self):
+        with patch("web.lookups.requests.get", return_value=response(body={"queue": {"version": "5.1.3"}})) as get:
+            assert check_connection("sabnzbd", {"url": "http://sab:8080/", "secret": "key"}) == "SABnzbd 5.1.3"
+        assert get.call_args.args[0] == "http://sab:8080/api"
+        assert get.call_args.kwargs["params"]["apikey"] == "key"
+
+    def test_sabnzbd_bad_key(self):
+        with patch("web.lookups.requests.get", return_value=response(403)):
+            with pytest.raises(LookupFailed, match="SABnzbd refused the API key"):
+                check_connection("sabnzbd", {"url": "http://sab:8080", "secret": "s3cret"})
+
+    def test_sabnzbd_error_is_redacted(self):
+        with patch("web.lookups.requests.get", return_value=response(500)):
+            with pytest.raises(LookupFailed) as e:
+                check_connection("sabnzbd", {"url": "http://sab:8080", "secret": "secret"})
+        assert "secret" not in str(e.value)
+
     def test_plex(self):
         server = SimpleNamespace(friendlyName="rattplex", version="1.42")
         with patch("web.lookups.PlexServer", return_value=server):
