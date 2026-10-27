@@ -221,6 +221,59 @@ class MediaRequest(Base):
     synced_at: Mapped[datetime]
 
 
+
+class Playback(Base):
+    """a play from the last few weeks of Tautulli's history with how plex streamed it
+    (get_stream_data), for the playback page. web.playback deletes older ones: it's about
+    what happens now, not what happened before players or files changed"""
+
+    __tablename__ = "playbacks"
+
+    # tautulli's history id
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
+    started_at: Mapped[datetime] = mapped_column(index=True)  # naive utc
+    # plex account id and tautulli's friendly name
+    user_id: Mapped[int] = mapped_column(index=True)
+    user: Mapped[str] = mapped_column(String(255))
+    media_type: Mapped[str] = mapped_column(String(16))
+    rating_key: Mapped[int | None]
+    title: Mapped[str] = mapped_column(String(500))
+    platform: Mapped[str | None] = mapped_column(String(64))
+    product: Mapped[str | None] = mapped_column(String(64))
+    player: Mapped[str | None] = mapped_column(String(255))
+    # lan or wan
+    location: Mapped[str | None] = mapped_column(String(16))
+    # direct play, copy (direct stream), transcode
+    transcode_decision: Mapped[str | None] = mapped_column(String(32))
+    # False when tautulli had no stream data for it, the columns below are then empty
+    details: Mapped[bool]
+    # the player's quality setting: Original, or a limit like "4 Mbps 720p"
+    quality_profile: Mapped[str | None] = mapped_column(String(64))
+    # the file's, then what was streamed
+    container: Mapped[str | None] = mapped_column(String(32))
+    stream_container: Mapped[str | None] = mapped_column(String(32))
+    container_decision: Mapped[str | None] = mapped_column(String(32))
+    video_decision: Mapped[str | None] = mapped_column(String(32))
+    video_codec: Mapped[str | None] = mapped_column(String(32))
+    stream_video_codec: Mapped[str | None] = mapped_column(String(32))
+    video_resolution: Mapped[str | None] = mapped_column(String(16))
+    stream_video_resolution: Mapped[str | None] = mapped_column(String(16))
+    video_dynamic_range: Mapped[str | None] = mapped_column(String(32))
+    stream_video_dynamic_range: Mapped[str | None] = mapped_column(String(32))
+    audio_decision: Mapped[str | None] = mapped_column(String(32))
+    audio_codec: Mapped[str | None] = mapped_column(String(32))
+    stream_audio_codec: Mapped[str | None] = mapped_column(String(32))
+    audio_channels: Mapped[int | None]
+    stream_audio_channels: Mapped[int | None]
+    # burn, copy, transcode
+    subtitle_decision: Mapped[str | None] = mapped_column(String(32))
+    subtitle_codec: Mapped[str | None] = mapped_column(String(32))
+    # kbps
+    bitrate: Mapped[int | None]
+    stream_bitrate: Mapped[int | None]
+    hw_decoding: Mapped[bool | None]
+    hw_encoding: Mapped[bool | None]
+
 def make_engine(path: pathlib.Path) -> Engine:
     engine = create_engine(f"sqlite:///{path}")
 

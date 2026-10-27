@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% block title %}Playback · Helperr{% endblock %}
+{% block head %}{% if syncing %}<meta http-equiv="refresh" content="5">{% endif %}{% endblock %}
+{% macro decision(value) -%}
+<span class="decision decision-{{ (value or 'unknown') | replace(' ', '_') }}">{{ DECISIONS.get(value, value or "?") }}</span>
+{%- endmacro %}
+{% macro latest(l) -%}
+{{ decision(l.decision) }}{% if l.cause %} <span class="muted">({{ l.cause }})</span>{% endif %}<br><span class="muted">{{ l.started_at | localtime }}</span>
+{%- endmacro %}
+{% block content %}
+{% set r = report %}
+<div class="heading">
+  <h1>Playback</h1>
+  <form method="post" action="/playback/sync">
+    <button type="submit" class="button-secondary"{% if syncing %} disabled{% endif %}>{{ "Syncing…" if syncing else "Sync now" }}</button>
+  </form>
+</div>
+<p class="muted">How Plex streamed each movie and episode played in the window, and why it transcoded, from Tautulli. Plays are kept for {{ keep_days }} days; tracking started {{ backfill_days }} days before the first sync and never reads older history. Synced every {{ interval_minutes }} minutes; a play shows once it's stopped (what's playing now is on <a href="/status#plex">Status</a>).
+{% if status.finished_at %}Last sync {{ status.finished_at | localtime }}, {{ status.plays_read }} new play{{ "s" if status.plays_read != 1 }}.{% endif %}</p>
+{% if syncing %}<p class="banner">Syncing. The first sync reads {{ backfill_days }} days of plays and takes a minute or two; this page refreshes until it's done.</p>{% endif %}
+{% if status.error %}<p class="banner banner-bad">{{ status.error }}</p>{% endif %}
+
+<form method="get" action="/playback" class="filters">
+  <label>Window
+    <select name="window">
+      {% for key, w in WINDOWS.items() %}<option value="{{ key }}"{% if filters.window == key %} selected{% endif %}>{{ w[0] }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>User
+    <select name="user">
+      <option value="">Everyone</option>
+      {% for id, name in users %}<option value="{{ id }}"{% if filters.user == id %} selected{% endif %}>{{ name }}</option>{% endfor %}
+    </select>
+  </label>
+  <div class="actions">
+    <button type="submit">Show</button>
+    {% if filters.filtered %}<a class="button button-secondary" href="/playback">Clear</a>{% endif %}
+  </div>
+</form>
+
+{% if not r.plays %}
+<p class="empty">{% if status.finished_at %}No plays in the {{ WINDOWS[filters.window][0] | lower }}{% if filters.user is not none %} for this user{% endif %}.{% else %}Nothing synced yet.{% endif %}</p>
+{% else %}
+<section class="tiles">
+  <div class="tile"><span class="tile-value">{{ r.plays }}</span><span class="tile-label">plays</span></div>
+  <div class="tile tile-ok"><span class="tile-value">{{ r.direct_play_percent }}%</span><span class="tile-label">direct play ({{ r.direct_play }})</span></div>
+  <div class="tile"><span class="tile-value">{{ r.direct_stream_percent }}%</span><span class="tile-label">direct stream ({{ r.direct_stream }})</span></div>
+  <div class="tile tile-warn"><span class="tile-value">{{ r.transcode_percent }}%</span><span class="tile-label">transcode ({{ r.transcode }})</span></div>
+  <div class="tile"><span class="tile-value">{{ r.remote }}</span><span class="tile-label">remote plays</span></div>
+  <div class="tile{% if r.software %} tile-warn{% endif %}"><span class="tile-value">{{ r.software }}</span><span class="tile-label">CPU video transcodes</span></div>
+</section>
+<p class="muted">Direct stream: the video and audio are sent as they are, only repackaged (cheap). CPU video transcodes didn't use Plex's hardware transcoding.</p>
+
+{% if r.causes %}
+<h2>Why plays transcoded</h2>
+<p class="muted">Each transcode counted once, under its main cause.</p>
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Cause</th><th>Plays</th><th>Users</th><th>What to do</th></tr></thead>
+  <tbody>
+    {% for c in r.causes %}
+    <tr>
+      <td>{{ c.label }}</td>
+      <td>{{ c.plays }} <span class="muted">({{ c.percent }}%)</span></td>
+      <td>{{ c.users }}</td>
+      <td class="hint-cell">{{ c.hint }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+<h2>By user</h2>
+<div class="table-scroll">
+<table>
+  <thead><tr><th>User</th><th>Plays</th><th>Direct play</th><th>Direct stream</th><th>Transcode</th><th>Main cause</th><th>Players</th><th>Latest play</th></tr></thead>
+  <tbody>
+    {% for u in r.users %}
+    <tr>
+      <td><a href="/playback?{{ filters.query(user=u.user_id) | urlencode }}">{{ u.user }}</a>{% if u.remote %}<br><span class="muted">{{ u.remote }} remote</span>{% endif %}</td>
+      <td>{{ u.plays }}</td>
+      <td>{{ u.direct_play }}</td>
+      <td>{{ u.direct_stream }}</td>
+      <td>{% if u.transcode %}<span class="decision decision-transcode">{{ u.transcode }}</span> <span class="muted">({{ u.transcode_percent }}%)</span>{% else %}0{% endif %}</td>
+      <td>{{ u.main_cause or "-" }}{% if u.quality_limit %}<br><span class="muted">set to {{ u.quality_limit }}</span>{% endif %}{% if u.file_format %}<br><span class="muted">files: {{ u.file_format }}</span>{% endif %}</td>
+      <td>{{ u.players | join(", ") }}</td>
+      <td>{{ latest(u.latest) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h2>By player</h2>
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Player</th><th>Plays</th><th>Users</th><th>Direct play</th><th>Direct stream</th><th>Transcode</th><th>Main cause</th><th>Latest play</th></tr></thead>
+  <tbody>
+    {% for p in r.players %}
+    <tr>
+      <td>{{ p.player }}{% if p.platforms %}<br><span class="muted">{{ p.platforms | join(", ") }}</span>{% endif %}</td>
+      <td>{{ p.plays }}</td>
+      <td>{{ p.users }}</td>
+      <td>{{ p.direct_play }}</td>
+      <td>{{ p.direct_stream }}</td>
+      <td>{% if p.transcode %}<span class="decision decision-transcode">{{ p.transcode }}</span> <span class="muted">({{ p.transcode_percent }}%)</span>{% else %}0{% endif %}</td>
+      <td>{{ p.main_cause or "-" }}{% if p.quality_limit %}<br><span class="muted">mostly {{ p.quality_limit }}</span>{% endif %}{% if p.file_format %}<br><span class="muted">files: {{ p.file_format }}</span>{% endif %}</td>
+      <td>{{ latest(p.latest) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h2>File formats that transcode</h2>
+<p class="muted">How often each format in the files (audio, subtitles shown, video format, HDR) made a play transcode, of all plays of that format, and on which players. Quality limited plays count under their quality setting, not here. A high rate across many players points at the files you get; one player that can't play what others can is about that player's settings (audio passthrough, Direct Play) or app, so take it up with its user.</p>
+{% if r.formats %}
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Cause</th><th>Format</th><th>Transcoded</th><th>Users</th><th>Players</th><th>Last transcode</th></tr></thead>
+  <tbody>
+    {% for f in r.formats %}
+    <tr>
+      <td>{{ f.cause }}</td>
+      <td>{{ f.format }}</td>
+      <td><span class="decision decision-transcode">{{ f.transcodes }}</span> of {{ f.plays }} <span class="muted">({{ f.percent }}%)</span></td>
+      <td>{{ f.users }}</td>
+      <td>{% for name, count in f.players %}{{ name }} <span class="muted">({{ count }})</span>{% if not loop.last %}, {% endif %}{% endfor %}</td>
+      <td>{{ f.last_transcoded_at | localtime }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="empty">None in the {{ WINDOWS[filters.window][0] | lower }}.</p>
+{% endif %}
+
+<h2>Files that transcode for several people</h2>
+<p class="muted">The same file transcoding for {{ file_min_users }} or more people because of the file. A better version of it fixes every player.</p>
+{% if r.files %}
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Title</th><th>Cause</th><th>File</th><th>Users</th><th>Plays</th><th>Last played</th></tr></thead>
+  <tbody>
+    {% for f in r.files %}
+    <tr>
+      <td>{{ f.title }}</td>
+      <td>{{ f.causes | join(", ") }}</td>
+      <td class="muted">{{ f.detail }}</td>
+      <td>{{ f.users }}</td>
+      <td>{{ f.plays }}</td>
+      <td>{{ f.last_played_at | localtime }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="empty">None in the {{ WINDOWS[filters.window][0] | lower }}.</p>
+{% endif %}
+
+<h2>Recent transcodes</h2>
+{% if r.recent %}
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Started</th><th>User</th><th>Title</th><th>Player</th><th>Why</th><th>Stream</th></tr></thead>
+  <tbody>
+    {% for t in r.recent %}
+    <tr>
+      <td>{{ t.started_at | localtime }}</td>
+      <td>{{ t.user }}</td>
+      <td>{{ t.title }}</td>
+      <td>{{ t.player }}{% if t.remote %}<br><span class="muted">remote</span>{% endif %}</td>
+      <td>{{ t.causes | join(", ") }}</td>
+      <td class="muted">{{ t.detail }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="empty">No transcodes in the {{ WINDOWS[filters.window][0] | lower }}.</p>
+{% endif %}
+{% endif %}
+{% endblock %}

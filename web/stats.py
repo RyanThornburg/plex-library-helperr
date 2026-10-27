@@ -583,9 +583,9 @@ class SyncStatus:
         )
 
 
-def sync_status(engine: Engine) -> SyncStatus:
+def sync_status(engine: Engine, key: str = STATUS_SETTING) -> SyncStatus:
     with Session(engine) as session:
-        setting = session.get(AppSetting, STATUS_SETTING)
+        setting = session.get(AppSetting, key)
     if setting is None:
         return SyncStatus()
     try:
@@ -601,9 +601,9 @@ def sync_status(engine: Engine) -> SyncStatus:
         return SyncStatus()
 
 
-def _save_status(engine: Engine, status: SyncStatus) -> None:
+def save_status(engine: Engine, status: SyncStatus, key: str = STATUS_SETTING) -> None:
     with Session(engine) as session:
-        setting = session.get(AppSetting, STATUS_SETTING) or AppSetting(key=STATUS_SETTING)
+        setting = session.get(AppSetting, key) or AppSetting(key=key)
         setting.value = status.to_json()
         setting.updated_at = utc_now()
         session.add(setting)
@@ -646,12 +646,17 @@ def sync(engine: Engine, settings: ConfigSettings) -> SyncStatus:
         status.error = redact(f"{type(e).__name__}: {e}", *secrets)
         logger.error("STATS\t Sync failed: %s", status.error)
     status.finished_at = utc_now()
-    _save_status(engine, status)
+    save_status(engine, status)
     return status
 
 
 class StatsSync:
-    """syncs at start, every SYNC_INTERVAL, and when sync_now() is called"""
+    """syncs at start, every interval, and when sync_now() is called. Subclasses set
+    their own sync, interval and status key"""
+
+    interval = SYNC_INTERVAL
+    status_key = STATUS_SETTING
+    thread_name = "stats-sync"
 
     def __init__(self, engine: Engine, load_config: Callable[[], ConfigSettings]):
         self.engine = engine
@@ -659,7 +664,7 @@ class StatsSync:
         self.running = False
         self._wake = threading.Event()
         self._stop = threading.Event()
-        self._thread = threading.Thread(target=self._loop, name="stats-sync", daemon=True)
+        self._thread = threading.Thread(target=self._loop, name=self.thread_name, daemon=True)
 
     def start(self) -> None:
         self._thread.start()
@@ -680,14 +685,17 @@ class StatsSync:
             except Exception as e:
                 now = utc_now()
                 status = SyncStatus(now, now, f"The settings can't be loaded: {e}")
-                _save_status(self.engine, status)
+                save_status(self.engine, status, self.status_key)
                 return status
-            return sync(self.engine, settings)
+            return self.sync(settings)
         finally:
             self.running = False
+
+    def sync(self, settings: ConfigSettings) -> SyncStatus:
+        return sync(self.engine, settings)
 
     def _loop(self) -> None:
         while not self._stop.is_set():
             self.run_once()
-            self._wake.wait(SYNC_INTERVAL.total_seconds())
+            self._wake.wait(self.interval.total_seconds())
             self._wake.clear()

@@ -339,3 +339,17 @@ button:disabled { opacity: 0.4; cursor: default; }
 @media (max-width: 700px) {
   .status-board { grid-template-columns: 1fr; }
 }
+
+/* playback */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 0 0 8px; }
+.tile { display: flex; flex-direction: column; gap: 2px; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--border); border-radius: 8px; }
+.tile-ok { border-left-color: var(--ok); }
+.tile-warn { border-left-color: var(--accent); }
+.tile-value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tile-label { color: var(--muted); font-size: 13px; }
+.decision { font-weight: 600; white-space: nowrap; }
+.decision-direct_play { color: var(--ok); }
+.decision-transcode { color: var(--accent); }
+.decision-unknown { color: var(--muted); }
+.hint-cell { color: var(--muted); font-size: 13px; max-width: 60ch; }
+.table-scroll { overflow-x: auto; }

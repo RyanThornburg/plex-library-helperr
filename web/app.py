@@ -14,6 +14,8 @@ from web.config_store import ConfigStore
 from web.db import make_engine, migrate
 from web.jobs import JobRunner, LoadConfig, RunJob
 from web.lookups import Lookups
+from web.playback import PlaybackSync
+from web.playback_routes import router as playback_router
 from web.routes import router
 from web.webhooks import api_key
 from web.webhooks import router as webhook_router
@@ -41,7 +43,7 @@ def create_app(
 ) -> FastAPI:
     """keys, run_job, load_config and lookups replace the team's signing keys, the real
     jobs, the stored config jobs run with and the *arr/plex data the settings pages use
-    in tests, which also leave the scheduler and stats sync off and call tick()"""
+    in tests, which also leave the scheduler and stats/playback syncs off and call tick()"""
     settings = settings or load_web_settings()
     engine = make_engine(settings.database_path)
     store = ConfigStore(engine, SecretBox(settings.secret_key))
@@ -51,6 +53,7 @@ def create_app(
     )
     scheduler = Scheduler(engine, runner)
     stats = StatsSync(engine, store.load_settings)
+    playback = PlaybackSync(engine, store.load_settings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -62,6 +65,7 @@ def create_app(
         if run_scheduler:
             scheduler.start()
             stats.start()
+            playback.start()
         logger.info(
             "WEB\t Started, access team %s, %s allowed emails, applying remover plans %s",
             settings.team_domain,
@@ -70,6 +74,7 @@ def create_app(
         )
         yield
         if run_scheduler:
+            playback.stop()
             stats.stop()
             scheduler.stop()
         runner.stop()
@@ -81,6 +86,7 @@ def create_app(
     app.state.runner = runner
     app.state.scheduler = scheduler
     app.state.stats = stats
+    app.state.playback = playback
     app.state.load_config = load_config
     app.state.store = store
     app.state.lookups = lookups or Lookups()
@@ -91,6 +97,7 @@ def create_app(
     app.include_router(webhook_router)
     app.include_router(stats_router)
     app.include_router(status_router)
+    app.include_router(playback_router)
     # added last runs first: security headers wrap the access check, so 403s get them too
     app.add_middleware(AccessMiddleware, verifier=AccessVerifier(settings, keys))
     app.add_middleware(SecurityMiddleware)
