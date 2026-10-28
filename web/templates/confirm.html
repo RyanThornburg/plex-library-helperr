@@ -20,6 +20,6 @@
   <form method="post" action="/jobs/{{ job }}?dry_run=false">
     <button type="submit" class="{{ 'button-danger' if mode is not true }}">Run with the settings</button>
   </form>
-  <a class="button button-secondary" href="/">Cancel</a>
+  <a class="button button-secondary" href="/runs">Cancel</a>
 </div>
 {% endblock %}

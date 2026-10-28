@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block head %}{% if active %}<meta http-equiv="refresh" content="2">{% endif %}{% endblock %}
 {% block content %}
-<p><a href="/">← All runs</a></p>
+<p><a href="/runs">← All runs</a></p>
 <h1>
   {{ JOB_INFO[run.job][0] }} #{{ run.id }}
   <span class="status status-{{ run.status }}">{{ run.status | replace("_", " ") }}</span>

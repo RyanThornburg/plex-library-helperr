@@ -298,11 +298,17 @@ async def form_fields(request: Request) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
-# runs on the home page, older ones a page at a time
+# runs, older ones a page at a time
 RUNS_PAGE = 25
 
 
-@router.get("/", response_class=HTMLResponse)
+@router.get("/")
+def home() -> RedirectResponse:
+    """Status answers "is anything wrong" first, so it's the landing page"""
+    return RedirectResponse("/status", status_code=303)
+
+
+@router.get("/runs", response_class=HTMLResponse)
 def index(request: Request, before: int | None = Query(default=None, ge=1, le=2**62)) -> HTMLResponse:
     dry_runs, config_error, auto_rules = config_modes(request)
     runs = recent_runs(request, RUNS_PAGE + 1, before)

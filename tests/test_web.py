@@ -96,12 +96,18 @@ def auth(token: str | None = None) -> dict[str, str]:
 
 class TestAccessAuth:
     def test_valid_token_is_let_in(self, client):
-        response = client.get("/", headers=auth())
+        response = client.get("/runs", headers=auth())
         assert response.status_code == 200
         assert EMAIL in response.text
 
+    def test_home_is_status(self, client):
+        response = client.get("/", headers=auth(), follow_redirects=False)
+        assert response.status_code == 303 and response.headers["location"] == "/status"
+        # behind Access like every page
+        assert client.get("/", follow_redirects=False).status_code == 403
+
     def test_no_token_is_denied(self, client):
-        assert client.get("/").status_code == 403
+        assert client.get("/runs").status_code == 403
 
     @pytest.mark.parametrize(
         "token",
@@ -127,7 +133,7 @@ class TestAccessAuth:
         ],
     )
     def test_invalid_token_is_denied(self, client, token):
-        response = client.get("/", headers=auth(token))
+        response = client.get("/runs", headers=auth(token))
         assert response.status_code == 403
         assert response.text == "Forbidden"
 
@@ -138,10 +144,10 @@ class TestAccessAuth:
             "an-attacker-chosen-secret-of-32-bytes!",
             algorithm="HS256",
         )
-        assert client.get("/", headers=auth(token)).status_code == 403
+        assert client.get("/runs", headers=auth(token)).status_code == 403
 
     def test_email_match_ignores_case(self, client):
-        response = client.get("/", headers=auth(make_token(email="Me@Example.com")))
+        response = client.get("/runs", headers=auth(make_token(email="Me@Example.com")))
         assert response.status_code == 200
 
     def test_static_files_need_a_token(self, client):
@@ -169,7 +175,7 @@ class TestAccessAuth:
 
 class TestSecurity:
     def test_headers_on_pages_and_denials(self, client):
-        for response in (client.get("/", headers=auth()), client.get("/")):
+        for response in (client.get("/runs", headers=auth()), client.get("/runs")):
             assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
             assert response.headers["x-content-type-options"] == "nosniff"
             assert "server" not in response.headers
@@ -280,7 +286,7 @@ class TestJobRoutes:
     def test_index_lists_runs_and_config_mode(self, client):
         client.post("/jobs/movers?dry_run=true", headers={**auth(), **ORIGIN})
         wait(client)
-        page = client.get("/", headers=auth()).text
+        page = client.get("/runs", headers=auth()).text
         assert 'href="/runs/1"' in page
         assert "live" in page  # live_config has dry_run off
 
@@ -289,10 +295,10 @@ class TestJobRoutes:
         for _ in range(3):
             client.post("/jobs/movers?dry_run=true", headers={**auth(), **ORIGIN})
             wait(client)
-        page = client.get("/", headers=auth()).text
+        page = client.get("/runs", headers=auth()).text
         assert 'href="/runs/3"' in page and 'href="/runs/1"' not in page
-        assert 'href="/?before=2">Older runs' in page
-        page = client.get("/?before=2", headers=auth()).text
+        assert 'href="/runs?before=2">Older runs' in page
+        page = client.get("/runs?before=2", headers=auth()).text
         assert 'href="/runs/1"' in page and 'href="/runs/3"' not in page and "Older runs</a>" not in page
 
     def test_error_pages(self, client):
@@ -370,7 +376,7 @@ class TestJobRoutes:
 
         app = create_app(settings, keys=FakeKeys(), run_job=fake_run_job, load_config=broken)
         with TestClient(app) as client:
-            page = client.get("/", headers=auth()).text
+            page = client.get("/runs", headers=auth()).text
         assert "bad toml" in page
 
 
@@ -402,7 +408,7 @@ class TestScheduleRoutes:
         page = client.get("/schedules", headers=auth()).text
         assert "Hourly movers" in page and "47 * * * *" in page
         # the job card shows when it runs next
-        assert "Next:" in client.get("/", headers=auth()).text
+        assert "Next:" in client.get("/runs", headers=auth()).text
 
     def test_invalid_form_shows_errors_and_keeps_values(self, client):
         response = post_form(client, "/schedules", "name=Nightly&job=removers&timezone=UTC&cron=99+*+*+*+*&dry_run=on")
@@ -437,7 +443,7 @@ class TestScheduleRoutes:
         client.app.state.runner.submit("movers", True, "schedule", None, 1)
         wait(client)
         assert 'href="/schedules/1">Nightly' in client.get("/runs/1", headers=auth()).text
-        assert "schedule: Nightly" in client.get("/", headers=auth()).text
+        assert "schedule: Nightly" in client.get("/runs", headers=auth()).text
         assert "#1" in client.get("/schedules", headers=auth()).text
         # deleting the schedule keeps its runs
         post_form(client, "/schedules/1/delete", "")
@@ -719,7 +725,7 @@ class TestRemoversPage:
             assert response.status_code == 303
             assert c.app.state.runner.auto_approved_rules() == {"rm-housewives"}
             # every place that says what a config run does says so
-            assert "auto-approve on for 1" in c.get("/", headers=auth()).text
+            assert "auto-approve on for 1" in c.get("/runs", headers=auth()).text
             assert "will be deleted" in c.get("/jobs/removers/confirm", headers=auth()).text
             assert "auto-approved removers delete" in c.get("/schedules/new", headers=auth()).text
             assert "Turn off" in c.get("/removers", headers=auth()).text
@@ -854,7 +860,7 @@ class TestWebhooks:
         # plex hasn't scanned the upgrade yet, the scheduler empties trash later
         assert client.get("/api/runs", headers=auth()).json() == []
         assert trash_events(client) == [("Download", source)]
-        assert "Follow-up:" in client.get("/", headers=auth()).text
+        assert "Follow-up:" in client.get("/runs", headers=auth()).text
 
     def test_old_upgrades_are_dropped(self, client):
         with Session(client.app.state.engine) as session:
