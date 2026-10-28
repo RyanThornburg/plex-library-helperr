@@ -15,4 +15,5 @@ config.toml
 typings/
 .vscode/
 .notes
-CLAUDE.local.md.impeccable/hook.cache.json
+CLAUDE.local.md
+.impeccable/hook.cache.json

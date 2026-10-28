@@ -208,7 +208,7 @@ class TestConnections:
         monkeypatch.setattr("web.settings_routes.check_connection", check)
         response = post(client, "/settings/connections/radarr", {"version": version(client), "action": "test", "url": "http://radarr:7878"})
         assert "Connected to Radarr 6.4.4" in response.text
-        assert seen == [("radarr", {"url": "http://radarr:7878", "username": "", "secret": "radarr-key"})]
+        assert seen == [("radarr", {"url": "http://radarr:7878", "public_url": "", "username": "", "secret": "radarr-key"})]
         assert "radarr-key" not in response.text
 
     def test_failed_test_is_shown_without_the_key(self, client, monkeypatch):
@@ -226,6 +226,22 @@ class TestConnections:
         post(client, "/settings/connections/radarr", {"version": version(client), "action": "disconnect"})
         assert document(client)["radarr"] == {"movers": [{"path": "/movies/kids", "genres": ["Family"]}]}
         assert store(client).secret_info() == {}
+
+    def test_public_url(self, client):
+        fields = {"version": 0, "action": "save", "url": "http://sab:8080", "public_url": "https://sab.example.com/", "secret": "k"}
+        post(client, "/settings/connections/sabnzbd", fields)
+        assert store(client).load_settings().sabnzbd.public_url == "https://sab.example.com"
+        response = post(client, "/settings/connections/sabnzbd", {**fields, "version": version(client), "public_url": "sab.example.com"})
+        assert "Public URL must start with http" in response.text
+        post(client, "/settings/connections/sabnzbd", {**fields, "version": version(client), "public_url": "", "secret": ""})
+        assert store(client).load_settings().sabnzbd.public_url is None
+
+    def test_disconnect_forgets_the_public_url(self, client):
+        connect_radarr(client)
+        post(client, "/settings/connections/radarr", {"version": version(client), "action": "save", "url": "http://radarr:7878", "public_url": "https://radarr.example.com"})
+        assert document(client)["radarr"]["public_url"] == "https://radarr.example.com"
+        post(client, "/settings/connections/radarr", {"version": version(client), "action": "disconnect"})
+        assert "public_url" not in document(client).get("radarr", {})
 
     def test_autoscan_without_password(self, client):
         response = post(client, "/settings/connections/autoscan", {"version": 0, "action": "save", "url": "http://autoscan:3030", "username": ""})

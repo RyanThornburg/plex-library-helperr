@@ -25,6 +25,13 @@
     {{ f.version_field() }}
     <label for="{{ service }}-url">URL</label>
     <input id="{{ service }}-url" name="url" value="{{ values.url }}" placeholder="http://192.168.1.15:{{ {'radarr': 7878, 'sonarr': 8989, 'plex': 32400, 'tautulli': 8181, 'seerr': 5055, 'sabnzbd': 8080, 'autoscan': 3030}[service] }}" spellcheck="false" autocomplete="off">
+    {% if service in public_url_services %}
+    <label for="{{ service }}-public-url">Public URL</label>
+    <div>
+      <input id="{{ service }}-public-url" name="public_url" value="{{ values.public_url }}" placeholder="optional, e.g. https://{{ 'requests' if service == 'seerr' else service }}.example.com" spellcheck="false" autocomplete="off">
+      <p class="hint">Where the Status page links to away from home. The URL above is the local one.</p>
+    </div>
+    {% endif %}
     {% if service == "autoscan" %}
     <label for="autoscan-username">Username</label>
     <input id="autoscan-username" name="username" value="{{ values.username }}" spellcheck="false" autocomplete="off">

@@ -138,6 +138,7 @@ def _build_arr_config(data: Mapping[str, Any], dry_run: bool, arr_name: str) -> 
             f"[{arr_name}.remover_settings]",
         ),
         tag=data.get("tag") or None,
+        public_url=data.get("public_url") or None,
     )
 
 
@@ -226,17 +227,29 @@ def build_config(data: Mapping[str, Any]) -> ConfigSettings:
     )
     empty_trash = _build_empty_trash(plex_config.get("empty_trash", {}), dry_run)
     tautulli = (
-        TautulliConfig(url=tautulli_config["url"], apikey=tautulli_config["apikey"])
+        TautulliConfig(
+            url=tautulli_config["url"],
+            apikey=tautulli_config["apikey"],
+            public_url=tautulli_config.get("public_url") or None,
+        )
         if tautulli_config.get("url") and tautulli_config.get("apikey")
         else None
     )
     seerr = (
-        SeerrConfig(url=seerr_config["url"], apikey=seerr_config["apikey"])
+        SeerrConfig(
+            url=seerr_config["url"],
+            apikey=seerr_config["apikey"],
+            public_url=seerr_config.get("public_url") or None,
+        )
         if seerr_config.get("url") and seerr_config.get("apikey")
         else None
     )
     sabnzbd = (
-        SabnzbdConfig(url=sabnzbd_config["url"], apikey=sabnzbd_config["apikey"])
+        SabnzbdConfig(
+            url=sabnzbd_config["url"],
+            apikey=sabnzbd_config["apikey"],
+            public_url=sabnzbd_config.get("public_url") or None,
+        )
         if sabnzbd_config.get("url") and sabnzbd_config.get("apikey")
         else None
     )

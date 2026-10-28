@@ -42,6 +42,7 @@ password = ''
 #############################################################
 # [tautulli]
 # url = ''
+# public_url = ''  # optional, where the Status page links to away from home
 # apikey = ''
 
 #############################################################
@@ -51,6 +52,7 @@ password = ''
 #############################################################
 # [seerr]
 # url = ''
+# public_url = ''  # optional, where the Status page links to away from home
 # apikey = ''
 
 #############################################################
@@ -60,6 +62,7 @@ password = ''
 #############################################################
 # [sabnzbd]
 # url = ''
+# public_url = ''  # optional, where the Status page links to away from home
 # apikey = ''
 
 #############################################################
@@ -67,6 +70,7 @@ password = ''
 #############################################################
 [radarr]
 baseurl = ''
+public_url = ''  # optional, where the Status page links to away from home
 apikey = ''
 tag = 'helperr'
 
@@ -99,6 +103,7 @@ monitored = false
 #############################################################
 [sonarr]
 baseurl = ''
+public_url = ''  # optional, where the Status page links to away from home
 apikey = ''
 tag = 'helperr'
 

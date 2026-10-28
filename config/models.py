@@ -361,9 +361,12 @@ class TautulliConfig:
 
     url: str
     apikey: str
+    # where the status page links to away from home, url is the local one
+    public_url: str | None = None
 
     def __repr__(self):
-        return f"TautulliConfig(url={self.url},apikey={len(self.apikey) * '*'})"
+        public = f",public_url={self.public_url}" if self.public_url else ""
+        return f"TautulliConfig(url={self.url}{public},apikey={len(self.apikey) * '*'})"
 
 
 @dataclass
@@ -372,9 +375,12 @@ class SeerrConfig:
 
     url: str
     apikey: str
+    # where the status page links to away from home, url is the local one
+    public_url: str | None = None
 
     def __repr__(self):
-        return f"SeerrConfig(url={self.url},apikey={len(self.apikey) * '*'})"
+        public = f",public_url={self.public_url}" if self.public_url else ""
+        return f"SeerrConfig(url={self.url}{public},apikey={len(self.apikey) * '*'})"
 
 
 @dataclass
@@ -383,9 +389,12 @@ class SabnzbdConfig:
 
     url: str
     apikey: str
+    # where the status page links to away from home, url is the local one
+    public_url: str | None = None
 
     def __repr__(self):
-        return f"SabnzbdConfig(url={self.url},apikey={len(self.apikey) * '*'})"
+        public = f",public_url={self.public_url}" if self.public_url else ""
+        return f"SabnzbdConfig(url={self.url}{public},apikey={len(self.apikey) * '*'})"
 
 
 @dataclass
@@ -435,6 +444,8 @@ class ArrConfig:
     )
     remover_settings: RemoverSettings = field(default_factory=RemoverSettings)
     dry_run: bool = False
+    # where the status page links to away from home, baseurl is the local one
+    public_url: str | None = None
 
     def __repr__(self):
         fields: list[
@@ -450,6 +461,7 @@ class ArrConfig:
             ]
         ] = [
             ("baseurl", self.baseurl or None),
+            ("public_url", self.public_url or None),
             ("apikey", len(self.apikey) * "*" if self.apikey else None),
             ("movers", self.movers or None),
             ("profilers", self.profilers or None),

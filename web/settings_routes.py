@@ -58,6 +58,8 @@ SERVICES: dict[str, tuple[str, str, str]] = {
 SERVICE_SECRETS = {
     service: name for name, (service, _) in SECRET_FIELDS.items()
 }
+# the services the status page links to, which can have a public url too
+PUBLIC_URL_SERVICES = ("radarr", "sonarr", "tautulli", "seerr", "sabnzbd")
 # secrets a service can't work without (autoscan may have no password)
 REQUIRED_SECRETS = ("radarr", "sonarr", "plex", "tautulli", "seerr", "sabnzbd")
 SERVICE_HINTS = {
@@ -327,7 +329,11 @@ async def save_general(request: Request) -> Response:
 def service_values(document: dict[str, Any], service: str) -> dict[str, str]:
     _, _, url_key = SERVICES[service]
     section = document.get(service, {})
-    return {"url": section.get(url_key) or "", "username": section.get("username") or ""}
+    return {
+        "url": section.get(url_key) or "",
+        "public_url": section.get("public_url") or "",
+        "username": section.get("username") or "",
+    }
 
 
 def connections(
@@ -350,6 +356,7 @@ def connections(
             "secrets": store(request).secret_info(),
             "service_secrets": SERVICE_SECRETS,
             "hints": SERVICE_HINTS,
+            "public_url_services": PUBLIC_URL_SERVICES,
             "active": service,
             "service_errors": errors or [],
             "tested": tested,
@@ -381,7 +388,11 @@ async def save_connection(request: Request, service: str) -> Response:
     label, secret_label, url_key = SERVICES[service]
     secret_name = SERVICE_SECRETS[service]
     stored = store(request)
-    values = {"url": first(fields, "url"), "username": first(fields, "username")}
+    values = {
+        "url": first(fields, "url"),
+        "public_url": first(fields, "public_url"),
+        "username": first(fields, "username"),
+    }
     # the key field is never filled in by the page, empty keeps the saved one
     new_secret = fields.get("secret", [""])[-1].strip()
 
@@ -392,6 +403,7 @@ async def save_connection(request: Request, service: str) -> Response:
     if action == "disconnect":
         if service in ARRS or service == "plex":
             document.get(service, {}).pop(url_key, None)
+            document.get(service, {}).pop("public_url", None)
         else:
             document.pop(service, None)
         lookups(request).clear()
@@ -402,6 +414,10 @@ async def save_connection(request: Request, service: str) -> Response:
 
     errors: list[str] = []
     values["url"] = checked_url(values["url"], errors)
+    if values["public_url"]:
+        values["public_url"] = values["public_url"].strip().rstrip("/")
+        if not re.match(r"^https?://[^\s/]+", values["public_url"]):
+            errors.append("Public URL must start with http:// or https://, e.g. https://radarr.example.com")
     has_secret = bool(new_secret) or secret_name in stored.secret_info()
     if service in REQUIRED_SECRETS and not has_secret:
         errors.append(f"{secret_label} is required")
@@ -418,6 +434,10 @@ async def save_connection(request: Request, service: str) -> Response:
 
     section = document.setdefault(service, {})
     section[url_key] = values["url"]
+    if service in PUBLIC_URL_SERVICES and values["public_url"]:
+        section["public_url"] = values["public_url"]
+    else:
+        section.pop("public_url", None)
     if service == "autoscan":
         if values["username"]:
             section["username"] = values["username"]

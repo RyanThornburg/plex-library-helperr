@@ -458,6 +458,32 @@ class TestPages:
         assert page.text.index('id="radarr"') < page.text.index('id="sabnzbd"')
         assert 'href="/settings/connections#sonarr">Check the Sonarr connection' in page.text
 
+    def test_links_to_each_service(self, settings, monkeypatch):  # noqa: F811
+        monkeypatch.setattr("web.status_routes.check_all", fake_check_all)
+        both = ArrConfig(baseurl="http://radarr:7878", apikey="k", tag=None, public_url="https://radarr.example.com")
+        config = ConfigSettings(plex=None, radarr=both, sonarr=SONARR, sabnzbd=SAB)
+        app = create_app(settings, keys=FakeKeys(), run_job=fake_run_job, load_config=lambda: config, run_scheduler=False)
+        with TestClient(app) as c:
+            page = c.get("/status", headers=auth()).text
+        # public by default, app.js switches to local when this browser chose it
+        assert 'href="https://radarr.example.com" target="_blank" rel="noopener" data-local="http://radarr:7878" data-public="https://radarr.example.com">Open Radarr' in page
+        assert 'href="http://sonarr:8989" target="_blank" rel="noopener" data-local="http://sonarr:8989">Open Sonarr' in page
+        assert "data-link-choice" in page
+        # radarr's warning can be muted, sonarr's outage can't
+        assert 'data-unmutable' in page and 'id="sonarr" data-service="sonarr" data-unmutable' in page
+
+    def test_problems_can_be_muted(self, client, monkeypatch):
+        def warn(settings, now):
+            sonarr = ServiceStatus("sonarr", "Sonarr")
+            sonarr.problem("warn", "Low disk space", "disk:/tv")
+            return [sonarr]
+
+        monkeypatch.setattr("web.status_routes.check_all", warn)
+        page = client.get("/status", headers=auth()).text
+        assert 'data-mute="sonarr|disk:/tv" data-level="warn"' in page
+        assert 'id="sonarr" data-service="sonarr">' in page
+        assert "data-link-choice" not in page
+
     def test_refresh_can_be_paused(self, client, monkeypatch):
         monkeypatch.setattr("web.status_routes.check_all", fake_check_all)
         page = client.get("/status?refresh=0", headers=auth()).text

@@ -31,6 +31,8 @@
 }
 
 * { box-sizing: border-box; }
+/* classes that set display must not show what's hidden */
+[hidden] { display: none !important; }
 
 body {
   margin: 0;
@@ -377,6 +379,26 @@ button:disabled { opacity: 0.4; cursor: default; }
 /* release names and paths */
 .machine { font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
 
+.card-links { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; }
+/* muted in this browser (app.js): a quiet card, its problems dimmed at the end */
+.card-muted { --state: var(--border); border-color: var(--border); }
+.problems .is-muted { color: var(--muted); }
+.problems .is-muted .state-word { color: var(--muted); }
+button.mute {
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+button.mute:hover { color: var(--text); }
+.verdict-part:not([hidden]) ~ .verdict-part:not([hidden])::before { content: " · "; color: var(--muted); font-weight: 400; }
+.link-choice { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; margin: 0 0 8px; font-size: 13px; }
+.choice-inline { display: inline-flex; gap: 4px; align-items: baseline; }
+
 /* healthy and unconnected services: a line each, opened for the rest */
 .service-lines {
   list-style: none;
@@ -390,7 +412,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .service-lines > li + li { border-top: 1px solid var(--border); }
 .line {
   display: grid;
-  grid-template-columns: 8px minmax(0, 14rem) 7rem minmax(0, 1fr);
+  grid-template-columns: 8px minmax(0, 14rem) 7rem minmax(0, 1fr) auto;
   gap: 12px;
   align-items: baseline;
   padding: 10px 16px;
@@ -418,13 +440,14 @@ summary.line:focus-visible { outline: 2px solid var(--text); outline-offset: -2p
   text-overflow: ellipsis;
   font-variant-numeric: tabular-nums;
 }
+.line-link { font-size: 13px; white-space: nowrap; }
 .line-body { display: flex; flex-direction: column; gap: 8px; padding: 2px 16px 14px 48px; }
 .line-body .facts { margin: 0; }
 
 @media (max-width: 700px) {
   .status-board { grid-template-columns: 1fr; }
-  .line { grid-template-columns: 8px minmax(0, 1fr) auto; row-gap: 2px; }
-  .line-facts { grid-column: 2 / -1; white-space: normal; }
+  .line { grid-template-columns: 8px minmax(0, 1fr) auto auto; row-gap: 2px; }
+  .line-facts { grid-column: 2 / -1; grid-row: 2; white-space: normal; }
   .line-body { padding-left: 36px; }
 }
 

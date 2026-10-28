@@ -3,6 +3,8 @@
 {% block head %}{% if refresh %}<meta http-equiv="refresh" content="{{ refresh }}">{% endif %}{% endblock %}
 {% macro word(level) %}{{ {"bad": "error", "warn": "warning", "info": "note"}.get(level, level) }}{% endmacro %}
 {% macro since(service, key) %}{% set d = open_for.get((service, key)) %}{% if d %} <span class="muted">· for {{ d }}</span>{% endif %}{% endmacro %}
+{# the service's own web ui, public unless this browser chose local (app.js) #}
+{% macro open_link(s) %}{% set l = links.get(s.service) %}{% if l %}<a class="open-link" href="{{ l.public or l.local }}" target="_blank" rel="noopener"{% if l.local %} data-local="{{ l.local }}"{% endif %}{% if l.public %} data-public="{{ l.public }}"{% endif %}>Open {{ "Tautulli" if s.service == "plex" else s.label }}</a>{% endif %}{% endmacro %}
 {# a card's or line's facts, items and the notes a healthy service can have #}
 {% macro details(s) %}
     {% if s.facts %}
@@ -37,19 +39,20 @@
 {% elif not connected %}
 <p class="verdict">Nothing is connected yet. <a href="/settings/connections">Connect Radarr, Sonarr and the rest</a> to see them here.</p>
 {% elif attention %}
-<p class="verdict verdict-{{ 'bad' if attention | selectattr('state', 'equalto', 'bad') | list else 'warn' }}">
-  <strong>{{ attention | length }} {{ "service needs" if attention | length == 1 else "services need" }} you:</strong>
+<p class="verdict verdict-{{ 'bad' if attention | selectattr('state', 'equalto', 'bad') | list else 'warn' }}" data-verdict>
+  <strong data-verdict-count>{{ attention | length }} {{ "service needs" if attention | length == 1 else "services need" }} you:</strong>
   {% for s in attention %}
   {% set errors = s.problems | selectattr("level", "equalto", "bad") | list | length %}
   {% set warnings = s.problems | selectattr("level", "equalto", "warn") | list | length %}
   {% set stuck = s.items | rejectattr("level", "equalto", "ok") | list | length if s.service in queues else 0 %}
-  <a href="#{{ s.service }}">{{ s.label }}{% if s.error %} down{% else %}: {{ [
+  <a class="verdict-part" href="#{{ s.service }}" data-service="{{ s.service }}" data-label="{{ s.label }}" data-errors="{{ errors }}" data-warnings="{{ warnings }}" data-stuck="{{ stuck }}" data-since="{{ open_since.get(s.service, '') }}">{{ s.label }}{% if s.error %} down{% else %}: {{ [
       (errors ~ " error" ~ ("s" if errors != 1 else "")) if errors,
       (warnings ~ " warning" ~ ("s" if warnings != 1 else "")) if warnings,
       (stuck ~ " stuck") if stuck,
-    ] | select | join(", ") }}{% endif %}{% if open_since[s.service] %}, for {{ open_since[s.service] }}{% endif %}</a>{% if not loop.last %} ·{% endif %}
+    ] | select | join(", ") }}{% endif %}{% if open_since[s.service] %}, for {{ open_since[s.service] }}{% endif %}</a>
   {% endfor %}
 </p>
+<p class="verdict" data-verdict-muted hidden>All {{ connected | length }} connected services are OK, apart from what you muted.</p>
 {% else %}
 <p class="verdict">All {{ connected | length }} connected services are OK.</p>
 {% endif %}
@@ -57,10 +60,13 @@
 {% if attention %}
 <section class="status-board">
 {% for s in attention %}
-  <article class="card card-{{ s.state }}" id="{{ s.service }}">
+  {# muting (app.js) can't quiet a card that's down, has stuck downloads or more problems than shown #}
+  {% set unmutable = s.error or (s.service in queues and s.items | rejectattr("level", "equalto", "ok") | list) or s.problems | length > max_problems %}
+  <article class="card card-{{ s.state }}" id="{{ s.service }}" data-service="{{ s.service }}"{% if unmutable %} data-unmutable{% endif %}>
     <div class="heading">
       <h2>{{ s.label }}{% if s.version %} <span class="muted version">{{ s.version }}</span>{% endif %}</h2>
-      <span class="tag tag-solid-{{ s.state }}">{{ "down" if s.error else word(s.state) }}</span>
+      <span class="tag tag-solid-{{ s.state }}" data-state-tag>{{ "down" if s.error else word(s.state) }}</span>
+      <span class="tag" data-muted-tag hidden>muted</span>
     </div>
     {% if s.error %}
     {% set name, section = needs[s.service] %}
@@ -70,12 +76,15 @@
     </div>
     {% elif s.problems %}
     <ul class="problem-block problems">
-      {% for p in s.problems[:max_problems] %}<li><span class="state-word state-{{ p.level }}">{{ word(p.level) }}</span> {{ p.text }}{{ since(s.service, problem_key(p)) }}</li>{% endfor %}
+      {% for p in s.problems[:max_problems] %}<li{% if p.level in ("warn", "bad") %} data-mute="{{ s.service }}|{{ problem_key(p) }}" data-level="{{ p.level }}"{% endif %}><span class="state-word state-{{ p.level }}">{{ word(p.level) }}</span> {{ p.text }}{{ since(s.service, problem_key(p)) }}</li>{% endfor %}
       {% if s.problems | length > max_problems %}<li class="muted">and {{ s.problems | length - max_problems }} more</li>{% endif %}
     </ul>
     {% endif %}
     {{ details(s) }}
-    {% if s.service in queues and s.items | rejectattr("level", "equalto", "ok") | list %}<p><a href="/status/{{ s.service }}/queue">Remove stuck downloads…</a></p>{% endif %}
+    {% set remove = s.service in queues and s.items | rejectattr("level", "equalto", "ok") | list %}
+    {% if remove or links.get(s.service) %}
+    <p class="card-links">{% if remove %}<a href="/status/{{ s.service }}/queue">Remove stuck downloads…</a>{% endif %}{{ open_link(s) }}</p>
+    {% endif %}
   </article>
 {% endfor %}
 </section>
@@ -92,6 +101,7 @@
       <span class="line-name">{{ s.label }}</span>
       <span class="line-state">not connected</span>
       <span class="line-facts">{% if s.service == "plex" %}Plex's activity comes from Tautulli. {% endif %}<a href="/settings/connections#{{ section }}">Connect {{ name }}</a></span>
+      <span></span>
     </div>
   {% else %}
     <details>
@@ -99,6 +109,7 @@
         <span class="line-name">{{ s.label }}{% if s.version %} <span class="version">{{ s.version }}</span>{% endif %}</span>
         <span class="line-state">ok</span>
         <span class="line-facts">{% for label, value in s.facts %}{{ label }} {{ value }}{% if not loop.last %} · {% endif %}{% endfor %}</span>
+        <span class="line-link">{{ open_link(s) }}</span>
       </summary>
       <div class="line-body">
         {% if s.problems %}
@@ -113,6 +124,14 @@
   </li>
 {% endfor %}
 </ul>
+{% endif %}
+{% if links.values() | selectattr("local") | selectattr("public") | list %}
+<p class="muted link-choice" data-link-choice hidden>
+  Service links open
+  <label class="choice-inline"><input type="radio" name="link-choice" value="public"> public addresses</label>
+  <label class="choice-inline"><input type="radio" name="link-choice" value="local"> local addresses</label>
+  in this browser.
+</p>
 {% endif %}
 
 <div class="heading section-heading">

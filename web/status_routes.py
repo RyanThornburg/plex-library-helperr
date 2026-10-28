@@ -64,19 +64,38 @@ HISTORY_DAYS = {1: "Last 24 hours", 7: "Last 7 days", 30: "Last 30 days", 90: "L
 DEFAULT_HISTORY_DAYS = 30
 
 
-def statuses(request: Request) -> tuple[list[ServiceStatus], str | None]:
-    """every service's status, or none and why the settings can't load"""
+def statuses(request: Request) -> tuple[list[ServiceStatus], str | None, dict[str, dict[str, str]]]:
+    """every service's status and links to it, or none and why the settings can't load"""
     try:
         settings: ConfigSettings = request.app.state.load_config()
     except (SecretError, ValueError) as e:
-        return [], str(e)
-    return check_all(settings, utc_now()), None
+        return [], str(e), {}
+    return check_all(settings, utc_now()), None, links(settings)
+
+
+def links(settings: ConfigSettings) -> dict[str, dict[str, str]]:
+    """each service's own web ui, {"local", "public"} (plex's is tautulli's)"""
+    found = {}
+    for service, config in (
+        ("plex", settings.tautulli),
+        ("radarr", settings.radarr),
+        ("sonarr", settings.sonarr),
+        ("sabnzbd", settings.sabnzbd),
+        ("seerr", settings.seerr),
+    ):
+        if config is None:
+            continue
+        local = getattr(config, "baseurl", None) or getattr(config, "url", None)
+        urls = {"local": local, "public": config.public_url}
+        if urls := {k: v for k, v in urls.items() if v}:
+            found[service] = urls
+    return found
 
 
 @router.get("/status", response_class=HTMLResponse)
 def status_page(request: Request) -> HTMLResponse:
     checked_at = utc_now()
-    services, config_error = statuses(request)
+    services, config_error, service_links = statuses(request)
     recent = incidents(request.app.state.engine, checked_at - RECENT)
     # ongoing first, so one that started days ago isn't cut off by newer ones that cleared
     recent.sort(key=lambda i: i.ended_at is not None)
@@ -94,6 +113,7 @@ def status_page(request: Request) -> HTMLResponse:
             "user": request.state.user,
             "services": services,
             "config_error": config_error,
+            "links": service_links,
             "checked_at": checked_at,
             # ?refresh=0 pauses it, for reading (or a screen reader) without the page reloading
             "refresh": 0 if request.query_params.get("refresh") == "0" else REFRESH_SECONDS,
@@ -115,7 +135,7 @@ def status_page(request: Request) -> HTMLResponse:
 @router.get("/api/status")
 def api_status(request: Request) -> JSONResponse:
     checked_at = utc_now()
-    services, config_error = statuses(request)
+    services, config_error, _ = statuses(request)
     if config_error:
         return JSONResponse({"error": config_error}, status_code=503)
     return JSONResponse(
