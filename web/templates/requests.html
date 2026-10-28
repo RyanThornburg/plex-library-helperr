@@ -45,7 +45,7 @@
     </select>
   </label>
   <label>In Plex for at least
-    <input name="min_days" type="number" min="0" value="{{ filters.min_days if filters.min_days is not none else '' }}" placeholder="any" class="input-days"> days
+    <span class="with-unit"><input name="min_days" type="number" min="0" value="{{ filters.min_days if filters.min_days is not none else '' }}" placeholder="any" class="input-days"> days</span>
   </label>
   <div class="actions">
     <button type="submit">Filter</button>
@@ -63,7 +63,7 @@
   <tbody>
     {% for u in users %}
     <tr>
-      <td><a href="/requests?{{ filters.query(user=u.id) | urlencode }}">{{ u.name }}</a>{% if u.plex_user_id is none %}<br><span class="muted">no Plex user matched</span>{% endif %}</td>
+      <td class="long"><a href="/requests?{{ filters.query(user=u.id) | urlencode }}">{{ u.name }}</a>{% if u.plex_user_id is none %}<br><span class="muted">no Plex user matched</span>{% endif %}</td>
       <td>{{ u.requests }}</td>
       <td><time datetime="{{ u.last_requested_at }}Z">{{ u.last_requested_at[:10] }}</time></td>
       <td>{{ u.available }}</td>
@@ -95,11 +95,11 @@
     {% for r in (requests[:limit] if limit else requests) %}
     {% set state = progress(r) %}
     <tr>
-      <td>
+      <td class="long">
         {{ r.title }}{% if r.year %} ({{ r.year }}){% endif %}
         <br><span class="muted">{{ TYPES[r.media_type] }}{% if r.media_type == "tv" and r.seasons %}, season{{ "s" if r.seasons | length > 1 }} {{ r.seasons | join(", ") }}{% endif %}{% if r.is_4k %}, 4K{% endif %}{% if r.status not in ("approved", "completed") %}, {{ r.status }}{% endif %}</span>
       </td>
-      <td>{{ r.requester }}</td>
+      <td class="long">{{ r.requester }}</td>
       <td>{{ r.requested_at | localtime }}</td>
       <td>{% if r.available_at %}{{ r.available_at | localtime }}<br><span class="muted">{{ days_available(r, now) }} days</span>{% else %}-{% endif %}</td>
       <td>

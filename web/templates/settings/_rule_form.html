@@ -41,7 +41,7 @@
     <tbody>
       {% for match in preview.matches %}
       <tr{% if filter_time and match.recent %} class="row-highlight"{% endif %}>
-        <td>{{ match.title }}</td>
+        <td class="long">{{ match.title }}</td>
         <td class="files">{{ match.path }}</td>
         <td>{{ match.added | localtime }}</td>
       </tr>

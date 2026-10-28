@@ -10,8 +10,8 @@
     <tr>
       <td><a href="/settings/history/{{ v.id }}">{{ v.id }}</a>{% if loop.first and not before %} <span class="tag">current</span>{% endif %}</td>
       <td>{{ v.created_at | localtime }}</td>
-      <td class="muted">{{ v.created_by or "app" }}</td>
-      <td>{{ v.note }}</td>
+      <td class="long muted">{{ v.created_by or "app" }}</td>
+      <td class="long">{{ v.note }}</td>
     </tr>
     {% endfor %}
   </tbody>

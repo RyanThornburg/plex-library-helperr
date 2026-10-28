@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-28T03:43:18+00:00",
+  "generatedAt": "2026-10-28T05:06:25+00:00",
   "title": "Design System: Helperr",
   "extensions": {
     "colorMeta": {
@@ -112,6 +112,21 @@
       "warning-ink": {
         "role": "primary",
         "displayName": "Warning Ink",
+        "canonical": "oklch(50.7% 0.112 66.7)",
+        "tonalRamp": [
+          "oklch(15% 0.048 66.7)",
+          "oklch(26% 0.083 66.7)",
+          "oklch(38% 0.112 66.7)",
+          "oklch(49% 0.112 66.7)",
+          "oklch(61% 0.112 66.7)",
+          "oklch(72% 0.090 66.7)",
+          "oklch(84% 0.051 66.7)",
+          "oklch(95% 0.016 66.7)"
+        ]
+      },
+      "link-ink": {
+        "role": "primary",
+        "displayName": "Link Ink",
         "canonical": "oklch(50.7% 0.112 66.7)",
         "tonalRamp": [
           "oklch(15% 0.048 66.7)",
@@ -430,7 +445,7 @@
       },
       {
         "name": "The Amber Contrast Caveat",
-        "body": "Light-mode Projector Amber on white is about 3.4:1, below AA for body-size text. Warning text uses Warning Ink; Projector Amber stays for fills, borders, the brand and links. Links are still Projector Amber and still below AA in light mode, a known gap.",
+        "body": "Light-mode Projector Amber on white is about 3.4:1, below AA for body-size text. Warning text uses Warning Ink and links Link Ink; Projector Amber stays for fills, borders, focus of chip fields, the brand and checkbox/radio accents.",
         "section": "colors"
       },
       {

@@ -25,7 +25,7 @@
   <tbody>
     {% for removal in selected %}
     <tr>
-      <td>{{ removal.title }}{% if removal_service(removal) == "RADARR" %} <span class="tag">movie</span>{% endif %}</td>
+      <td class="long">{{ removal.title }}{% if removal_service(removal) == "RADARR" %} <span class="tag">movie</span>{% endif %}</td>
       <td class="units">{{ removal.labels | join(", ") }}</td>
       <td>
         <details>

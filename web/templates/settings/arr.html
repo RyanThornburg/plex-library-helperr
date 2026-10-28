@@ -22,8 +22,8 @@
 <div class="actions row-actions">
   <a class="button button-secondary" href="/settings/{{ arr }}/{{ kind }}/{{ number }}">Edit</a>
   {% if kind == "movers" %}
-  <form method="post" action="/settings/{{ arr }}/{{ kind }}/{{ number }}/move?direction=up">{{ f.version_field() }}<button type="submit" class="button-secondary" aria-label="Move up"{% if number == 1 %} disabled{% endif %}>↑</button></form>
-  <form method="post" action="/settings/{{ arr }}/{{ kind }}/{{ number }}/move?direction=down">{{ f.version_field() }}<button type="submit" class="button-secondary" aria-label="Move down"{% if number == count %} disabled{% endif %}>↓</button></form>
+  <form method="post" action="/settings/{{ arr }}/{{ kind }}/{{ number }}/move?direction=up">{{ f.version_field() }}<button type="submit" class="button-secondary" aria-label="Move mover {{ number }} up"{% if number == 1 %} disabled{% endif %}>Up</button></form>
+  <form method="post" action="/settings/{{ arr }}/{{ kind }}/{{ number }}/move?direction=down">{{ f.version_field() }}<button type="submit" class="button-secondary" aria-label="Move mover {{ number }} down"{% if number == count %} disabled{% endif %}>Down</button></form>
   {% endif %}
 </div>
 {% endmacro %}
@@ -41,9 +41,9 @@
     {% for rule in movers %}
     <tr>
       <td>{{ loop.index }}</td>
-      <td><code>{{ rule.path }}</code></td>
-      <td>{{ criteria("movers", rule) | join("; ") }}</td>
-      <td>{{ rule.plex_library or "-" }}</td>
+      <td class="long"><code>{{ rule.path }}</code></td>
+      <td class="long">{{ criteria("movers", rule) | join("; ") }}</td>
+      <td class="long">{{ rule.plex_library or "-" }}</td>
       <td>{{ rule_actions("movers", loop.index, movers | length) }}</td>
     </tr>
     {% endfor %}
@@ -66,8 +66,8 @@
     {% for rule in profilers %}
     <tr>
       <td>{{ loop.index }}</td>
-      <td>{{ rule.profile }}</td>
-      <td>{{ criteria("profilers", rule) | join("; ") }}</td>
+      <td class="long">{{ rule.profile }}</td>
+      <td class="long">{{ criteria("profilers", rule) | join("; ") }}</td>
       <td>{{ rule_actions("profilers", loop.index, profilers | length) }}</td>
     </tr>
     {% endfor %}

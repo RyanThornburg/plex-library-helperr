@@ -5,6 +5,7 @@ colors:
   projector-amber: "#c7790b"
   projector-amber-dark: "#e5a00d"
   warning-ink: "#8f5600"
+  link-ink: "#8f5600"
   signal-green: "#1a7f37"
   signal-green-dark: "#3fb950"
   alarm-red: "#c62828"
@@ -148,6 +149,7 @@ A cool slate neutral scale with three signal colors, of which amber also carries
 
 ### Primary
 - **Projector Amber** (light `projector-amber`, dark `projector-amber-dark`): the brand mark, links, the primary button, the active settings tab and focus rings on chip inputs. It is also the warning color for borders, fills and washes (a warning card's outline, the filled `WARNING` tag), so amber always means "your attention here", whether that's an action or a caution. The dark value is Plex's gold.
+- **Link Ink** (`link-ink`, `--link`; dark mode uses Projector Amber): links, about 6:1 on white. The brand mark and the nav's hover stay Projector Amber.
 - **Warning Ink** (`warning-ink`, `--warn-text`; dark mode uses Projector Amber): amber as text. Warning words, warn tags, running/queued/blocked statuses and transcode decisions use it, because Projector Amber on white is only about 3.4:1.
 
 ### Secondary
@@ -168,7 +170,7 @@ A cool slate neutral scale with three signal colors, of which amber also carries
 
 **The Red Means Real Rule.** Alarm Red is for failures and for anything that deletes or goes live. A dry run is never red; it's Dim Ink.
 
-**The Amber Contrast Caveat.** Light-mode Projector Amber on white is about 3.4:1, below AA for body-size text. Warning text uses Warning Ink; Projector Amber stays for fills, borders, the brand and links. Links are still Projector Amber and still below AA in light mode, a known gap.
+**The Amber Contrast Caveat.** Light-mode Projector Amber on white is about 3.4:1, below AA for body-size text. Warning text uses Warning Ink and links Link Ink; Projector Amber stays for fills, borders, focus of chip fields, the brand and checkbox/radio accents.
 
 ## Typography
 
@@ -222,7 +224,8 @@ Plain and decisive: one filled button per decision, everything else outlined.
 - **Primary:** Projector Amber fill and border, On Amber text, 600 weight, 6px × 14px padding. Used for Run, Save, Apply.
 - **Secondary:** transparent fill, Ink text, Rule Line border. Cancel, Test, Preview, row actions.
 - **Danger:** Alarm Red fill and border, white text. Only for the final click of something destructive or live: deleting files, a rule or a schedule, removing downloads, turning on auto-approve, running or saving with live settings.
-- **Focus:** 2px Ink outline, 2px offset. **Disabled:** 40% opacity. No hover transform or transition.
+- **Focus:** 2px Ink outline, 2px offset, the same ring on links, summaries and fields. **Disabled:** 40% opacity. No hover transform or transition.
+- **Labels are words:** "Up", "Down", "Edit", never arrow glyphs standing in for icons.
 - Links styled as buttons (`.button`) look identical, so a confirmation step can be a plain GET link.
 
 ### Tags
@@ -238,7 +241,7 @@ Plain and decisive: one filled button per decision, everything else outlined.
 - **Internal Padding:** 14px × 16px, children 8px apart; card actions pin to the bottom.
 
 ### Tables
-The main way data is shown. Panel background, 1px outer border and row rules, 8px × 12px cells, left-aligned. Headers are Label type in Dim Ink. Row actions sit right-aligned and never wrap. Status words in cells are 600 weight in their state color.
+The main way data is shown. Panel background, 1px outer border and row rules, 8px × 12px cells, left-aligned. Headers are Label type in Dim Ink and never wrap. Row actions sit right-aligned and never wrap. Status words in cells are 600 weight in their state color, written as words ("dry run", not `dry_run`). Cells keep their words whole; a cell that can hold a long name, path or text is `.long` (breaks anywhere, at least 8rem), so a release name never widens the page and never squeezes an id or count. Below 700px a table scrolls inside its own box.
 
 ### Inputs / Fields
 - **Style:** Panel fill, 1px Rule Line border, 6px radius, 6px × 10px padding, body font; number inputs max 160px.

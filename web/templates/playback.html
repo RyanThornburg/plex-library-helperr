@@ -79,13 +79,13 @@
   <tbody>
     {% for u in r.users %}
     <tr>
-      <td><a href="/playback?{{ filters.query(user=u.user_id) | urlencode }}">{{ u.user }}</a>{% if u.remote %}<br><span class="muted">{{ u.remote }} remote</span>{% endif %}</td>
+      <td class="long"><a href="/playback?{{ filters.query(user=u.user_id) | urlencode }}">{{ u.user }}</a>{% if u.remote %}<br><span class="muted">{{ u.remote }} remote</span>{% endif %}</td>
       <td>{{ u.plays }}</td>
       <td>{{ u.direct_play }}</td>
       <td>{{ u.direct_stream }}</td>
       <td>{% if u.transcode %}<span class="decision decision-transcode">{{ u.transcode }}</span> <span class="muted">({{ u.transcode_percent }}%)</span>{% else %}0{% endif %}</td>
       <td>{{ u.main_cause or "-" }}{% if u.quality_limit %}<br><span class="muted">set to {{ u.quality_limit }}</span>{% endif %}{% if u.file_format %}<br><span class="muted">files: {{ u.file_format }}</span>{% endif %}</td>
-      <td>{{ u.players | join(", ") }}</td>
+      <td class="long">{{ u.players | join(", ") }}</td>
       <td>{{ latest(u.latest) }}</td>
     </tr>
     {% endfor %}
@@ -100,7 +100,7 @@
   <tbody>
     {% for p in r.players %}
     <tr>
-      <td>{{ p.player }}{% if p.platforms %}<br><span class="muted">{{ p.platforms | join(", ") }}</span>{% endif %}</td>
+      <td class="long">{{ p.player }}{% if p.platforms %}<br><span class="muted">{{ p.platforms | join(", ") }}</span>{% endif %}</td>
       <td>{{ p.plays }}</td>
       <td>{{ p.users }}</td>
       <td>{{ p.direct_play }}</td>
@@ -127,7 +127,7 @@
       <td>{{ f.format }}</td>
       <td><span class="decision decision-transcode">{{ f.transcodes }}</span> of {{ f.plays }} <span class="muted">({{ f.percent }}%)</span></td>
       <td>{{ f.users }}</td>
-      <td>{% for name, count in f.players %}{{ name }} <span class="muted">({{ count }})</span>{% if not loop.last %}, {% endif %}{% endfor %}</td>
+      <td class="long">{% for name, count in f.players %}{{ name }} <span class="muted">({{ count }})</span>{% if not loop.last %}, {% endif %}{% endfor %}</td>
       <td>{{ f.last_transcoded_at | localtime }}</td>
     </tr>
     {% endfor %}
@@ -147,9 +147,9 @@
   <tbody>
     {% for f in r.files %}
     <tr>
-      <td>{{ f.title }}</td>
+      <td class="long">{{ f.title }}</td>
       <td>{{ f.causes | join(", ") }}</td>
-      <td class="muted">{{ f.detail }}</td>
+      <td class="long muted">{{ f.detail }}</td>
       <td>{{ f.users }}</td>
       <td>{{ f.plays }}</td>
       <td>{{ f.last_played_at | localtime }}</td>
@@ -171,11 +171,11 @@
     {% for t in r.recent %}
     <tr>
       <td>{{ t.started_at | localtime }}</td>
-      <td>{{ t.user }}</td>
-      <td>{{ t.title }}</td>
-      <td>{{ t.player }}{% if t.remote %}<br><span class="muted">remote</span>{% endif %}</td>
+      <td class="long">{{ t.user }}</td>
+      <td class="long">{{ t.title }}</td>
+      <td class="long">{{ t.player }}{% if t.remote %}<br><span class="muted">remote</span>{% endif %}</td>
       <td>{{ t.causes | join(", ") }}</td>
-      <td class="muted">{{ t.detail }}</td>
+      <td class="long muted">{{ t.detail }}</td>
     </tr>
     {% endfor %}
   </tbody>

@@ -58,7 +58,7 @@
   <tbody>
     {% for rule in rules %}
     <tr>
-      <td>{{ rule.tags | join(", ") }}{% if rule.exclude_tags %}<br><span class="muted">not {{ rule.exclude_tags | join(", ") }}</span>{% endif %}</td>
+      <td class="long">{{ rule.tags | join(", ") }}{% if rule.exclude_tags %}<br><span class="muted">not {{ rule.exclude_tags | join(", ") }}</span>{% endif %}</td>
       <td>{{ rule.type }}{% if rule.include_specials %}, specials too{% endif %}</td>
       <td>latest {{ rule.keep }}</td>
       <td>{{ rule.min_age | span }}</td>
@@ -86,7 +86,7 @@
   <tbody>
     {% for rule in movie_rules %}
     <tr>
-      <td>{{ rule.root }}{% if rule.exclude_tags %}<br><span class="muted">not {{ rule.exclude_tags | join(", ") }}</span>{% endif %}</td>
+      <td class="long">{{ rule.root }}{% if rule.exclude_tags %}<br><span class="muted">not {{ rule.exclude_tags | join(", ") }}</span>{% endif %}</td>
       <td>{{ rule.min_age | span }}</td>
       <td>{% if rule.skip_if_ever_watched %}kept if ever played{% elif rule.skip_if_watched_within %}kept if played within {{ rule.skip_if_watched_within | span }}{% else %}removed too{% endif %}</td>
       {{ auto_approve(rule, "/settings/radarr/removers/" ~ loop.index) }}

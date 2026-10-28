@@ -58,12 +58,12 @@
     <tr>
       <td><a href="/runs/{{ run.id }}">{{ run.id }}</a></td>
       <td>{{ JOB_INFO[run.job][0] }}</td>
-      <td><span class="status status-{{ run.status }}">{{ run.status }}</span></td>
+      <td><span class="status status-{{ run.status }}">{{ run.status | replace("_", " ") }}</span></td>
       <td>{{ "apply plan" if run.plan_run_id else "dry run" if run.dry_run else "settings" }}</td>
       <td>{{ run.result.changes | length if run.result else "-" }}</td>
       <td>{{ run.started_at | localtime }}</td>
       <td>{{ duration(run) }}</td>
-      <td class="muted">{{ run_source(run) }}</td>
+      <td class="long muted">{{ run_source(run) }}</td>
     </tr>
     {% endfor %}
   </tbody>

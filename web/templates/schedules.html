@@ -15,13 +15,13 @@
     {% for schedule in schedules %}
     {% set last = last_runs.get(schedule.id) %}
     <tr>
-      <td><a href="/schedules/{{ schedule.id }}">{{ schedule.name }}</a></td>
+      <td class="long"><a href="/schedules/{{ schedule.id }}">{{ schedule.name }}</a></td>
       <td>{{ JOB_INFO[schedule.job][0] if schedule.job in JOB_INFO else schedule.job }}</td>
       <td><code>{{ schedule.cron }}</code> <span class="muted">{{ schedule.timezone }}</span></td>
       <td>{% if schedule.dry_run %}dry run{% else %}<span class="tag tag-warn">settings</span>{% endif %}</td>
       <td>{% if schedule.enabled %}{{ next_runs[schedule.id] | localtime }}{% else %}<span class="tag">paused</span>{% endif %}</td>
       <td>
-        {% if last %}<a href="/runs/{{ last.id }}">#{{ last.id }}</a> <span class="status status-{{ last.status }}">{{ last.status }}</span>{% else %}-{% endif %}
+        {% if last %}<a href="/runs/{{ last.id }}">#{{ last.id }}</a> <span class="status status-{{ last.status }}">{{ last.status | replace("_", " ") }}</span>{% else %}-{% endif %}
       </td>
       <td>
         <form method="post" action="/schedules/{{ schedule.id }}/toggle">

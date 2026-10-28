@@ -29,7 +29,7 @@
     {% for d in downloads %}
     <tr>
       <td><input type="checkbox" name="download" value="{{ d.key }}" aria-label="Remove {{ d.titles[0] }}"></td>
-      <td>
+      <td class="long">
         {% if d.titles | length > 3 %}
         <details>
           <summary>{{ d.titles[0] }} and {{ d.titles | length - 1 }} more</summary>
@@ -37,7 +37,7 @@
         </details>
         {% else %}{{ d.titles | join(", ") }}{% endif %}
       </td>
-      <td><span class="state-word state-{{ d.level }}">{{ "error" if d.level == "bad" else "warning" }}</span> {{ d.detail }}</td>
+      <td class="long"><span class="state-word state-{{ d.level }}">{{ "error" if d.level == "bad" else "warning" }}</span> {{ d.detail }}</td>
       <td class="muted machine">{{ d.release }}{% if d.client %} · {{ d.client }}{% endif %}</td>
     </tr>
     {% endfor %}
