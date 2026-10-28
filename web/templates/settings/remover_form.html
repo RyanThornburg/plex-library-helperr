@@ -18,7 +18,7 @@
 <label for="min_age">Older than</label>
 <div>
   <input id="min_age" name="min_age" value="{{ values.get('min_age', '') }}" placeholder="90d" spellcheck="false" required>
-  <p class="hint">Every file in a season (or the episode's file) must be older than this. Series added more recently are skipped.</p>
+  <p class="hint">Every episode in a season (or the episode) must have been first imported longer ago than this; upgrades and re-found files keep that date. Series added more recently are skipped.</p>
 </div>
 <label for="skip_if_watched_within">Unless watched within</label>
 <div>

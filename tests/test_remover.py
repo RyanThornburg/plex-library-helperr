@@ -10,6 +10,7 @@ import remover
 from config.models import ArrConfig, RemoverRule, RemoverSettings
 from remover import (
     InvalidSeriesData,
+    first_imports,
     match_remover,
     parse_series_data,
     plan_series_removal,
@@ -95,9 +96,20 @@ def build_raw(layout: dict[int, int], date_added: dict[int, str] | None = None):
     return episodes, files
 
 
-def plan(rule, layout, date_added=None, watches=None, raw=None):
+def plan(rule, layout, date_added=None, watches=None, raw=None, imported=None):
     episodes, files = parse_series_data(*(raw or build_raw(layout, date_added)))
-    return plan_series_removal(rule, make_series(), episodes, files, watches or [], NOW)
+    return plan_series_removal(
+        rule, make_series(), episodes, files, watches or [], NOW, imported
+    )
+
+
+def history(episode_id: int, date: str, event: str = "downloadFolderImported", reason=None):
+    return {
+        "episodeId": episode_id,
+        "date": date,
+        "eventType": event,
+        "data": {"reason": reason} if reason else {},
+    }
 
 
 def watch(season: int, episode: int, days_ago: int = 1) -> WatchEvent:
@@ -285,6 +297,63 @@ class TestPlanEpisodes:
         assert p.labels == ["S01E01", "S01E02"]
 
 
+class TestFirstImports:
+    def test_refound_and_upgraded_files_keep_the_first_import(self):
+        imported = first_imports(
+            [
+                history(1, "2026-09-18T09:28:00Z"),
+                history(1, "2026-09-18T10:28:45Z", "episodeFileDeleted", "MissingFromDisk"),
+                history(1, "2026-09-19T09:00:00Z", "episodeFileDeleted", "Upgrade"),
+                history(1, "2026-09-19T09:00:00Z"),
+            ]
+        )
+        assert imported == {1: datetime(2026, 9, 18, 9, 28)}
+
+    def test_deleting_on_purpose_resets_the_age(self):
+        imported = first_imports(
+            [
+                history(1, "2026-09-20T00:00:00Z"),  # out of order, sorted by date
+                history(1, "2026-08-01T00:00:00Z"),
+                history(1, "2026-08-02T00:00:00Z", "episodeFileDeleted", "Manual"),
+            ]
+        )
+        assert imported == {1: datetime(2026, 9, 20)}
+
+    def test_other_events_are_ignored(self):
+        assert first_imports([{"eventType": "grabbed", "date": None}]) == {}
+
+    def test_bad_import_raises(self):
+        with pytest.raises(InvalidSeriesData):
+            first_imports([history(1, "yesterday")])
+
+
+class TestAgeFromFirstImport:
+    def test_refound_file_ages_from_first_import(self):
+        raw = build_raw({1: 5}, {1: NEW})
+        p = plan(episodes_rule(), None, raw=raw, imported={1: datetime(2025, 1, 1)})
+        assert p.labels == ["S01E01"]
+
+    def test_newer_first_import_does_not_make_an_old_file_new(self):
+        p = plan(episodes_rule(), {1: 5}, imported={1: datetime(2026, 9, 30)})
+        assert p.labels == ["S01E01", "S01E02"]
+
+    def test_multi_episode_file_ages_from_its_newest_episode(self):
+        eps, files = build_raw({1: 6}, {1: NEW})
+        eps[1]["episodeFileId"] = 1  # E01-E02 share file 1
+        files = [f for f in files if f["id"] != 2]
+        old, new = datetime(2025, 1, 1), datetime(2026, 9, 30)
+        assert plan(episodes_rule(), None, raw=(eps, files), imported={1: old, 2: new}) is None
+        p = plan(episodes_rule(), None, raw=(eps, files), imported={1: old, 2: old})
+        assert p.file_ids == [1]
+
+    def test_episode_without_import_uses_the_file_date(self):
+        eps, files = build_raw({1: 6}, {1: NEW})
+        eps[1]["episodeFileId"] = 1
+        files = [f for f in files if f["id"] != 2]
+        imported = {1: datetime(2025, 1, 1)}
+        assert plan(episodes_rule(), None, raw=(eps, files), imported=imported) is None
+
+
 # ---------------------------------------------------------------------------
 # tag matching / watch matching
 # ---------------------------------------------------------------------------
@@ -338,6 +407,7 @@ class SonarrFakes:
         self.client.queued_series_ids.return_value = set()
         self.client.episodes.side_effect = lambda _id: build_raw({1: 1, 2: 1, 3: 1})[0]
         self.client.episode_files.side_effect = lambda _id: build_raw({1: 1, 2: 1, 3: 1})[1]
+        self.client.history.return_value = []
 
     def _run(self, series, rule=None, settings=None, watches=None, auto_approve=True):
         """auto_approve: the rule deletes, otherwise it plans for review"""
@@ -450,6 +520,30 @@ class TestRunRemovers(SonarrFakes):
     def test_no_watch_history_needed_without_window(self):
         wh = self._run([make_series()])
         wh.assert_not_called()
+
+    def test_history_read_only_when_a_candidate_is_too_new(self):
+        self._run([make_series()])
+        self.client.history.assert_not_called()
+
+    def test_refound_file_removed_by_its_first_import(self):
+        self.client.episode_files.side_effect = lambda _id: build_raw(
+            {1: 1, 2: 1, 3: 1}, {1: NEW}
+        )[1]
+        self.client.history.return_value = [
+            history(1, OLD),
+            history(1, "2026-09-24T00:00:00Z", "episodeFileDeleted", "MissingFromDisk"),
+        ]
+        self._run([make_series()])
+        self.client.history.assert_called_once_with(1)
+        self.client.delete_episode_files.assert_called_once_with([1])
+
+    def test_invalid_history_skips_the_series(self):
+        self.client.episode_files.side_effect = lambda _id: build_raw(
+            {1: 1, 2: 1, 3: 1}, {1: NEW}
+        )[1]
+        self.client.history.return_value = [history(1, "garbage")]
+        self._run([make_series()])
+        self.client.delete_episode_files.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

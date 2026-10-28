@@ -335,7 +335,7 @@ Unmonitors and then deletes the files of old seasons or episodes in series that 
 | `keep`                   | Number of latest seasons/episodes to always keep (integer >= 1). Only numbered seasons/episodes with files count. |
 | `tags`                   | Series with any of these Sonarr tags use this remover. A tag can only belong to one remover.                 |
 | `exclude_tags`           | Skip series with any of these tags                                                                           |
-| `min_age`                | **Required.** Only remove files added to Sonarr longer ago than this (`180d`, `12h`, `30m`). An invalid value is a config error. |
+| `min_age`                | **Required.** Only remove episodes first imported by Sonarr longer ago than this (`180d`, `12h`, `30m`). An invalid value is a config error. |
 | `include_specials`       | `true` to also remove specials (season 0). Specials never count toward `keep` (default: `false`)             |
 | `skip_if_watched_within` | Protect content that was watched within this window (`30d`, ...). Needs `[tautulli]` or `[plex]`.            |
 | `plex_library`           | Plex library to refresh after removing (if Plex is configured and Autoscan is not)                           |
@@ -345,6 +345,7 @@ How rules are applied:
 - Everything outside the `keep` window is a candidate. Seasons/episodes without files don't count toward `keep`.
 - `seasons` mode is all or nothing: a season is removed only if **every** file in it is older than `min_age`.
 - `episodes` mode works per file. A multi-episode file that holds a kept episode is kept.
+- An episode's age counts from its first import in Sonarr's history, so a file Sonarr lost and found again (a converter, a disk dropping out) or upgraded doesn't start over. Deleting the file on purpose resets it, and without an import in the history the file's own date added is used.
 - `skip_if_watched_within` only looks at plays of removal candidates, so watching the latest episodes never blocks removal. A recent play protects that season/episode and everything after it. It is checked before `min_age`, so someone watching a new season still protects the older seasons after it. A watched special protects only specials.
 - A whole series is skipped if it was added to Sonarr within `min_age`, has anything in the download queue, or Sonarr returns missing/invalid episode data.
 - A series tagged for two removers is logged as an error and skipped.

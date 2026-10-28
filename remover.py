@@ -41,6 +41,9 @@ class SonarrEpisodes:
     def episode_files(self, series_id: int) -> list[dict[str, Any]]:
         return self._request("GET", "episodefile", params={"seriesId": series_id})
 
+    def history(self, series_id: int) -> list[dict[str, Any]]:
+        return self._request("GET", "history/series", params={"seriesId": series_id})
+
     def queued_series_ids(self) -> set[int]:
         return {
             q["seriesId"]
@@ -131,6 +134,39 @@ def parse_series_data(
             )
         )
     return episodes, files
+
+
+IMPORT_EVENTS = {"downloadFolderImported", "seriesFolderImported"}
+# a file sonarr lost and found again (a converter swapping it, a disk dropping out) gets a
+# new dateAdded, as does an upgrade, neither makes the episode new
+KEEPS_AGE = {"MissingFromDisk", "Upgrade"}
+
+
+def first_imports(history: list[dict[str, Any]]) -> dict[int, datetime]:
+    """episode id -> its first import since its file was last deleted on purpose"""
+    events: list[tuple[datetime, str, int, str | None]] = []
+    for h in history:
+        event = h.get("eventType")
+        if event in IMPORT_EVENTS or event == "episodeFileDeleted":
+            reason = (h.get("data") or {}).get("reason")
+            events.append((_utc_naive(h.get("date")), event, _int(h, "episodeId"), reason))
+    first: dict[int, datetime] = {}
+    for date, event, episode_id, reason in sorted(events, key=lambda e: e[0]):
+        if event in IMPORT_EVENTS:
+            first.setdefault(episode_id, date)
+        elif reason not in KEEPS_AGE:
+            first.pop(episode_id, None)
+    return first
+
+
+def added_at(
+    file: EpisodeFile, episodes: list[Episode], imported: dict[int, datetime]
+) -> datetime:
+    """when the file's episodes were first imported, else the file's own dateAdded"""
+    dates = [imported.get(e.id) for e in episodes if e.file_id == file.id]
+    if dates and all(dates):
+        return min(file.date_added, max(d for d in dates if d))
+    return file.date_added
 
 
 def code(season: int, episode: int | None = None) -> str:
@@ -247,8 +283,11 @@ def plan_series_removal(
     files: dict[int, EpisodeFile],
     watches: list[WatchEvent] | None,
     now: datetime,
+    imported: dict[int, datetime] | None = None,
 ) -> RemovalPlan | None:
-    """pure: decide which seasons/episode files of one series are stale"""
+    """pure: decide which seasons/episode files of one series are stale. `imported` is
+    each episode's first import (`first_imports()`), which ages a file Sonarr re-found or
+    upgraded from when its episode first arrived"""
     candidates = _candidate_units(rule, episodes, files)
 
     # watch protection looks at every candidate, a viewer on a new season still protects
@@ -280,7 +319,10 @@ def plan_series_removal(
     old_enough = [
         u
         for u in candidates
-        if all(files[f].date_added <= age_cutoff for f in u.file_ids)
+        if all(
+            added_at(files[f], u.episodes, imported or {}) <= age_cutoff
+            for f in u.file_ids
+        )
     ]
     held = [u.label for u in old_enough if u.label in protected]
     if held:
@@ -300,6 +342,21 @@ def plan_series_removal(
         rule=rule,
         units=units,
         paths={f: files[f].path for u in units for f in u.file_ids},
+    )
+
+
+def waiting_on_age(
+    rule: RemoverRule,
+    episodes: list[Episode],
+    files: dict[int, EpisodeFile],
+    now: datetime,
+) -> bool:
+    """a candidate file is too new by its own dateAdded, so history could change the plan"""
+    cutoff = now - rule.min_age
+    return any(
+        files[f].date_added > cutoff
+        for u in _candidate_units(rule, episodes, files)
+        for f in u.file_ids
     )
 
 
@@ -431,6 +488,11 @@ def run_removers(
             episodes, files = parse_series_data(
                 client.episodes(series.id), client.episode_files(series.id)
             )
+            imported = (
+                first_imports(client.history(series.id))
+                if waiting_on_age(rule, episodes, files, now)
+                else {}
+            )
         except InvalidSeriesData as e:
             logger.warning("%s\t %s: invalid data, skipping (%s)", LOG_NAME, series.title, e)
             if approved is not None:
@@ -444,6 +506,7 @@ def run_removers(
             files,
             series_watches(series, watches) if watches else [],
             now,
+            imported,
         )
         if approved is not None:
             approved_files = approved[series.id]
