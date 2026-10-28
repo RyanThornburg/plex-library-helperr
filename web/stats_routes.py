@@ -258,7 +258,7 @@ def stats_sync(request: Request) -> StatsSync:
     return request.app.state.stats
 
 
-REQUESTS_SHOWN = 200
+REQUESTS_SHOWN = 50
 
 
 @router.get("/requests", response_class=HTMLResponse)

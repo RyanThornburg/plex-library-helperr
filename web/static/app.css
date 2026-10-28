@@ -209,6 +209,8 @@ td form { margin: 0; }
   margin-bottom: 24px;
 }
 .form > label { font-weight: 600; }
+/* a section's own settings, under its table */
+table + .form { margin-top: 16px; }
 input:not([type]), select {
   width: 100%;
   padding: 6px 10px;
@@ -334,9 +336,28 @@ button:disabled { opacity: 0.4; cursor: default; }
 .filters { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: end; margin: 0 0 12px; }
 .filters label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 .filters label[hidden] { display: none; }
-.filters select, .filters input { width: auto; max-width: 16rem; }
-.input-days { max-width: 6em; }
-.with-unit { display: inline-flex; gap: 6px; align-items: baseline; color: var(--text); }
+/* every field and button in the bar is one height, so their edges line up */
+.filters select, .filters input, .filters button, .filters .button {
+  height: 36px;
+  font-size: 15px;
+}
+.filters select, .filters input {
+  width: auto;
+  max-width: 16rem;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+}
+.filters .button { display: inline-flex; align-items: center; }
+.filters .input-days { width: 5.5em; }
+.with-unit { display: inline-flex; gap: 6px; align-items: center; color: var(--text); font-size: 15px; }
+td.date { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.progress-cell { min-width: 15rem; }
+.column-notes { margin: 0 0 12px; }
+.column-notes p { margin: 4px 0 0; }
 .progress { font-weight: 600; }
 .progress-finished { color: var(--ok); }
 .progress-started { color: var(--warn-text); }
@@ -498,7 +519,7 @@ summary.line:focus-visible { outline: 2px solid var(--text); outline-offset: -2p
 .incidents tr.incident-ongoing.incident-bad { background: color-mix(in srgb, var(--bad) 7%, transparent); }
 .incidents tr.incident-ongoing.incident-warn { background: color-mix(in srgb, var(--accent) 9%, transparent); }
 .incident-text { min-width: 14rem; overflow-wrap: anywhere; }
-.incidents .when { white-space: nowrap; }
+.incidents .incident-service, .incidents .when { white-space: nowrap; }
 
 /* below 700px a row stacks: service and cleared, the problem, started and lasted */
 @media (max-width: 700px) {

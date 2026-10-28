@@ -22,7 +22,7 @@
 {% macro max_deletes_form(arr, value, unit) %}
 <form method="post" action="/settings/{{ arr }}/remover-settings" class="form">
   <input type="hidden" name="version" value="{{ version }}">
-  <label for="{{ arr }}_max_deletes">Max deletes per run</label>
+  <label for="{{ arr }}_max_deletes">Max {{ unit }} deleted per run</label>
   <div>
     <input id="{{ arr }}_max_deletes" name="max_deletes" type="number" min="1" value="{{ value or '' }}" placeholder="no limit">
     <p class="hint">A run that would delete more {{ unit }} than this deletes none of them. Plans waiting for review don't count.</p>

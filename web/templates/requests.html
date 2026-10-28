@@ -55,7 +55,10 @@
 
 {% if users %}
 <h2>By requester</h2>
-<p class="muted">Requests made {{ filters.period_label() }}{% if filters.type %}, {{ TYPES[filters.type] | lower }} only{% endif %}; declined ones are left out. Finished: watched the movie, or every episode Plex has of the requested seasons. Started: played any of it, including episodes Plex no longer has. Not started {{ stale_days }}d+: in Plex for {{ stale_days }} days or more, and they haven't played any of it.</p>
+<details class="muted column-notes">
+  <summary>Requests made {{ filters.period_label() }}{% if filters.type %}, {{ TYPES[filters.type] | lower }} only{% endif %}; declined ones are left out.</summary>
+  <p>Finished: watched the movie, or every episode Plex has of the requested seasons. Started: played any of it, including episodes Plex no longer has. Not started {{ stale_days }}d+: in Plex for {{ stale_days }} days or more, and they haven't played any of it.</p>
+</details>
 <table>
   <thead>
     <tr><th>Requester</th><th>Requests</th><th>Last request</th><th>In Plex</th><th>Finished</th><th>Started</th><th>Not started</th><th>Not started {{ stale_days }}d+</th></tr>
@@ -65,7 +68,7 @@
     <tr>
       <td class="long"><a href="/requests?{{ filters.query(user=u.id) | urlencode }}">{{ u.name }}</a>{% if u.plex_user_id is none %}<br><span class="muted">no Plex user matched</span>{% endif %}</td>
       <td>{{ u.requests }}</td>
-      <td><time datetime="{{ u.last_requested_at }}Z">{{ u.last_requested_at[:10] }}</time></td>
+      <td class="date"><time datetime="{{ u.last_requested_at }}Z" data-date>{{ u.last_requested_at[:10] }}</time></td>
       <td>{{ u.available }}</td>
       <td><a href="/requests?{{ filters.query(user=u.id, progress='finished', min_days=none) | urlencode }}">{{ u.finished }}</a>{% if u.finished_percent is not none %} <span class="muted">({{ u.finished_percent }}%)</span>{% endif %}</td>
       <td><a href="/requests?{{ filters.query(user=u.id, progress='started', min_days=none) | urlencode }}">{{ u.started }}</a></td>
@@ -86,7 +89,7 @@
 {% elif not requests %}
 <p class="empty">No requests match.</p>
 {% else %}
-<p class="muted">{{ requests | length }} of {{ total }} requests (made {{ filters.period_label() }}){% if limit and requests | length > limit %}, the first {{ limit }} shown. <a href="/requests?{{ filters.query() | urlencode }}&amp;all=1">Show all</a>{% endif %}.</p>
+<p class="muted">{{ requests | length }} of {{ total }} requests (made {{ filters.period_label() }}){% if limit and requests | length > limit %}, the first {{ limit }} shown. <a href="/requests?{{ filters.query() | urlencode }}&amp;all=1">Show all {{ requests | length }}</a>{% endif %}.</p>
 <table>
   <thead>
     <tr><th>Title</th><th>Requester</th><th>Requested</th><th>In Plex since</th><th>Requester's progress</th><th>Last played</th><th>Others</th></tr>
@@ -100,18 +103,21 @@
         <br><span class="muted">{{ TYPES[r.media_type] }}{% if r.media_type == "tv" and r.seasons %}, season{{ "s" if r.seasons | length > 1 }} {{ r.seasons | join(", ") }}{% endif %}{% if r.is_4k %}, 4K{% endif %}{% if r.status not in ("approved", "completed") %}, {{ r.status }}{% endif %}</span>
       </td>
       <td class="long">{{ r.requester }}</td>
-      <td>{{ r.requested_at | localtime }}</td>
-      <td>{% if r.available_at %}{{ r.available_at | localtime }}<br><span class="muted">{{ days_available(r, now) }} days</span>{% else %}-{% endif %}</td>
-      <td>
+      <td class="date">{{ r.requested_at | localdate }}</td>
+      <td class="date">{% if r.available_at %}{{ r.available_at | localdate }}<br><span class="muted">{{ days_available(r, now) }} days</span>{% else %}-{% endif %}</td>
+      <td class="progress-cell">
         <span class="progress progress-{{ state }}">{{ PROGRESS[state] }}</span>
-        {% if r.media_type == "tv" and state in ("started", "finished", "not_started") %}<br><span class="muted">{{ r.watched }} of {{ r.items }} episodes{% if r.started > r.watched %}, {{ r.started - r.watched }} part watched{% endif %}</span>{% endif %}
-        {% if r.requester_plays %}<br><span class="muted">{{ r.requester_plays }} play{{ "s" if r.requester_plays != 1 }}</span>{% endif %}
+        {%- set facts = [] %}
+        {%- if r.media_type == "tv" and state in ("started", "finished", "not_started") %}{% set _ = facts.append(r.watched ~ " of " ~ r.items ~ " episodes" ~ (", " ~ (r.started - r.watched) ~ " part watched" if r.started > r.watched else "")) %}{% endif %}
+        {%- if r.requester_plays %}{% set _ = facts.append(r.requester_plays ~ " play" ~ ("s" if r.requester_plays != 1 else "")) %}{% endif %}
+        {%- if facts %}<br><span class="muted">{{ facts | join(" · ") }}</span>{% endif %}
       </td>
-      <td>{{ r.last_played_at | localtime }}</td>
+      <td class="date">{{ r.last_played_at | localdate }}</td>
       <td>{{ r.other_viewers or "-" }}</td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
+{% if limit and requests | length > limit %}<p class="table-actions"><a href="/requests?{{ filters.query() | urlencode }}&amp;all=1">Show all {{ requests | length }}</a></p>{% endif %}
 {% endif %}
 {% endblock %}

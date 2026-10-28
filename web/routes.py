@@ -65,6 +65,17 @@ def localtime(value: datetime | None) -> str:
     )
 
 
+def localdate(value: datetime | None) -> str:
+    """localtime for dense tables: static/app.js shows the browser's date, the full
+    time in its title"""
+    if value is None:
+        return "-"
+    return Markup('<time datetime="{}Z" data-date>{}</time>').format(
+        value.isoformat(timespec="seconds"),
+        value.strftime("%Y-%m-%d"),
+    )
+
+
 def duration(run: JobRun) -> str:
     if not run.started_at or not run.finished_at:
         return "-"
@@ -83,6 +94,7 @@ def run_source(run: JobRun) -> str:
 
 
 templates.env.filters["localtime"] = localtime
+templates.env.filters["localdate"] = localdate
 templates.env.globals["duration"] = duration
 templates.env.globals["run_source"] = run_source
 templates.env.globals["JOB_INFO"] = JOB_INFO

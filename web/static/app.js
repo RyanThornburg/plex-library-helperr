@@ -6,10 +6,11 @@ const pad = (n) => String(n).padStart(2, "0");
 for (const el of document.querySelectorAll("time[datetime]")) {
   const d = new Date(el.dateTime);
   if (Number.isNaN(d.getTime())) continue;
-  el.title = el.textContent;
-  el.textContent =
-    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
-    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  // data-date: dense tables show the date, the time is in the title
+  el.title = "date" in el.dataset ? `${date} ${time}` : el.textContent;
+  el.textContent = "date" in el.dataset ? date : `${date} ${time}`;
 }
 
 // a new schedule starts in the browser's time zone
