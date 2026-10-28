@@ -319,9 +319,10 @@ class TestJobRoutes:
             second = client.post("/api/jobs/movers", json={}, headers=headers)
             assert second.status_code == 409
             assert second.json()["id"] == first
-            # the page button goes to the active run instead of failing
+            # the page button goes to the active run, which says this one wasn't queued
             page = client.post("/jobs/movers?dry_run=true", headers=headers, follow_redirects=False)
-            assert page.headers["location"] == f"/runs/{first}"
+            assert page.headers["location"] == f"/runs/{first}?busy=1"
+            assert "so yours wasn't queued" in client.get(page.headers["location"], headers=headers).text
             release.set()
             wait(client)
 

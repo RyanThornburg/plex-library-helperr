@@ -320,6 +320,24 @@ def confirm_page(request: Request, job: str) -> HTMLResponse:
     )
 
 
+ERROR_TITLES = {400: "That wasn't saved", 404: "Not found", 409: "Not now", 413: "Too large", 422: "That can't be shown"}
+
+
+def error_page(request: Request, status_code: int, detail: str, back: tuple[str, str] | None = None) -> HTMLResponse:
+    """an error as a page saying why, with a way back (label, url)"""
+    return templates.TemplateResponse(
+        request,
+        "error.html",
+        {
+            "user": getattr(request.state, "user", None),
+            "title": ERROR_TITLES.get(status_code, "Something went wrong"),
+            "detail": detail,
+            "back": back,
+        },
+        status_code=status_code,
+    )
+
+
 @router.post("/jobs/{job}")
 def run_job_form(request: Request, job: str, dry_run: bool = True) -> RedirectResponse:
     """the page's buttons post here with ?dry_run=..., no request body to parse"""
@@ -327,7 +345,8 @@ def run_job_form(request: Request, job: str, dry_run: bool = True) -> RedirectRe
     try:
         run_id = runner(request).submit(job, dry_run, "manual", request.state.user)
     except AlreadyActive as e:
-        run_id = e.run_id
+        # that run's page says this one wasn't queued
+        return RedirectResponse(f"/runs/{e.run_id}?busy=1", status_code=303)
     return RedirectResponse(f"/runs/{run_id}", status_code=303)
 
 
@@ -358,6 +377,7 @@ def run_page(request: Request, run_id: int) -> HTMLResponse:
             "selectable": bool(approvable(run)) and problem is None,
             "apply_problem": problem,
             "applied_by": applied_by,
+            "busy": request.query_params.get("busy") == "1",
         },
     )
 
@@ -430,7 +450,12 @@ def apply_plan_form(
     except ApplyRefused as e:
         return apply_confirm(request, run_id, item, str(e))
     except AlreadyActive as e:
-        new_id = e.run_id
+        response = apply_confirm(
+            request, run_id, item,
+            f"Removers run #{e.run_id} is active, so the plan wasn't applied. Apply it once that run finishes.",
+        )
+        response.status_code = 409
+        return response
     return RedirectResponse(f"/runs/{new_id}", status_code=303)
 
 
@@ -695,7 +720,7 @@ def api_removers(request: Request) -> list[dict[str, Any]]:
     """the config's removers with their auto-approve setting"""
     rules, config_error = remover_rules(request)
     if config_error:
-        raise HTTPException(status_code=500, detail=config_error)
+        raise HTTPException(status_code=503, detail=config_error)
     settings = rule_settings(request)
     return [
         {

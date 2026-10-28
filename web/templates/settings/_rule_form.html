@@ -13,6 +13,7 @@
 
 <form method="post" action="{{ action }}" class="form">
   {{ f.version_field() }}
+  {% if loaded %}<input type="hidden" name="loaded" value="{{ loaded }}">{% endif %}
   {% block fields %}{% endblock %}
   <span></span>
   <div class="actions">
@@ -56,6 +57,7 @@
 {% if number %}
 <form method="post" action="{{ action }}/delete" class="delete-form">
   {{ f.version_field() }}
+  {% if loaded %}<input type="hidden" name="loaded" value="{{ loaded }}">{% endif %}
   <button type="submit" class="button-danger">Delete {{ name }}</button>
   <span class="muted">You can bring it back from Settings → History.{% if kind == "removers" %} Its auto-approve turns off.{% endif %}</span>
 </form>

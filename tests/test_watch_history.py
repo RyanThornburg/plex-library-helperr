@@ -3,11 +3,12 @@
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
+import pytest
 import requests
 
 import watch_history
 from config.models import PlexConfig, TautulliConfig
-from watch_history import WatchEvent, get_tautulli_watches, get_watch_history
+from watch_history import WatchEvent, get_tautulli_watches, get_watch_history, history_rows
 
 TAUTULLI = TautulliConfig(url="http://tautulli:8181/", apikey="key")
 SINCE = datetime(2026, 9, 1)
@@ -158,3 +159,13 @@ class TestGetWatchHistory:
 
     def test_none_without_sources(self):
         assert get_watch_history(None, None, SINCE) is None
+
+
+class TestHistoryRows:
+    @pytest.mark.parametrize("data", [[], None, {"data": None}, {"data": "x"}, {"data": [1]}])
+    def test_an_unexpected_answer_is_no_history_not_no_plays(self, data):
+        with pytest.raises(ValueError):
+            history_rows(data)
+
+    def test_rows(self):
+        assert history_rows({"data": [{"id": 1}]}) == [{"id": 1}]

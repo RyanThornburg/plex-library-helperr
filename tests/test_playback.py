@@ -175,7 +175,8 @@ class TestSyncPlaybacks:
         assert self.run(engine, fake) == 2
         assert fake.history_calls[0]["after"] == (NOW - BACKFILL - timedelta(days=1)).date().isoformat()
         assert fake.history_calls[0]["order_dir"] == "desc"
-        assert fake.stream_calls == [3, 2]
+        # stored oldest first, so a sync that fails partway leaves no gap
+        assert fake.stream_calls == [2, 3]
         assert self.stored(engine)[3].quality_profile == "Original"
 
     def test_then_only_new_plays(self, engine):

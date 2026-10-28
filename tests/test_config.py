@@ -381,6 +381,18 @@ class TestLinks:
             load(toml)
 
 
+class TestBadShapes:
+    @pytest.mark.parametrize("document, error", [
+        ({"settings": "x"}, "[settings] must be a table, got str"),
+        ({"radarr": 5}, "[radarr] must be a table, got int"),
+        ({"sonarr": {"removers": [5]}}, "invalid config"),
+        ({"settings": {"filter_time": "99999999999d"}}, "invalid duration '99999999999d'"),
+    ])
+    def test_value_errors(self, document, error):
+        with pytest.raises(ValueError, match=re.escape(error)):
+            config.build_config(document)
+
+
 class TestConfigTomlPath:
     def test_in_data_dir(self, tmp_path, monkeypatch):
         monkeypatch.setenv("DATA_DIR", str(tmp_path))

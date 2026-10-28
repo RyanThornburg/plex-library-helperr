@@ -23,6 +23,7 @@ from config.document import (
     with_secrets,
 )
 from config.models import ConfigSettings, WebDefaults
+from logging_config import hide_secrets
 from web.db import ConfigSecret, ConfigVersion, RemoverRuleSetting, make_engine, migrate
 from web.jobs import utc_now
 from web.secret_box import SecretBox, SecretError
@@ -110,7 +111,10 @@ class ConfigStore:
     def load_settings(self) -> ConfigSettings:
         """the config jobs run with"""
         _, document = self.document()
-        return config.build_config(with_secrets(document, self.secrets()))
+        secrets = self.secrets()
+        # every log and stored run result leaves them out from here on
+        hide_secrets(*secrets.values())
+        return config.build_config(with_secrets(document, secrets))
 
     def web_defaults(self) -> WebDefaults:
         """the web app's defaults, without needing the secrets"""

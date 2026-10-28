@@ -165,7 +165,10 @@ def _match_duration(value: object) -> timedelta | None:
     )
     if not match:
         return None
-    return timedelta(**{DURATION_UNITS[match.group(2)]: int(match.group(1))})
+    try:
+        return timedelta(**{DURATION_UNITS[match.group(2)]: int(match.group(1))})
+    except OverflowError:
+        return None
 
 
 def parse_duration(value: object, label: str) -> timedelta:
@@ -222,8 +225,25 @@ def _build_links(data: Any) -> list[LinkConfig]:
     return links
 
 
+# the document's sections that are tables
+TABLES = ("settings", "web", "plex", "tautulli", "seerr", "sabnzbd", "bazarr", "autoscan", "radarr", "sonarr")
+
+
 def build_config(data: Mapping[str, Any]) -> ConfigSettings:
     """settings from a config document, raises ValueError naming what's invalid"""
+    if not isinstance(data, Mapping):
+        raise ValueError("the config must be a table")
+    for name in TABLES:
+        if name in data and not isinstance(data[name], Mapping):
+            raise ValueError(f"[{name}] must be a table, got {type(data[name]).__name__}")
+    try:
+        return _build_config(data)
+    except (TypeError, AttributeError) as e:
+        # a list or value where a table belongs, deeper than the sections
+        raise ValueError(f"invalid config: {e}") from None
+
+
+def _build_config(data: Mapping[str, Any]) -> ConfigSettings:
     raw_settings = data.get("settings", {})
     plex_config = data.get("plex", {})
     tautulli_config = data.get("tautulli", {})

@@ -10,11 +10,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
+from urllib.parse import quote, quote_plus
 
 import requests
 from arrapi import Movie, QualityProfile, RadarrAPI, RootFolder, Series, SonarrAPI
 from plexapi.server import PlexServer
 
+from arr_client import arr_api
 from config.models import ArrConfig, MoverRule, PlexConfig, ProfileRule
 from web.jobs import utc_now
 
@@ -37,7 +39,9 @@ def redact(text: str, *secrets: str | None) -> str:
     query parameter"""
     for secret in secrets:
         if secret:
-            text = text.replace(secret, "***")
+            # a key in a query string may be percent-encoded
+            for form in {secret, quote(secret, safe=""), quote_plus(secret)}:
+                text = text.replace(form, "***")
     return text
 
 
@@ -217,6 +221,9 @@ class Lookups:
     def __init__(self) -> None:
         self._cache: dict[tuple[str, ...], tuple[datetime, Any]] = {}
         self._lock = threading.Lock()
+        # one fetch at a time per key: a second page waits for the first's result, and a
+        # slow radarr doesn't hold up sonarr's or plex's
+        self._key_locks: dict[tuple[str, ...], threading.Lock] = {}
 
     def clear(self) -> None:
         """forget everything, after a connection changes"""
@@ -224,13 +231,16 @@ class Lookups:
             self._cache.clear()
 
     def _cached(self, key: tuple[str, ...], fetch: Any, refresh: bool = False) -> Any:
-        # one fetch at a time: a second page waits for the first's result
         with self._lock:
-            hit = self._cache.get(key)
+            key_lock = self._key_locks.setdefault(key, threading.Lock())
+        with key_lock:
+            with self._lock:
+                hit = self._cache.get(key)
             if hit and not refresh and utc_now() - hit[0] < CACHE_TTL:
                 return hit[1]
             value = fetch()
-            self._cache[key] = (utc_now(), value)
+            with self._lock:
+                self._cache[key] = (utc_now(), value)
             return value
 
     def arr_library(
@@ -242,7 +252,7 @@ class Lookups:
 
         def fetch() -> ArrLibrary:
             try:
-                api = ARR_APIS[arr_name](baseurl, apikey)
+                api = arr_api(ARR_APIS[arr_name], baseurl, apikey)
                 tags = {t.id: t.label for t in api.all_tags()}
                 profiles = api.quality_profile()
                 names = {p.id: p.name for p in profiles}
@@ -280,6 +290,13 @@ class Lookups:
         return self._cached(("plex", baseurl), fetch)
 
 
+# a url that reaches a web page rather than the api (a missing base url, a proxy's
+# login page): its answer isn't json
+NOT_API = "{} answered with a web page, not its API: check the URL, including any base URL"
+SERVICE_LABELS = {
+    "radarr": "Radarr", "sonarr": "Sonarr", "plex": "Plex", "tautulli": "Tautulli",
+    "seerr": "Seerr", "sabnzbd": "SABnzbd", "bazarr": "Bazarr", "autoscan": "Autoscan",
+}
 # without its base url bazarr redirects the api to its web page
 BAZARR_NOT_API = "Bazarr answered with its web page, not its API: add its base URL, e.g. http://192.168.1.15:6767/subs"
 
@@ -330,7 +347,11 @@ def check_connection(service: str, values: dict[str, str]) -> str:
             if response.status_code in (401, 403):
                 raise LookupFailed(f"SABnzbd refused the API key (HTTP {response.status_code})")
             response.raise_for_status()
-            return f"SABnzbd {response.json().get('queue', {}).get('version', '')}"
+            body = response.json()
+            # a wrong key is a 200 with {"status": false, "error": "API Key Incorrect"}
+            if body.get("status") is False:
+                raise LookupFailed(f"SABnzbd refused: {body.get('error') or 'unknown error'}")
+            return f"SABnzbd {body.get('queue', {}).get('version', '')}"
         if service == "bazarr":
             response = requests.get(f"{url}/api/system/status", headers={"X-API-KEY": secret}, timeout=TIMEOUT)
             if response.status_code in (401, 403):
@@ -354,6 +375,8 @@ def check_connection(service: str, values: dict[str, str]) -> str:
             return "Autoscan's manual trigger"
     except LookupFailed as e:
         raise LookupFailed(redact(str(e), secret)) from None
+    except requests.exceptions.JSONDecodeError:
+        raise LookupFailed(NOT_API.format(SERVICE_LABELS.get(service, service))) from None
     except Exception as e:
         raise LookupFailed(redact(f"{type(e).__name__}: {e}", secret)) from None
     raise LookupFailed(f"unknown service {service}")

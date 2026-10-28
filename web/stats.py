@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from config.models import ConfigSettings, PlexConfig, SeerrConfig, TautulliConfig
 from movie_remover import PlayLookup, RadarrMovie
+from watch_history import history_rows
 from web.db import AppSetting, MediaRequest, Play
 from web.jobs import utc_now
 from web.lookups import redact
@@ -157,7 +158,8 @@ def sync_plays(engine: Engine, config: TautulliConfig) -> int:
     start = 0
     while True:
         data = _tautulli(config, "get_history", start=start, **params)
-        page = data.get("data", []) if isinstance(data, dict) else []
+        # an unexpected answer fails the sync rather than leaving the plays stale unseen
+        page = history_rows(data)
         plays = [p for p in map(play_from_row, page) if p]
         if plays:
             with Session(engine) as session:

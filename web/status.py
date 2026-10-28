@@ -633,6 +633,12 @@ def failure(e: Exception, label: str, *secrets: str | None) -> str:
         return "Couldn't connect"
     if isinstance(e, requests.exceptions.Timeout):
         return f"No answer within {TIMEOUT}s"
+    if isinstance(e, requests.exceptions.JSONDecodeError):
+        return "Answered with a web page, not its API: check its URL on Settings → Connections, including any base URL"
+    if isinstance(e, (AttributeError, KeyError, TypeError)):
+        # the service answered, but not what this version of helperr expects
+        logger.exception("WEB\t %s: unexpected answer", label)
+        return "Unexpected answer: it may be a version Helperr doesn't know yet (see the web log)"
     text = redact(f"{type(e).__name__}: {e}", *secrets)
     logger.warning("WEB\t %s failed: %s", label, text)
     return text

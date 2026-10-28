@@ -695,6 +695,41 @@ class TestMainErrorHandling:
         assert result.errors[0].startswith("RADARR failed")
 
 
+    def test_unexpected_failure_is_recorded_and_the_next_arr_still_runs(self):
+        arr_config = ArrConfig(baseurl="http://arr", apikey="key", tag=None)
+        settings = ConfigSettings(plex=None, radarr=arr_config, sonarr=arr_config)
+        with patch.object(main, "run_arr", side_effect=[KeyError("path"), None]) as run_arr:
+            result = main.run_job("movers", settings)
+        assert run_arr.call_count == 2
+        assert result.errors == ["RADARR failed, skipped remaining rules: 'path'"]
+
+    def test_removals_done_stay_recorded_when_a_later_step_fails(self):
+        sonarr = ArrConfig(baseurl="http://sonarr", apikey="key", tag=None)
+        settings = ConfigSettings(plex=None, radarr=None, sonarr=sonarr)
+
+        def removed(*args):
+            args[3].changes.append(Change("SONARR", "remove", "Bluey", ["S01"], "done"))
+            args[3].plex_libraries.add("TV")
+
+        with (
+            patch.object(main, "run_removers", side_effect=removed),
+            patch.object(main, "refresh_plex_libraries", side_effect=RuntimeError("plex said no")),
+        ):
+            result = main.run_job("removers", settings)
+        assert [c.status for c in result.changes] == ["done"]
+        assert result.errors == ["Scanning the changed folders failed: plex said no"]
+
+    def test_errors_never_hold_a_secret(self):
+        from logging_config import hide_secrets
+        hide_secrets("SUPERSECRETAPIKEY1234")
+        arr_config = ArrConfig(baseurl="http://arr", apikey="SUPERSECRETAPIKEY1234", tag=None)
+        settings = ConfigSettings(plex=None, radarr=arr_config, sonarr=None)
+        error = ValueError("failed for http://arr/api/v3/movie?apikey=SUPERSECRETAPIKEY1234")
+        with patch.object(main, "run_arr", side_effect=error):
+            result = main.run_job("movers", settings)
+        assert "SUPERSECRETAPIKEY1234" not in result.errors[0] and "apikey=***" in result.errors[0]
+
+
 class TestGetMovedDirs:
     def test_uses_updated_path_from_arr(self):
         old = make_series(id=5, path="/data/media/tv/tv/Bluey (2018)")

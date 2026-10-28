@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · Helperr{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+{% if detail %}<p>{{ detail }}</p>{% endif %}
+<p>{% if back %}<a href="{{ back[1] }}">← {{ back[0] }}</a> · {% endif %}<a href="/status">Status</a> · <a href="/">Runs</a> · <a href="/settings">Settings</a></p>
+{% endblock %}

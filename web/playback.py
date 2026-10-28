@@ -20,6 +20,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from config.models import ConfigSettings, TautulliConfig
+from watch_history import history_rows
 from web.db import Playback
 from web.jobs import utc_now
 from web.lookups import redact
@@ -188,10 +189,12 @@ def _insert(engine: Engine, playbacks: list[dict[str, Any]]) -> None:
 
 
 def sync_playbacks(engine: Engine, config: TautulliConfig, now: datetime) -> int:
-    """add new plays with their stream data, newest first, and delete those older than
-    KEEP. Reads from a day before the newest stored play (plays in progress have no id
-    yet), or BACKFILL the first time. A finished play's stream doesn't change, so known
-    plays aren't read again. Returns the plays added"""
+    """add new plays with their stream data and delete those older than KEEP. Reads from
+    a day before the newest stored play (plays in progress have no id yet), or BACKFILL
+    the first time. A finished play's stream doesn't change, so known plays aren't read
+    again. Plays are stored oldest first: a sync that fails partway (tautulli timing out)
+    leaves no gap, the next one carries on from the newest it stored. Returns the plays
+    added"""
     with Session(engine) as session:
         session.execute(delete(Playback).where(Playback.started_at < now - KEEP))
         session.commit()
@@ -210,14 +213,15 @@ def sync_playbacks(engine: Engine, config: TautulliConfig, now: datetime) -> int
     start = 0
     while True:
         data = _tautulli(config, "get_history", start=start, **params)
-        page = data.get("data", []) if isinstance(data, dict) else []
+        page = history_rows(data)
         rows += page
         if len(page) < TAUTULLI_PAGE:
             break
         start += TAUTULLI_PAGE
     added = 0
     pending: list[dict[str, Any]] = []
-    for row in rows:
+    # tautulli pages newest first, so a play that starts while paging can't be skipped
+    for row in reversed(rows):
         history_id = _int(row.get("id"))
         started_at = _utc(row.get("started") or row.get("date"))
         if history_id is None or history_id in known or started_at is None or started_at < since:

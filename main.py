@@ -22,9 +22,10 @@ from arrapi import (
     SonarrAPI,
 )
 
+from arr_client import arr_api
 from autoscan import trigger_autoscan
 from config.models import ArrConfig, ConfigSettings, MoverRule, ProfileRule
-from logging_config import logging_config
+from logging_config import logging_config, redacted
 from plex import empty_plex_trash, refresh_plex_libraries
 from movie_remover import PlayLookup, run_movie_removers
 from remover import Approved, run_removers
@@ -240,7 +241,7 @@ def run_arr(
         logger.warning("%s not configured. Skipping...", log_name)
         return
 
-    arr = api_cls(arr_config.baseurl, arr_config.apikey)
+    arr = arr_api(api_cls, arr_config.baseurl, arr_config.apikey)
     logger.info("%s\t Reading all media...", log_name)
     media: list[Movie | Series] = getattr(arr, all_fn)()
     logger.info("%s\t Total Files: %s", log_name, len(media))
@@ -387,6 +388,15 @@ def load_settings() -> ConfigSettings:
     return open_store().load_settings()
 
 
+def failed(e: Exception, message: str) -> None:
+    """logs a failure: an arr's error says what went wrong (its traceback would only add
+    the url, with the api key in it), anything else gets its traceback"""
+    if isinstance(e, (ArrException, requests.exceptions.RequestException)):
+        logger.error("%s: %s", message, e)
+    else:
+        logger.exception(message)
+
+
 def run_all_removers(
     settings: ConfigSettings,
     result: JobResult,
@@ -423,9 +433,10 @@ def run_all_removers(
                 )
             else:
                 run_movie_removers(arr_config, result, arr_approved, auto_approve, movie_plays)
-        except (ArrException, requests.exceptions.RequestException) as e:
-            logger.exception("%s\t Removers failed", log_name)
-            result.errors.append(f"{log_name} removers failed: {e}")
+        except Exception as e:
+            # one arr failing doesn't stop the other, and what was removed stays recorded
+            failed(e, f"{log_name}\t Removers failed")
+            result.errors.append(f"{log_name} removers failed: {redacted(str(e))}")
 
 
 def run_job(
@@ -451,7 +462,11 @@ def run_job(
     if job == "empty_trash":
         logger.info("-" * 90)
         logger.info("STARTING PLEX EMPTY TRASH")
-        empty_plex_trash(settings.plex, settings.empty_trash, result, removed_files)
+        try:
+            empty_plex_trash(settings.plex, settings.empty_trash, result, removed_files)
+        except Exception as e:
+            failed(e, "PLEX\t Emptying the trash failed")
+            result.errors.append(f"Emptying the trash failed: {redacted(str(e))}")
         return result
 
     if job == "removers":
@@ -482,9 +497,9 @@ def run_job(
                 settings.filter_time,
                 result,
             )
-        except ArrException as e:
-            logger.exception("%s\t Failed, skipping remaining rules", log_name)
-            result.errors.append(f"{log_name} failed, skipped remaining rules: {e}")
+        except Exception as e:
+            failed(e, f"{log_name}\t Failed, skipping remaining rules")
+            result.errors.append(f"{log_name} failed, skipped remaining rules: {redacted(str(e))}")
 
     scan_changed(settings, result)
     return result
@@ -515,6 +530,15 @@ def main(argv: list[str] | None = None) -> JobResult | None:
 
 def scan_changed(settings: ConfigSettings, result: JobResult) -> None:
     """scan changed folders with autoscan, or refresh plex libraries without it"""
+    try:
+        _scan_changed(settings, result)
+    except Exception as e:
+        # the changes already made stay in the result
+        failed(e, "SCAN\t Scanning the changed folders failed")
+        result.errors.append(f"Scanning the changed folders failed: {redacted(str(e))}")
+
+
+def _scan_changed(settings: ConfigSettings, result: JobResult) -> None:
     if settings.autoscan:
         if result.scan_dirs:
             logger.info("-" * 90)

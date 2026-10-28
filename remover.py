@@ -9,6 +9,7 @@ from typing import Any
 import requests
 from arrapi import Series, SonarrAPI
 
+from arr_client import arr_api
 from config.models import ArrConfig, PlexConfig, RemoverRule, TautulliConfig
 from results import Change, JobResult, PlannedFile, PlannedRemoval, Status
 from watch_history import WatchEvent, get_watch_history
@@ -380,7 +381,7 @@ def run_removers(
 
     settings = arr_config.remover_settings
     now = utc_now()
-    arr = SonarrAPI(arr_config.baseurl, arr_config.apikey)
+    arr = arr_api(SonarrAPI, arr_config.baseurl, arr_config.apikey)
     client = SonarrEpisodes(arr_config.baseurl, arr_config.apikey)
 
     def not_applied(title: str, reason: str, labels: list[str] | None = None) -> None:

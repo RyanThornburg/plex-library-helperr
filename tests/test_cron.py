@@ -101,3 +101,8 @@ class TestTimeZone:
         for bad in ("Mars/Olympus", "", "../etc/passwd"):
             with pytest.raises(ValueError, match="unknown time zone"):
                 cron.parse_zone(bad)
+
+
+def test_a_zone_name_too_long_for_a_file_is_unknown():
+    with pytest.raises(ValueError, match="unknown time zone"):
+        cron.parse_zone("a" * 300)

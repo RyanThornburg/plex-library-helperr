@@ -6,6 +6,7 @@
   {{ JOB_INFO[run.job][0] }} #{{ run.id }}
   <span class="status status-{{ run.status }}">{{ run.status }}</span>
 </h1>
+{% if busy %}<p class="banner banner-warn">This run was already queued or running when you asked for another {{ JOB_INFO[run.job][0] | lower }} run, so yours wasn't queued. Run it again once this one finishes.</p>{% endif %}
 
 <dl class="facts">
   {% if run.plan_run_id %}

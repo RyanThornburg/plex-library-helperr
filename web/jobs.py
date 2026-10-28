@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 import config
 from config.models import ConfigSettings, WebDefaults
+from logging_config import SecretFilter, redacted
 from movie_remover import PlayLookup
 from results import JOBS, JobResult
 from web.db import JobRun, RemoverRuleSetting
@@ -76,6 +77,17 @@ def approvable(run: JobRun) -> list[dict[str, Any]]:
     return [r for r in removals if r["status"] in APPROVABLE]
 
 
+def hide_in(value: Any) -> Any:
+    """a stored result with the config's secrets redacted from every string"""
+    if isinstance(value, str):
+        return redacted(value)
+    if isinstance(value, list):
+        return [hide_in(v) for v in value]
+    if isinstance(value, dict):
+        return {k: hide_in(v) for k, v in value.items()}
+    return value
+
+
 class RunLogCapture(logging.Handler):
     """collects log records from the worker thread only, so request logs from other
     threads don't end up in a run's log"""
@@ -83,6 +95,7 @@ class RunLogCapture(logging.Handler):
     def __init__(self, thread_id: int):
         super().__init__(logging.INFO)
         self.thread_id = thread_id
+        self.addFilter(SecretFilter())
         self.lines: list[str] = []
         self.size = 0
         self.truncated = False
@@ -331,7 +344,13 @@ class JobRunner:
             try:
                 if run_id is None:
                     return
-                job = self._execute(run_id)
+                try:
+                    job = self._execute(run_id)
+                except Exception:
+                    # e.g. the db stayed locked: the run fails, the jobs after it still run
+                    logger.exception("WEB\t Run %s couldn't be run or stored", run_id)
+                    self._fail(run_id)
+                    continue
                 with self._submit_lock:
                     rerun = self._rerun.pop(job, None)
                 if rerun:
@@ -341,6 +360,15 @@ class JobRunner:
                         pass  # queued meanwhile, that run covers it
             finally:
                 self._queue.task_done()
+
+    def _fail(self, run_id: int) -> None:
+        try:
+            with Session(self.engine) as session:
+                run = session.get_one(JobRun, run_id)
+                run.status, run.finished_at = "failed", utc_now()
+                session.commit()
+        except Exception:
+            logger.exception("WEB\t Run %s couldn't be marked failed", run_id)
 
     def _execute(self, run_id: int) -> str:
         """run it and store the result, returns the job"""
@@ -393,7 +421,7 @@ class JobRunner:
             run = session.get_one(JobRun, run_id)
             run.status = "succeeded" if result is not None and not result.failed else "failed"
             run.finished_at = utc_now()
-            run.result = result.to_dict() if result is not None else None
+            run.result = hide_in(result.to_dict()) if result is not None else None
             run.log = capture.text()
             session.commit()
         return job

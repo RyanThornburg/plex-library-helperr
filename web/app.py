@@ -5,8 +5,14 @@ import pathlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from http import HTTPStatus
+
+from fastapi import FastAPI, Request, Response
+from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import config
 from web.auth import AccessMiddleware, AccessVerifier, SigningKeyClient
@@ -17,7 +23,7 @@ from web.health import HealthMonitor
 from web.lookups import Lookups
 from web.playback import PlaybackSync
 from web.playback_routes import router as playback_router
-from web.routes import router
+from web.routes import error_page, router
 from web.webhooks import api_key
 from web.webhooks import router as webhook_router
 from web.scheduler import Scheduler
@@ -32,6 +38,41 @@ from web.settings import WebSettings, load_web_settings
 logger = logging.getLogger(__name__)
 
 WEB_DIR = pathlib.Path(__file__).parent
+
+
+def wants_page(request: Request) -> bool:
+    """a browser asking for a page, not the json api or the webhook"""
+    path = request.url.path
+    return not path.startswith(("/api/", "/webhooks/")) and "text/html" in request.headers.get("accept", "")
+
+
+def add_error_pages(app: FastAPI) -> None:
+    """errors on pages render as a page saying why with a way back, not fastapi's json"""
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_error(request: Request, e: StarletteHTTPException) -> Response:
+        if not wants_page(request):
+            return await http_exception_handler(request, e)
+        detail = e.detail if isinstance(e.detail, str) and e.detail != HTTPStatus(e.status_code).phrase else ""
+        if e.status_code == 404 and not detail:
+            detail = "There's no such page, or what it showed was deleted."
+        return error_page(request, e.status_code, detail)
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid(request: Request, e: RequestValidationError) -> Response:
+        if not wants_page(request):
+            return await request_validation_exception_handler(request, e)
+        problems = "; ".join(
+            f"{'.'.join(str(p) for p in error['loc'][1:]) or 'request'}: {error['msg']}" for error in e.errors()
+        )
+        return error_page(request, 422, f"Some of the address isn't valid ({problems}).")
+
+    @app.exception_handler(OverflowError)
+    async def too_large(request: Request, e: OverflowError) -> Response:
+        # an id too large for sqlite can't exist
+        if wants_page(request):
+            return error_page(request, 404, "There's no such page.")
+        return JSONResponse({"detail": "Not Found"}, status_code=404)
 
 
 def create_app(
@@ -103,6 +144,7 @@ def create_app(
     app.include_router(stats_router)
     app.include_router(status_router)
     app.include_router(playback_router)
+    add_error_pages(app)
     # added last runs first: security headers wrap the access check, so 403s get them too
     app.add_middleware(AccessMiddleware, verifier=AccessVerifier(settings, keys))
     app.add_middleware(SecurityMiddleware)

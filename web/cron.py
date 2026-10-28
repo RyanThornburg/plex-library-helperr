@@ -72,7 +72,8 @@ def parse_zone(name: str) -> ZoneInfo:
     """an IANA time zone like America/New_York, ValueError if unknown"""
     try:
         return ZoneInfo(name)
-    except (ZoneInfoNotFoundError, ValueError):
+    # OSError: a name too long for a file name
+    except (ZoneInfoNotFoundError, ValueError, OSError):
         raise ValueError(f"unknown time zone '{name}'") from None
 
 

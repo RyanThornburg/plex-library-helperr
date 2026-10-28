@@ -5,6 +5,8 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from typing import Any
+
 import requests
 from plexapi import exceptions as plexapi_exceptions
 
@@ -72,6 +74,15 @@ def _tautulli_show_tvdb_id(config: TautulliConfig, rating_key: object) -> int | 
     return _tvdb_from_guids([*data.get("guids", []), data.get("guid") or ""])
 
 
+def history_rows(data: object) -> list[dict[str, Any]]:
+    """the rows of a get_history page. Anything else raises: read as no plays, it would
+    let removers delete what was just watched"""
+    rows = data.get("data") if isinstance(data, dict) else None
+    if not isinstance(rows, list) or not all(isinstance(r, dict) for r in rows):
+        raise ValueError(f"unexpected get_history answer: {type(data).__name__}")
+    return rows
+
+
 def get_tautulli_watches(
     config: TautulliConfig, since: datetime
 ) -> list[WatchEvent] | None:
@@ -89,7 +100,7 @@ def get_tautulli_watches(
                 start=start,
                 length=TAUTULLI_PAGE_SIZE,
             )
-            page = data["data"] if isinstance(data, dict) else []
+            page = history_rows(data)
             rows.extend(page)
             if len(page) < TAUTULLI_PAGE_SIZE:
                 break

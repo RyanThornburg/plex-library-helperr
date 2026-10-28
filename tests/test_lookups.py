@@ -172,6 +172,18 @@ class TestCheckConnection:
         assert get.call_args.args[0] == "http://sab:8080/api"
         assert get.call_args.kwargs["params"]["apikey"] == "key"
 
+    def test_sabnzbd_wrong_key_answers_200(self):
+        with patch("web.lookups.requests.get", return_value=response(body={"status": False, "error": "API Key Incorrect"})):
+            with pytest.raises(LookupFailed, match="SABnzbd refused: API Key Incorrect"):
+                check_connection("sabnzbd", {"url": "http://sab:8080", "secret": "s3cret"})
+
+    def test_a_web_page_instead_of_the_api(self):
+        page = response(body=None)
+        page.json.side_effect = requests.exceptions.JSONDecodeError("Expecting value", "<html>", 0)
+        with patch("web.lookups.requests.get", return_value=page):
+            with pytest.raises(LookupFailed, match="Radarr answered with a web page"):
+                check_connection("radarr", {"url": "http://radarr:7878", "secret": "key"})
+
     def test_sabnzbd_bad_key(self):
         with patch("web.lookups.requests.get", return_value=response(403)):
             with pytest.raises(LookupFailed, match="SABnzbd refused the API key"):

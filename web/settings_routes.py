@@ -3,6 +3,7 @@ connections, radarr/sonarr rules, empty trash, the webhook key and the config's 
 
 import copy
 import difflib
+import hashlib
 import json
 import logging
 import os
@@ -13,12 +14,11 @@ from urllib.parse import parse_qs
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from markupsafe import escape
 from pydantic import BaseModel
 
 import config
 from config.document import RULE_TYPES, SECRET_FIELDS, Rule, rule_class, rule_to_dict
-from config.models import REMOVER_TYPES, ConfigSettings
+from config.models import REMOVER_TYPES, ConfigSettings, WebDefaults
 from web.config_store import ConfigConflict, ConfigStore
 from web.db import ConfigVersion
 from web.lookups import (
@@ -30,7 +30,7 @@ from web.lookups import (
     preview_mover,
     preview_profiler,
 )
-from web.routes import MAX_FORM_BYTES, templates
+from web.routes import error_page, templates
 from web.secret_box import SecretError
 from web.webhooks import api_key, regenerate_api_key
 
@@ -85,13 +85,17 @@ def lookups(request: Request) -> Lookups:
     return request.app.state.lookups
 
 
+# rule forms hold lists (a profiler's titles), so more than the schedule form's cap
+MAX_SETTINGS_FORM_BYTES = 256_000
+
+
 async def form_lists(request: Request) -> dict[str, list[str]]:
     """a urlencoded form body with every value of repeated fields (checkboxes)"""
     body = b""
     async for chunk in request.stream():
         body += chunk
-        if len(body) > MAX_FORM_BYTES:
-            raise HTTPException(status_code=413)
+        if len(body) > MAX_SETTINGS_FORM_BYTES:
+            raise HTTPException(status_code=413, detail="The form was too large to save.")
     return parse_qs(body.decode("utf-8", "replace"), keep_blank_values=True)
 
 
@@ -164,7 +168,11 @@ def commit(
 ) -> Response:
     """save a form's change, going through a confirmation when it makes a job live"""
     if check_live and not first(fields, "confirm_live"):
-        if live := turns_live(store(request).document()[1], document):
+        try:
+            live = turns_live(store(request).document()[1], document)
+        except ValueError as e:
+            return on_error(str(e))
+        if live:
             return templates.TemplateResponse(
                 request,
                 "settings/confirm_live.html",
@@ -264,7 +272,13 @@ def general_page(request: Request) -> HTMLResponse:
 
 def general(request: Request, values: dict[str, Any] | None = None, errors: list[str] | None = None) -> HTMLResponse:
     _, document = store(request).document()
-    web = config.build_config(document).web if values is None else None
+    web = None
+    if values is None:
+        # this is the page to fix an invalid config on, it shows with the defaults
+        try:
+            web = config.build_config(document).web
+        except ValueError as e:
+            web, errors = WebDefaults(), [*(errors or []), f"The saved settings are invalid: {e}"]
     values = values or {
         "dry_run": document.get("settings", {}).get("dry_run", False),
         "filter_time": document.get("settings", {}).get("filter_time", ""),
@@ -755,6 +769,23 @@ def choices(request: Request, arr: str, refresh: bool = False) -> tuple[ArrLibra
     return library, plex, problems
 
 
+def fingerprint(rule: Any) -> str:
+    """a stored rule as it was when its form loaded: rules are saved by number, which
+    another tab deleting or moving one changes"""
+    return hashlib.sha256(json.dumps(rule, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def changed_since_loaded(document: dict[str, Any], arr: str, kind: str, number: int, fields: dict[str, list[str]]) -> bool:
+    loaded = first(fields, "loaded")
+    return bool(loaded) and loaded != fingerprint(rule_number(document, arr, kind, number))
+
+
+RULE_CHANGED = (
+    "{} changed since this form was opened (in another tab, or by a restore), so this wasn't saved "
+    "to keep from overwriting the wrong rule. Open it again from the list."
+)
+
+
 def rule_form(
     request: Request,
     arr: str,
@@ -763,7 +794,11 @@ def rule_form(
     values: dict[str, Any],
     errors: list[str] | None = None,
     preview: Preview | None = None,
+    loaded: str | None = None,
 ) -> HTMLResponse:
+    if number is not None and loaded is None:
+        _, document = store(request).document()
+        loaded = fingerprint(rule_number(document, arr, kind, number))
     library, plex_libraries, problems = choices(
         request, arr, request.query_params.get("refresh") == "1"
     )
@@ -787,6 +822,7 @@ def rule_form(
             "filter_time": settings.filter_time if settings else None,
             "back": back_url(arr, kind),
             "remover_types": REMOVER_TYPES,
+            "loaded": loaded,
         },
         errors,
     )
@@ -896,9 +932,11 @@ async def update_rule(request: Request, arr: str, kind: str, number: int) -> Res
 async def save_rule(request: Request, arr: str, kind: str, number: int | None) -> Response:
     fields = await form_lists(request)
     values = rule_values(kind, arr, fields)
+    # a re-rendered form keeps the rule it was opened on
+    loaded = first(fields, "loaded") or None
 
     def failed(message: str) -> HTMLResponse:
-        return rule_form(request, arr, kind, number, values, [message])
+        return rule_form(request, arr, kind, number, values, [message], loaded=loaded)
 
     try:
         rule = build_rule(arr, kind, values)
@@ -907,15 +945,16 @@ async def save_rule(request: Request, arr: str, kind: str, number: int | None) -
 
     _, document = store(request).document()
     rules = document.setdefault(arr, {}).setdefault(kind, [])
-    if number is not None:
-        rule_number(document, arr, kind, number)
+    name = f"{SERVICES[arr][0]} {RULE_NAMES[kind]}"
+    if number is not None and changed_since_loaded(document, arr, kind, number, fields):
+        return failed(RULE_CHANGED.format(f"{name} {number}"))
 
     if first(fields, "action") == "preview" and kind != "removers":
         return rule_form(
-            request, arr, kind, number, values, preview=rule_preview(request, arr, kind, number, rule, rules)
+            request, arr, kind, number, values,
+            preview=rule_preview(request, arr, kind, number, rule, rules), loaded=loaded,
         )
 
-    name = f"{SERVICES[arr][0]} {RULE_NAMES[kind]}"
     if number is None:
         rules.append(rule_to_dict(rule))
         note = f"{name} {len(rules)} added"
@@ -948,12 +987,16 @@ async def delete_rule(request: Request, arr: str, kind: str, number: int) -> Res
     check_kind(arr, kind)
     fields = await form_lists(request)
     _, document = store(request).document()
-    rule_number(document, arr, kind, number)
+    if changed_since_loaded(document, arr, kind, number, fields):
+        return error_page(
+            request, 409, RULE_CHANGED.format(f"{SERVICES[arr][0]} {RULE_NAMES[kind]} {number}"),
+            ("Removers", "/removers") if kind == "removers" else (SERVICES[arr][0], f"/settings/{arr}"),
+        )
     del document[arr][kind][number - 1]
     return commit(
         request, fields, document,
         f"{SERVICES[arr][0]} {RULE_NAMES[kind]} {number} deleted",
-        lambda e: arr_settings(request, arr, errors=[e]) if kind != "removers" else HTMLResponse(escape(e), 400),
+        lambda e: arr_settings(request, arr, errors=[e]) if kind != "removers" else error_page(request, 400, e, ("Removers", "/removers")),
         back_url(arr, kind), check_live=False,
     )
 
@@ -968,7 +1011,7 @@ async def move_rule(request: Request, arr: str, kind: str, number: int, directio
     rules = document[arr][kind]
     other = number - 1 if direction == "up" else number + 1
     if direction not in ("up", "down") or not 1 <= other <= len(rules):
-        raise HTTPException(status_code=400)
+        raise HTTPException(status_code=422, detail="A rule can only move up or down, within the list.")
     rules[number - 1], rules[other - 1] = rules[other - 1], rules[number - 1]
     return commit(
         request, fields, document,
@@ -985,7 +1028,7 @@ async def save_remover_settings(request: Request, arr: str) -> Response:
     errors: list[str] = []
     max_deletes = checked_int(first(fields, "max_deletes"), "Max deletes", errors, 1, optional=True)
     if errors:
-        return HTMLResponse(escape(errors[0]), status_code=400)
+        return error_page(request, 400, errors[0], ("Removers", "/removers"))
     _, document = store(request).document()
     section = document.setdefault(arr, {})
     if max_deletes is None:
@@ -994,7 +1037,7 @@ async def save_remover_settings(request: Request, arr: str) -> Response:
         section["remover_settings"] = {"max_deletes": max_deletes}
     return commit(
         request, fields, document, f"{SERVICES[arr][0]} remover max deletes",
-        lambda e: HTMLResponse(escape(e), status_code=400), "/removers", check_live=False,
+        lambda e: error_page(request, 400, e, ("Removers", "/removers")), "/removers", check_live=False,
     )
 
 
@@ -1066,7 +1109,9 @@ def api_commit(request: Request, body: ConfigRequest, note: str) -> JSONResponse
 @router.put("/api/config")
 def api_save_config(request: Request, body: ConfigRequest) -> JSONResponse:
     """replace the config, secrets aren't part of it and stay as they are"""
-    if secrets := [n for n, (s, k) in SECRET_FIELDS.items() if k in body.config.get(s, {})]:
+    if secrets := [
+        n for n, (s, k) in SECRET_FIELDS.items() if isinstance(body.config.get(s), dict) and k in body.config[s]
+    ]:
         return JSONResponse(
             {"error": f"secrets can only be set on Settings → Connections: {secrets}"},
             status_code=422,

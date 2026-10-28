@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 import config
 from config.models import ArrConfig, ConfigSettings, EmptyTrashSettings, RemoverSettings
+from logging_config import hide_secrets
 from results import Change, JobResult, PlannedFile, PlannedRemoval
 from web.db import JobRun, RemoverRuleSetting, make_engine, migrate
 from web.jobs import AlreadyActive, ApplyRefused, JobRunner, utc_now
@@ -130,6 +131,44 @@ class TestJobRunner:
         assert run.result["changes"][0]["items"] == ["A"]
         assert "moving things" in run.log
         assert "SUMMARY movers: 1 changes" in run.log
+        runner.stop()
+
+    def test_secrets_never_reach_a_runs_log_or_result(self, engine):
+        hide_secrets("SUPERSECRETAPIKEY1234")
+
+        def run_job(job, settings):
+            try:
+                raise ConnectionError("Max retries exceeded with url: /api/v3/system/status?apikey=SUPERSECRETAPIKEY1234")
+            except ConnectionError:
+                logger.exception("RADARR\t Failed")
+            return JobResult(job, errors=["RADARR failed: ?apikey=SUPERSECRETAPIKEY1234"])
+
+        runner = make_runner(engine, run_job)
+        run_id = runner.submit("movers", False, "manual", None)
+        runner.wait_idle()
+        run = get(engine, run_id)
+        assert "Max retries exceeded" in run.log and "apikey=***" in run.log
+        assert "SUPERSECRETAPIKEY1234" not in run.log + str(run.result)
+        runner.stop()
+
+    def test_a_run_that_cant_be_stored_doesnt_stop_the_next(self, engine, monkeypatch):
+        runner = make_runner(engine, lambda job, settings: JobResult(job))
+        real = runner._execute
+        calls = []
+
+        def execute(run_id):
+            calls.append(run_id)
+            if len(calls) == 1:
+                raise RuntimeError("database is locked")
+            return real(run_id)
+
+        monkeypatch.setattr(runner, "_execute", execute)
+        first = runner.submit("movers", False, "manual", None)
+        runner.wait_idle()
+        second = runner.submit("movers", False, "manual", None)
+        runner.wait_idle()
+        assert get(engine, first).status == "failed"
+        assert get(engine, second).status == "succeeded"
         runner.stop()
 
     def test_forced_dry_run_reaches_the_job(self, engine):
