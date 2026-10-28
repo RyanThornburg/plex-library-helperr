@@ -3,7 +3,7 @@
 # both stages must use the same image, the venv links to its python
 ARG PYTHON_IMAGE=python:3.14-slim
 
-FROM ghcr.io/astral-sh/uv:0.11.2 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.6 AS uv
 
 FROM ${PYTHON_IMAGE} AS build
 COPY --from=uv /uv /usr/local/bin/uv
