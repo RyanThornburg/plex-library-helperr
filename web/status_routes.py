@@ -13,7 +13,18 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
 from config.models import ConfigSettings
-from web.health import CHECK_INTERVAL, KEEP, LABELS, STATUS_SETTING, incident_dict, incidents, summary
+from web.health import (
+    CHECK_INTERVAL,
+    KEEP,
+    LABELS,
+    STATUS_SETTING,
+    incident_dict,
+    incidents,
+    item_key,
+    problem_key,
+    span,
+    summary,
+)
 from web.jobs import utc_now
 from web.routes import form_lists, templates
 from web.secret_box import SecretError
@@ -67,6 +78,15 @@ def status_page(request: Request) -> HTMLResponse:
     checked_at = utc_now()
     services, config_error = statuses(request)
     recent = incidents(request.app.state.engine, checked_at - RECENT)
+    # ongoing first, so one that started days ago isn't cut off by newer ones that cleared
+    recent.sort(key=lambda i: i.ended_at is not None)
+    ongoing = [i for i in recent if i.ended_at is None]
+    # how long each open problem has lasted, by (service, incident key), and each
+    # service's oldest one (incidents are newest first)
+    open_for = {(i.service, i.key): span(checked_at - i.started_at) for i in ongoing}
+    open_since: dict[str, str] = {}
+    for i in reversed(ongoing):
+        open_since.setdefault(i.service, span(checked_at - i.started_at))
     return templates.TemplateResponse(
         request,
         "status.html",
@@ -75,12 +95,17 @@ def status_page(request: Request) -> HTMLResponse:
             "services": services,
             "config_error": config_error,
             "checked_at": checked_at,
-            "refresh": REFRESH_SECONDS,
+            # ?refresh=0 pauses it, for reading (or a screen reader) without the page reloading
+            "refresh": 0 if request.query_params.get("refresh") == "0" else REFRESH_SECONDS,
             "needs": NEEDS,
             "max_problems": MAX_PROBLEMS,
             "queues": QUEUES,
             "recent": [incident_dict(i, checked_at) for i in recent[:RECENT_LIMIT]],
             "recent_total": len(recent),
+            "open_for": open_for,
+            "open_since": open_since,
+            "problem_key": problem_key,
+            "item_key": item_key,
             "health": sync_status(request.app.state.engine, STATUS_SETTING),
             "check_minutes": int(CHECK_INTERVAL.total_seconds() // 60),
         },

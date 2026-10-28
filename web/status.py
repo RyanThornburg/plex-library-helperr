@@ -36,7 +36,7 @@ LEVELS = {"ok": 0, "info": 0, "warn": 1, "bad": 2}
 STUCK_STATES = {"importBlocked", "importPending", "failedPending", "failed"}
 # how a stuck download leaves the queue, like Remove in the arrs' queue
 REMOVAL_METHODS = {
-    "client": "Remove from the download client",
+    "client": "Remove from the download client too, deleting the download",
     "ignore": "Remove from the queue only, the download stays in the client",
 }
 BLOCKLIST = {
@@ -90,7 +90,11 @@ class ServiceStatus:
     def low_space(self, free_bytes: int, where: str, min_free_gb: int) -> None:
         """a problem when free space is under the [web] min_free_gb (0 is off)"""
         if min_free_gb and free_bytes < min_free_gb * 1024**3:
-            self.problem("warn", f"Low disk space: {size(free_bytes)} free on {where}", f"disk:{where}")
+            self.problem(
+                "warn",
+                f"Low disk space: {size(free_bytes)} free on {where}, under the {min_free_gb:,} GB minimum",
+                f"disk:{where}",
+            )
 
     def raise_state(self, level: str) -> None:
         if LEVELS.get(level, 0) > LEVELS.get(self.state, 0):
@@ -189,7 +193,7 @@ def arr_queue(status: ServiceStatus, records: list[dict[str, Any]], total: int) 
             status.items.append(Item(arr_title(record), "; ".join(stuck_messages(record)), level=level))
             status.raise_state(level)
     status.items_label = "Needs attention in the queue"
-    queue = f"{total}"
+    queue = f"{total:,}"
     if downloading:
         queue += f", {downloading} downloading"
     if status.items:
@@ -330,8 +334,8 @@ def arr_status(service: str, label: str, arr: ArrConfig | None, min_free_gb: int
     arr_queue(status, queue.get("records") or [], _int(queue.get("totalRecords")))
     missing = get("wanted/missing", pageSize=1, monitored="true").get("totalRecords")
     cutoff = get("wanted/cutoff", pageSize=1, monitored="true").get("totalRecords")
-    status.facts.append(("Missing", f"{_int(missing)}"))
-    status.facts.append(("Cutoff unmet", f"{_int(cutoff)}"))
+    status.facts.append(("Missing", f"{_int(missing):,}"))
+    status.facts.append(("Cutoff unmet", f"{_int(cutoff):,}"))
     free: dict[int, list[str]] = {}
     for root in get("rootfolder"):
         if root.get("accessible") is False:
@@ -372,7 +376,7 @@ def sab_queue(status: ServiceStatus, queue: dict[str, Any], min_free_gb: int = 0
     total = _int(queue.get("noofslots_total"), len(slots))
     speed = _float(queue.get("kbpersec"))
     status.facts.append(("Status", state))
-    status.facts.append(("Queue", f"{total}"))
+    status.facts.append(("Queue", f"{total:,}"))
     if total:
         status.facts.append(("Speed", f"{size(speed * 1024)}/s" if speed is not None else "-"))
         left = _float(queue.get("mbleft"))
@@ -470,17 +474,18 @@ def seerr_status(seerr: SeerrConfig | None) -> ServiceStatus:
         status.problem("info", "An update is available")
     counts = get("request/count")
     pending = _int(counts.get("pending"))
+    # requests waiting are work, not a fault: a note that doesn't make the card a warning
     if pending:
-        status.problem("warn", f"{pending} request{'s' if pending != 1 else ''} waiting for approval", "pending")
+        status.problem("info", f"{pending:,} request{'s' if pending != 1 else ''} waiting for approval", "pending")
     issues = _int(get("issue/count").get("open"))
     if issues:
         status.problem("warn", f"{issues} open issue{'s' if issues != 1 else ''}", "issues")
     status.facts += [
-        ("Pending approval", f"{pending}"),
+        ("Pending approval", f"{pending:,}"),
         # approved, not all of it in plex yet
-        ("Processing", f"{_int(counts.get('processing'))}"),
-        ("Available", f"{_int(counts.get('available'))}"),
-        ("Open issues", f"{issues}"),
+        ("Processing", f"{_int(counts.get('processing')):,}"),
+        ("Available", f"{_int(counts.get('available')):,}"),
+        ("Open issues", f"{issues:,}"),
     ]
     return status
 

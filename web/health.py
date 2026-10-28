@@ -22,7 +22,7 @@ from config.models import ConfigSettings
 from web.db import HealthIncident
 from web.jobs import utc_now
 from web.stats import StatsSync, SyncStatus, save_status
-from web.status import LEVELS, ServiceStatus, check_all
+from web.status import LEVELS, Item, Problem, ServiceStatus, check_all
 
 logger = logging.getLogger(__name__)
 
@@ -44,18 +44,27 @@ class Issue:
     text: str
 
 
+def problem_key(problem: Problem) -> str:
+    return (problem.key or problem.text)[:500]
+
+
+def item_key(item: Item) -> str:
+    """a stuck queue record's key"""
+    return f"queue:{item.title}"[:500]
+
+
 def issues(status: ServiceStatus) -> list[Issue]:
     """what's wrong with a service now, as the history records it"""
     if status.error:
         return [Issue("down", "bad", f"{status.label} can't be checked: {status.error}")]
     found = [
-        Issue((p.key or p.text)[:500], p.level, p.text[:1000])
+        Issue(problem_key(p), p.level, p.text[:1000])
         for p in status.problems
         if p.level in ("warn", "bad") and (status.service, p.key) not in NOT_RECORDED
     ]
     if status.service in QUEUE_SERVICES:
         found += [
-            Issue(f"queue:{item.title}"[:500], item.level, f"Stuck in the queue: {item.title}: {item.detail}"[:1000])
+            Issue(item_key(item), item.level, f"Stuck in the queue: {item.title}: {item.detail}"[:1000])
             for item in status.items
             if item.level in ("warn", "bad")
         ]

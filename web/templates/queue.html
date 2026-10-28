@@ -17,6 +17,7 @@
 {% if downloads %}
 <p class="muted">{{ label }} won't import or retry these on its own. Removing works like Remove in {{ label }}'s queue: each selected download is checked again first, and one that isn't stuck any more is left alone.</p>
 <form method="post" action="/status/{{ service }}/queue/remove">
+<div class="table-scroll">
 <table>
   <thead>
     <tr>
@@ -36,24 +37,24 @@
         </details>
         {% else %}{{ d.titles | join(", ") }}{% endif %}
       </td>
-      <td><span class="status status-{{ 'failed' if d.level == 'bad' else 'blocked' }}">{{ "error" if d.level == "bad" else "warning" }}</span> {{ d.detail }}</td>
-      <td class="muted item-title">{{ d.release }}{% if d.client %} · {{ d.client }}{% endif %}</td>
+      <td class="queue-problem"><span class="state-word state-{{ d.level }}">{{ "error" if d.level == "bad" else "warning" }}</span> {{ d.detail }}</td>
+      <td class="muted machine">{{ d.release }}{% if d.client %} · {{ d.client }}{% endif %}</td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
-<div class="form table-actions">
-  <label for="method">Removal</label>
-  <select id="method" name="method">
-    {% for value, text in methods.items() %}<option value="{{ value }}">{{ text }}</option>{% endfor %}
-  </select>
-  <label for="blocklist">Blocklist</label>
-  <select id="blocklist" name="blocklist">
-    {% for value, text in blocklist.items() %}<option value="{{ value }}">{{ text }}</option>{% endfor %}
-  </select>
-  <span></span>
-  <div class="actions"><button type="submit" class="button-danger">Remove selected</button></div>
 </div>
+<div class="queue-options">
+  <fieldset class="choices">
+    <legend>The download</legend>
+    {% for value, text in methods.items() %}<label class="choice"><input type="radio" name="method" value="{{ value }}"{% if loop.first %} checked{% endif %}> {{ text }}</label>{% endfor %}
+  </fieldset>
+  <fieldset class="choices">
+    <legend>The release</legend>
+    {% for value, text in blocklist.items() %}<label class="choice"><input type="radio" name="blocklist" value="{{ value }}"{% if loop.first %} checked{% endif %}> {{ text }}</label>{% endfor %}
+  </fieldset>
+</div>
+<div class="actions"><button type="submit" class="button-danger" data-count="download" data-count-one="Remove 1 download" data-count-many="Remove {n} downloads">Remove selected</button></div>
 </form>
 {% elif not error %}
 <p class="empty">Nothing is stuck in {{ label }}'s queue.</p>

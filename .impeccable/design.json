@@ -1,0 +1,476 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-28T03:43:18+00:00",
+  "title": "Design System: Helperr",
+  "extensions": {
+    "colorMeta": {
+      "projector-amber": {
+        "role": "primary",
+        "displayName": "Projector Amber",
+        "canonical": "oklch(64.6% 0.142 65.6)",
+        "tonalRamp": [
+          "oklch(15% 0.061 65.6)",
+          "oklch(26% 0.105 65.6)",
+          "oklch(38% 0.142 65.6)",
+          "oklch(49% 0.142 65.6)",
+          "oklch(61% 0.142 65.6)",
+          "oklch(72% 0.114 65.6)",
+          "oklch(84% 0.065 65.6)",
+          "oklch(95% 0.020 65.6)"
+        ]
+      },
+      "projector-amber-dark": {
+        "role": "primary",
+        "displayName": "Projector Amber (dark)",
+        "canonical": "oklch(75.4% 0.155 77.3)",
+        "tonalRamp": [
+          "oklch(15% 0.066 77.3)",
+          "oklch(26% 0.115 77.3)",
+          "oklch(38% 0.155 77.3)",
+          "oklch(49% 0.155 77.3)",
+          "oklch(61% 0.155 77.3)",
+          "oklch(72% 0.124 77.3)",
+          "oklch(84% 0.071 77.3)",
+          "oklch(95% 0.022 77.3)"
+        ]
+      },
+      "signal-green": {
+        "role": "secondary",
+        "displayName": "Signal Green",
+        "canonical": "oklch(52.4% 0.140 148.0)",
+        "tonalRamp": [
+          "oklch(15% 0.060 148.0)",
+          "oklch(26% 0.104 148.0)",
+          "oklch(38% 0.140 148.0)",
+          "oklch(49% 0.140 148.0)",
+          "oklch(61% 0.140 148.0)",
+          "oklch(72% 0.112 148.0)",
+          "oklch(84% 0.064 148.0)",
+          "oklch(95% 0.020 148.0)"
+        ]
+      },
+      "signal-green-dark": {
+        "role": "secondary",
+        "displayName": "Signal Green (dark)",
+        "canonical": "oklch(69.5% 0.181 145.6)",
+        "tonalRamp": [
+          "oklch(15% 0.078 145.6)",
+          "oklch(26% 0.134 145.6)",
+          "oklch(38% 0.181 145.6)",
+          "oklch(49% 0.181 145.6)",
+          "oklch(61% 0.181 145.6)",
+          "oklch(72% 0.145 145.6)",
+          "oklch(84% 0.083 145.6)",
+          "oklch(95% 0.026 145.6)"
+        ]
+      },
+      "alarm-red": {
+        "role": "secondary",
+        "displayName": "Alarm Red",
+        "canonical": "oklch(53.9% 0.194 26.7)",
+        "tonalRamp": [
+          "oklch(15% 0.083 26.7)",
+          "oklch(26% 0.144 26.7)",
+          "oklch(38% 0.194 26.7)",
+          "oklch(49% 0.194 26.7)",
+          "oklch(61% 0.194 26.7)",
+          "oklch(72% 0.155 26.7)",
+          "oklch(84% 0.089 26.7)",
+          "oklch(95% 0.028 26.7)"
+        ]
+      },
+      "alarm-red-dark": {
+        "role": "secondary",
+        "displayName": "Alarm Red (dark)",
+        "canonical": "oklch(66.5% 0.205 27.0)",
+        "tonalRamp": [
+          "oklch(15% 0.088 27.0)",
+          "oklch(26% 0.152 27.0)",
+          "oklch(38% 0.205 27.0)",
+          "oklch(49% 0.205 27.0)",
+          "oklch(61% 0.205 27.0)",
+          "oklch(72% 0.164 27.0)",
+          "oklch(84% 0.094 27.0)",
+          "oklch(95% 0.029 27.0)"
+        ]
+      },
+      "alarm-fill-dark": {
+        "role": "secondary",
+        "displayName": "Alarm Fill (dark)",
+        "canonical": "oklch(58.6% 0.201 26.8)",
+        "tonalRamp": [
+          "oklch(15% 0.086 26.8)",
+          "oklch(26% 0.149 26.8)",
+          "oklch(38% 0.201 26.8)",
+          "oklch(49% 0.201 26.8)",
+          "oklch(61% 0.201 26.8)",
+          "oklch(72% 0.161 26.8)",
+          "oklch(84% 0.092 26.8)",
+          "oklch(95% 0.029 26.8)"
+        ]
+      },
+      "warning-ink": {
+        "role": "primary",
+        "displayName": "Warning Ink",
+        "canonical": "oklch(50.7% 0.112 66.7)",
+        "tonalRamp": [
+          "oklch(15% 0.048 66.7)",
+          "oklch(26% 0.083 66.7)",
+          "oklch(38% 0.112 66.7)",
+          "oklch(49% 0.112 66.7)",
+          "oklch(61% 0.112 66.7)",
+          "oklch(72% 0.090 66.7)",
+          "oklch(84% 0.051 66.7)",
+          "oklch(95% 0.016 66.7)"
+        ]
+      },
+      "console-floor": {
+        "role": "neutral",
+        "displayName": "Console Floor",
+        "canonical": "oklch(97.6% 0.003 264.5)",
+        "tonalRamp": [
+          "oklch(15% 0.001 264.5)",
+          "oklch(26% 0.002 264.5)",
+          "oklch(38% 0.003 264.5)",
+          "oklch(49% 0.003 264.5)",
+          "oklch(61% 0.003 264.5)",
+          "oklch(72% 0.002 264.5)",
+          "oklch(84% 0.001 264.5)",
+          "oklch(95% 0.000 264.5)"
+        ]
+      },
+      "console-floor-dark": {
+        "role": "neutral",
+        "displayName": "Console Floor (dark)",
+        "canonical": "oklch(19.0% 0.009 255.6)",
+        "tonalRamp": [
+          "oklch(15% 0.004 255.6)",
+          "oklch(26% 0.007 255.6)",
+          "oklch(38% 0.009 255.6)",
+          "oklch(49% 0.009 255.6)",
+          "oklch(61% 0.009 255.6)",
+          "oklch(72% 0.007 255.6)",
+          "oklch(84% 0.004 255.6)",
+          "oklch(95% 0.001 255.6)"
+        ]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Panel",
+        "canonical": "oklch(100% 0 0)",
+        "tonalRamp": [
+          "oklch(15% 0.000 0.0)",
+          "oklch(26% 0.000 0.0)",
+          "oklch(38% 0.000 0.0)",
+          "oklch(49% 0.000 0.0)",
+          "oklch(61% 0.000 0.0)",
+          "oklch(72% 0.000 0.0)",
+          "oklch(84% 0.000 0.0)",
+          "oklch(95% 0.000 0.0)"
+        ]
+      },
+      "panel-dark": {
+        "role": "neutral",
+        "displayName": "Panel (dark)",
+        "canonical": "oklch(23.7% 0.014 253.1)",
+        "tonalRamp": [
+          "oklch(15% 0.006 253.1)",
+          "oklch(26% 0.010 253.1)",
+          "oklch(38% 0.014 253.1)",
+          "oklch(49% 0.014 253.1)",
+          "oklch(61% 0.014 253.1)",
+          "oklch(72% 0.011 253.1)",
+          "oklch(84% 0.006 253.1)",
+          "oklch(95% 0.002 253.1)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "oklch(24.6% 0.015 256.8)",
+        "tonalRamp": [
+          "oklch(15% 0.006 256.8)",
+          "oklch(26% 0.011 256.8)",
+          "oklch(38% 0.015 256.8)",
+          "oklch(49% 0.015 256.8)",
+          "oklch(61% 0.015 256.8)",
+          "oklch(72% 0.012 256.8)",
+          "oklch(84% 0.007 256.8)",
+          "oklch(95% 0.002 256.8)"
+        ]
+      },
+      "ink-dark": {
+        "role": "neutral",
+        "displayName": "Ink (dark)",
+        "canonical": "oklch(93.3% 0.006 255.5)",
+        "tonalRamp": [
+          "oklch(15% 0.003 255.5)",
+          "oklch(26% 0.004 255.5)",
+          "oklch(38% 0.006 255.5)",
+          "oklch(49% 0.006 255.5)",
+          "oklch(61% 0.006 255.5)",
+          "oklch(72% 0.005 255.5)",
+          "oklch(84% 0.003 255.5)",
+          "oklch(95% 0.001 255.5)"
+        ]
+      },
+      "dim-ink": {
+        "role": "neutral",
+        "displayName": "Dim Ink",
+        "canonical": "oklch(50.7% 0.023 257.5)",
+        "tonalRamp": [
+          "oklch(15% 0.010 257.5)",
+          "oklch(26% 0.017 257.5)",
+          "oklch(38% 0.023 257.5)",
+          "oklch(49% 0.023 257.5)",
+          "oklch(61% 0.023 257.5)",
+          "oklch(72% 0.018 257.5)",
+          "oklch(84% 0.011 257.5)",
+          "oklch(95% 0.003 257.5)"
+        ]
+      },
+      "dim-ink-dark": {
+        "role": "neutral",
+        "displayName": "Dim Ink (dark)",
+        "canonical": "oklch(70.6% 0.020 255.6)",
+        "tonalRamp": [
+          "oklch(15% 0.009 255.6)",
+          "oklch(26% 0.015 255.6)",
+          "oklch(38% 0.020 255.6)",
+          "oklch(49% 0.020 255.6)",
+          "oklch(61% 0.020 255.6)",
+          "oklch(72% 0.016 255.6)",
+          "oklch(84% 0.009 255.6)",
+          "oklch(95% 0.003 255.6)"
+        ]
+      },
+      "rule-line": {
+        "role": "neutral",
+        "displayName": "Rule Line",
+        "canonical": "oklch(89.6% 0.009 258.3)",
+        "tonalRamp": [
+          "oklch(15% 0.004 258.3)",
+          "oklch(26% 0.007 258.3)",
+          "oklch(38% 0.009 258.3)",
+          "oklch(49% 0.009 258.3)",
+          "oklch(61% 0.009 258.3)",
+          "oklch(72% 0.007 258.3)",
+          "oklch(84% 0.004 258.3)",
+          "oklch(95% 0.001 258.3)"
+        ]
+      },
+      "rule-line-dark": {
+        "role": "neutral",
+        "displayName": "Rule Line (dark)",
+        "canonical": "oklch(31.8% 0.019 254.8)",
+        "tonalRamp": [
+          "oklch(15% 0.008 254.8)",
+          "oklch(26% 0.014 254.8)",
+          "oklch(38% 0.019 254.8)",
+          "oklch(49% 0.019 254.8)",
+          "oklch(61% 0.019 254.8)",
+          "oklch(72% 0.015 254.8)",
+          "oklch(84% 0.009 254.8)",
+          "oklch(95% 0.003 254.8)"
+        ]
+      },
+      "on-amber": {
+        "role": "neutral",
+        "displayName": "On Amber",
+        "canonical": "oklch(17.8% 0 0)",
+        "tonalRamp": [
+          "oklch(15% 0.000 0.0)",
+          "oklch(26% 0.000 0.0)",
+          "oklch(38% 0.000 0.0)",
+          "oklch(49% 0.000 0.0)",
+          "oklch(61% 0.000 0.0)",
+          "oklch(72% 0.000 0.0)",
+          "oklch(84% 0.000 0.0)",
+          "oklch(95% 0.000 0.0)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Page h1, one per page."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "h2 section and card titles."
+      },
+      "metric": {
+        "displayName": "Metric",
+        "purpose": "Big tabular number in playback tiles."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "All running text, table cells and fields."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Table headers; hints and tags at 400."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Logs, file lists, diffs, cron, keys."
+      }
+    },
+    "shadows": [],
+    "motion": [],
+    "breakpoints": [
+      {
+        "name": "narrow",
+        "value": "700px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "One filled button per decision: Run, Save, Apply.",
+      "html": "<button class=\"ds-btn-primary\">Run now</button>",
+      "css": ".ds-btn-primary { font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; display:inline-block; padding:6px 14px; border:1px solid var(--accent, #c7790b); border-radius:6px; background:var(--accent, #c7790b); color:#111; font-weight:600; cursor:pointer; } .ds-btn-primary:focus-visible { outline:2px solid var(--text, #1c2128); outline-offset:2px; } .ds-btn-primary:disabled { opacity:.4; cursor:default; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Cancel, Test, Preview and row actions.",
+      "html": "<button class=\"ds-btn-secondary\">Preview</button>",
+      "css": ".ds-btn-secondary { font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; display:inline-block; padding:6px 14px; border:1px solid var(--border, #d9dde3); border-radius:6px; background:transparent; color:var(--text, #1c2128); font-weight:600; cursor:pointer; } .ds-btn-secondary:focus-visible { outline:2px solid var(--text, #1c2128); outline-offset:2px; }"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "The final click of something destructive or live.",
+      "html": "<button class=\"ds-btn-danger\">Delete 42 files</button>",
+      "css": ".ds-btn-danger { font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; display:inline-block; padding:6px 14px; border:1px solid var(--bad-fill, #c62828); border-radius:6px; background:var(--bad-fill, #c62828); color:#fff; font-weight:600; cursor:pointer; } .ds-btn-danger:focus-visible { outline:2px solid var(--text, #1c2128); outline-offset:2px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Panel-filled field with a 1px rule border.",
+      "html": "<input class=\"ds-input\" value=\"/data/media/movies\">",
+      "css": ".ds-input { font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; width:100%; max-width:520px; padding:6px 10px; border:1px solid var(--border, #d9dde3); border-radius:6px; background:var(--surface, #fff); color:var(--text, #1c2128); } .ds-input:focus-visible { outline:2px solid var(--accent, #c7790b); outline-offset:-1px; }"
+    },
+    {
+      "name": "Top Bar",
+      "kind": "nav",
+      "refersTo": "topbar",
+      "description": "Brand, page links and the signed-in email.",
+      "html": "<header class=\"ds-topbar\"><nav><a class=\"ds-brand\" href=\"#\">Helperr</a><a href=\"#\">Status</a><a href=\"#\">Runs</a><a href=\"#\">Schedules</a><a href=\"#\">Removers</a><a href=\"#\">Settings</a></nav><span class=\"ds-user\">admin@example.com</span></header>",
+      "css": ".ds-topbar { font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; display:flex; flex-wrap:wrap; gap:4px 16px; justify-content:space-between; align-items:center; padding:12px 16px; background:var(--surface, #fff); border-bottom:1px solid var(--border, #d9dde3); } .ds-topbar nav { display:flex; flex-wrap:wrap; gap:4px 16px; } .ds-topbar a { color:var(--text, #1c2128); text-decoration:none; } .ds-topbar a:hover { color:var(--accent, #c7790b); } .ds-topbar .ds-brand { color:var(--accent, #c7790b); font-weight:700; } .ds-user { color:var(--muted, #5d6673); font-size:13px; }"
+    },
+    {
+      "name": "State Tags",
+      "kind": "chip",
+      "refersTo": "tag",
+      "description": "Pill tags; border and text carry the state.",
+      "html": "<span class=\"ds-tag\">dry run</span> <span class=\"ds-tag ds-tag-live\">live</span> <span class=\"ds-tag ds-tag-warn\">warning</span> <span class=\"ds-tag ds-tag-ok\">ok</span>",
+      "css": ".ds-tag { display:inline-block; padding:1px 8px; border-radius:999px; border:1px solid var(--border, #d9dde3); font:12px/1.5 system-ui, sans-serif; color:var(--text, #1c2128); } .ds-tag-live { border-color:var(--bad, #c62828); color:var(--bad, #c62828); } .ds-tag-warn { border-color:var(--accent, #c7790b); color:var(--accent, #c7790b); } .ds-tag-ok { border-color:var(--ok, #1a7f37); color:var(--ok, #1a7f37); }"
+    },
+    {
+      "name": "Service Lines",
+      "kind": "custom",
+      "refersTo": "service-line",
+      "description": "Healthy services as one dim line each, opened for details.",
+      "html": "<ul class=\"ds-lines\"><li><details><summary class=\"ds-line\"><b>Radarr <span>5.14</span></b><span>ok</span><span>Queue 4 · Missing 132 · Cutoff unmet 867 · Free 37.0 TB</span></summary><p>Facts and items</p></details></li><li><div class=\"ds-line\"><b>Seerr</b><span>not connected</span><span><a href=\"#\">Connect Seerr</a></span></div></li></ul>",
+      "css": ".ds-lines { list-style:none; margin:0; padding:0; font:15px/1.5 system-ui, sans-serif; background:var(--surface, #fff); border:1px solid var(--border, #d9dde3); border-radius:8px; overflow:hidden; } .ds-lines li + li { border-top:1px solid var(--border, #d9dde3); } .ds-line { display:grid; grid-template-columns: 12rem 7rem 1fr; gap:12px; padding:10px 16px; color:var(--muted, #5d6673); cursor:pointer; list-style:none; } .ds-line b { color:var(--text, #1c2128); } .ds-line b span { font-weight:400; font-size:13px; color:var(--muted, #5d6673); } .ds-line:hover { background: color-mix(in srgb, var(--text, #1c2128) 4%, transparent); } .ds-lines p { margin:0; padding:0 16px 12px; }"
+    },
+    {
+      "name": "State Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "A service that needs you: whole state border, filled tag, problems first in a wash.",
+      "html": "<article class=\"ds-state-card\"><header><b>Sonarr</b><span class=\"ds-solid\">warning</span></header><ul><li><span class=\"ds-word\">warning</span> Low disk space: 412 GB free on /tv <span class=\"ds-dim\">· for 2d 4h</span></li></ul></article>",
+      "css": ".ds-state-card { font:15px/1.5 system-ui, sans-serif; display:flex; flex-direction:column; gap:8px; padding:14px 16px; max-width:340px; background:var(--surface, #fff); color:var(--text, #1c2128); border:1px solid var(--accent, #c7790b); border-radius:8px; } .ds-state-card header { display:flex; justify-content:space-between; align-items:center; } .ds-solid { padding:1px 8px; border-radius:999px; background:var(--accent, #c7790b); color:#111; font-size:12px; font-weight:600; } .ds-state-card ul { list-style:none; margin:0; padding:8px 12px; border-radius:6px; background: color-mix(in srgb, var(--accent, #c7790b) 10%, transparent); } .ds-word { font-size:13px; font-weight:600; color:var(--warn-text, #8f5600); } .ds-dim { color:var(--muted, #5d6673); }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Groups one service or job; flat panel on the floor.",
+      "html": "<section class=\"ds-card\"><h2>Movers</h2><p>Moves media to another root folder by genre, studio or tag.</p><div><span class=\"ds-tag\">dry run</span></div></section>",
+      "css": ".ds-card { font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; display:flex; flex-direction:column; gap:8px; padding:14px 16px; background:var(--surface, #fff); color:var(--text, #1c2128); border:1px solid var(--border, #d9dde3); border-radius:8px; max-width:320px; } .ds-card h2 { font-size:16px; margin:0; } .ds-card p { margin:0; } .ds-card .ds-tag { display:inline-block; padding:1px 8px; border-radius:999px; border:1px solid var(--border, #d9dde3); font-size:12px; }"
+    },
+    {
+      "name": "Data Table",
+      "kind": "custom",
+      "refersTo": "table-header",
+      "description": "The main way data is shown: dim 13px headers, state words in color.",
+      "html": "<table class=\"ds-table\"><thead><tr><th>Run</th><th>Job</th><th>Status</th></tr></thead><tbody><tr><td>#142</td><td>removers</td><td class=\"ds-ok\">succeeded</td></tr><tr><td>#141</td><td>empty trash</td><td class=\"ds-bad\">failed</td></tr></tbody></table>",
+      "css": ".ds-table { font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; width:100%; border-collapse:collapse; background:var(--surface, #fff); color:var(--text, #1c2128); border:1px solid var(--border, #d9dde3); } .ds-table th, .ds-table td { padding:8px 12px; text-align:left; border-bottom:1px solid var(--border, #d9dde3); } .ds-table th { color:var(--muted, #5d6673); font-weight:600; font-size:13px; } .ds-ok { color:var(--ok, #1a7f37); font-weight:600; } .ds-bad { color:var(--bad, #c62828); font-weight:600; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Control Room",
+    "overview": "**Creative North Star: \"The Control Room\"**\n\nHelperr is the room you walk into to check that the server is fine. When everything is healthy it is calm: cool grey floors, white (or slate) panels, black ink, thin rule lines. Color is reserved for meaning. Green says a thing worked, amber says look at this, red says something failed or something will be deleted. An operator scanning the screen should be able to find every problem by color alone, and a screen with no problems should have almost no color on it.\n\nIt is a dense, expert surface for one admin at a desktop browser. Information is laid out as tables, fact lists and small cards, not prose; numbers are tabular; logs, paths, release names and cron expressions are monospace. There is no imagery, no illustration, no motion and no shadow. Depth comes from a panel sitting on a slightly darker floor, separated by a 1px rule. Light and dark themes follow the operating system (`prefers-color-scheme`); every color token has a dark counterpart.\n\nThe Status page is the reference for the idea: a one-line verdict first (\"All 5 connected services are OK\", or \"2 services need you: …\" linking to each), then a card for each service that needs you, then every healthy or unconnected service as a single dim line in one panel, opened for its details.\n\nThe look is system-native on purpose: system fonts, native form controls, native `<details>`, `<progress>` and checkboxes, so pages render instantly, work without JavaScript, and satisfy a strict CSP with nothing to load.",
+    "keyCharacteristics": [
+      "Neutral at rest; color only marks state (ok / warn / bad) or the one primary action. A healthy service has no state color at all.",
+      "Flat: panels on a floor, 1px rules, no shadows.",
+      "System fonts, one body size (15px), a short heading scale (20 / 16 px).",
+      "Tables and definition lists over cards; cards group a service or a job, never decorate.",
+      "Light and dark themes from the OS, no theme toggle."
+    ],
+    "rules": [
+      {
+        "name": "The Quiet Board Rule",
+        "body": "A healthy screen is almost colorless. Green, amber and red appear only where a state needs reading; never use them for decoration, section color-coding or emphasis.",
+        "section": "colors"
+      },
+      {
+        "name": "The Red Means Real Rule",
+        "body": "Alarm Red is for failures and for anything that deletes or goes live. A dry run is never red; it's Dim Ink.",
+        "section": "colors"
+      },
+      {
+        "name": "The Amber Contrast Caveat",
+        "body": "Light-mode Projector Amber on white is about 3.4:1, below AA for body-size text. Warning text uses Warning Ink; Projector Amber stays for fills, borders, the brand and links. Links are still Projector Amber and still below AA in light mode, a known gap.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two Sizes Rule",
+        "body": "Text is 15px or 13px; headings are the only exceptions. Don't introduce 14px, 17px or 18px.",
+        "section": "typography"
+      },
+      {
+        "name": "The Tabular Numbers Rule",
+        "body": "Any number meant to be compared (counts, sizes, metrics) uses tabular numerals.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Panel Rule",
+        "body": "Surfaces never lift. If something needs to stand out, give it a state color or move it up the page, not a shadow.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Whole Border Rule",
+        "body": "State is an outline, a fill or a wash, never a stripe. The 4px left border was retired in October 2026.",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "Do use the CSS custom properties (`--bg`, `--surface`, `--text`, `--muted`, `--border`, `--accent`, `--ok`, `--bad`) and add both a light and a dark value for any new one.",
+      "Do keep pages working without JavaScript and within the CSP: one stylesheet, self-hosted assets, no inline styles or scripts.",
+      "Do put the page's primary action in the heading row, right of the `h1`.",
+      "Do show dry run vs live with a tag next to the job or run, every time.",
+      "Do use tables for any list of more than a few comparable items, with tabular numbers and thousands separators.",
+      "Do say every state in a word next to its color, and let long names and paths wrap (`overflow-wrap: anywhere` in cards, `min-width: 0` on grid children); set release names and paths in 12px mono.",
+      "Do collapse what's healthy: a healthy thing is one dim line, a thing that needs you is a card."
+    ],
+    "donts": [
+      "Don't use green, amber or red for anything but state (and amber for the one primary action).",
+      "Don't add shadows, gradients, background images or decorative illustration.",
+      "Don't mark state with a colored side border (`border-left` wider than 1px); use the whole border, a fill or a wash.",
+      "Don't add web fonts or icon fonts; system fonts only.",
+      "Don't set warning text in Projector Amber; use Warning Ink.",
+      "Don't reload a page on a timer without a way to pause it (`?refresh=0` on Status).",
+      "Don't use the danger button for anything reversible or dry; a dry run's Run button is the plain primary."
+    ]
+  }
+}

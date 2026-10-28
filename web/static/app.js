@@ -39,6 +39,19 @@ for (const all of document.querySelectorAll("input[data-select-all]")) {
   });
 }
 
+// a button with data-count="<name>" says how many of the named checkboxes are checked,
+// from its data-count-one/data-count-many ("{n}" is the count)
+for (const button of document.querySelectorAll("button[data-count]")) {
+  const label = button.textContent;
+  const update = () => {
+    const n = button.form.querySelectorAll(`input[name="${button.dataset.count}"]:checked`).length;
+    if (!n) button.textContent = label;
+    else button.textContent = n === 1 ? button.dataset.countOne : button.dataset.countMany.replace("{n}", n);
+  };
+  button.form.addEventListener("change", update);
+  update();
+}
+
 // a button with data-copy="<input id>" copies that input's value
 for (const button of document.querySelectorAll("button[data-copy]")) {
   button.addEventListener("click", async () => {

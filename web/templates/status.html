@@ -1,70 +1,132 @@
 {% extends "base.html" %}
 {% block title %}Status · Helperr{% endblock %}
-{% block head %}<meta http-equiv="refresh" content="{{ refresh }}">{% endblock %}
-{% block content %}
-<div class="heading">
-  <h1>Status</h1>
-  <a class="button button-secondary" href="/status">Refresh</a>
-</div>
-<p class="muted">Checked {{ checked_at | localtime }}, refreshes every minute.</p>
-{% if config_error %}
-<p class="banner banner-bad">The settings can't be loaded: {{ config_error }} <a href="/settings/connections">Connections</a></p>
-{% endif %}
-
-<section class="status-board">
-{% for s in services %}
-  <article class="card state-{{ s.state }}" id="{{ s.service }}">
-    <div class="heading">
-      <h2>{{ s.label }}{% if s.version %} <span class="muted version">{{ s.version }}</span>{% endif %}</h2>
-      {% if s.state == "off" %}<span class="tag">not connected</span>
-      {% elif s.state == "bad" %}<span class="tag tag-bad">{{ "down" if s.error else "problem" }}</span>
-      {% elif s.state == "warn" %}<span class="tag tag-warn">warning</span>
-      {% else %}<span class="tag tag-ok">ok</span>{% endif %}
-    </div>
-    {% if s.state == "off" %}
-    {% set name, section = needs[s.service] %}
-    <p class="muted">{% if s.service == "plex" %}Plex's activity comes from Tautulli. {% endif %}<a href="/settings/connections#{{ section }}">Connect {{ name }}</a></p>
-    {% else %}
-    {% if s.error %}<p class="errors">{{ s.error }}</p>{% endif %}
+{% block head %}{% if refresh %}<meta http-equiv="refresh" content="{{ refresh }}">{% endif %}{% endblock %}
+{% macro word(level) %}{{ {"bad": "error", "warn": "warning", "info": "note"}.get(level, level) }}{% endmacro %}
+{% macro since(service, key) %}{% set d = open_for.get((service, key)) %}{% if d %} <span class="muted">· for {{ d }}</span>{% endif %}{% endmacro %}
+{# a card's or line's facts, items and the notes a healthy service can have #}
+{% macro details(s) %}
     {% if s.facts %}
     <dl class="facts">
       {% for label, value in s.facts %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}
     </dl>
     {% endif %}
-    {% if s.problems %}
-    <ul class="problems">
-      {% for p in s.problems[:max_problems] %}<li class="problem-{{ p.level }}">{{ p.text }}</li>{% endfor %}
-      {% if s.problems | length > max_problems %}<li class="muted">and {{ s.problems | length - max_problems }} more</li>{% endif %}
-    </ul>
-    {% endif %}
     {% if s.items %}
     <h3>{{ s.items_label }}</h3>
     <ul class="status-items">
       {% for item in s.items %}
-      <li class="item-{{ item.level }}">
-        <span class="item-title">{{ item.title }}</span>
+      <li>
+        <span class="item-title{% if s.service == 'sabnzbd' %} machine{% endif %}">{% if item.level != "ok" %}<span class="state-word state-{{ item.level }}">{{ "transcode" if s.service == "plex" else word(item.level) }}</span> {% endif %}{{ item.title }}{% if s.service in queues %}{{ since(s.service, item_key(item)) }}{% endif %}</span>
         {% if item.detail %}<span class="hint">{{ item.detail }}</span>{% endif %}
-        {% if item.progress is not none %}<progress max="100" value="{{ item.progress }}" aria-label="{{ item.progress }}%">{{ item.progress }}%</progress>{% endif %}
+        {% if item.progress %}<progress max="100" value="{{ item.progress }}" aria-label="{{ item.title }}">{{ item.progress }}%</progress>{% endif %}
       </li>
       {% endfor %}
     </ul>
-    {% if s.service in queues %}<p><a href="/status/{{ s.service }}/queue">Remove stuck downloads…</a></p>{% endif %}
     {% endif %}
+{% endmacro %}
+{% block content %}
+<div class="heading">
+  <h1>Status</h1>
+  <a class="button button-secondary" href="/status{% if not refresh %}?refresh=0{% endif %}">Refresh</a>
+</div>
+<p class="muted">Checked {{ checked_at | localtime }}. {% if refresh %}Refreshes every minute, <a href="/status?refresh=0">pause</a>.{% else %}Not refreshing, <a href="/status">resume</a>.{% endif %}</p>
+
+{% set attention = services | selectattr("state", "in", ["warn", "bad"]) | list %}
+{% set connected = services | rejectattr("state", "equalto", "off") | list %}
+{% if config_error %}
+<p class="banner banner-bad">The settings can't be loaded: {{ config_error }} <a href="/settings/connections">Connections</a></p>
+{% elif not connected %}
+<p class="verdict">Nothing is connected yet. <a href="/settings/connections">Connect Radarr, Sonarr and the rest</a> to see them here.</p>
+{% elif attention %}
+<p class="verdict verdict-{{ 'bad' if attention | selectattr('state', 'equalto', 'bad') | list else 'warn' }}">
+  <strong>{{ attention | length }} {{ "service needs" if attention | length == 1 else "services need" }} you:</strong>
+  {% for s in attention %}
+  {% set errors = s.problems | selectattr("level", "equalto", "bad") | list | length %}
+  {% set warnings = s.problems | selectattr("level", "equalto", "warn") | list | length %}
+  {% set stuck = s.items | rejectattr("level", "equalto", "ok") | list | length if s.service in queues else 0 %}
+  <a href="#{{ s.service }}">{{ s.label }}{% if s.error %} down{% else %}: {{ [
+      (errors ~ " error" ~ ("s" if errors != 1 else "")) if errors,
+      (warnings ~ " warning" ~ ("s" if warnings != 1 else "")) if warnings,
+      (stuck ~ " stuck") if stuck,
+    ] | select | join(", ") }}{% endif %}{% if open_since[s.service] %}, for {{ open_since[s.service] }}{% endif %}</a>{% if not loop.last %} ·{% endif %}
+  {% endfor %}
+</p>
+{% else %}
+<p class="verdict">All {{ connected | length }} connected services are OK.</p>
+{% endif %}
+
+{% if attention %}
+<section class="status-board">
+{% for s in attention %}
+  <article class="card card-{{ s.state }}" id="{{ s.service }}">
+    <div class="heading">
+      <h2>{{ s.label }}{% if s.version %} <span class="muted version">{{ s.version }}</span>{% endif %}</h2>
+      <span class="tag tag-solid-{{ s.state }}">{{ "down" if s.error else word(s.state) }}</span>
+    </div>
+    {% if s.error %}
+    {% set name, section = needs[s.service] %}
+    <div class="problem-block">
+      <p><span class="state-word state-bad">down</span> {{ s.error }}{{ since(s.service, "down") }}</p>
+      <p><a href="/settings/connections#{{ section }}">Check the {{ name }} connection</a></p>
+    </div>
+    {% elif s.problems %}
+    <ul class="problem-block problems">
+      {% for p in s.problems[:max_problems] %}<li><span class="state-word state-{{ p.level }}">{{ word(p.level) }}</span> {{ p.text }}{{ since(s.service, problem_key(p)) }}</li>{% endfor %}
+      {% if s.problems | length > max_problems %}<li class="muted">and {{ s.problems | length - max_problems }} more</li>{% endif %}
+    </ul>
     {% endif %}
+    {{ details(s) }}
+    {% if s.service in queues and s.items | rejectattr("level", "equalto", "ok") | list %}<p><a href="/status/{{ s.service }}/queue">Remove stuck downloads…</a></p>{% endif %}
   </article>
 {% endfor %}
 </section>
+{% endif %}
+
+{% set quiet = services | rejectattr("state", "in", ["warn", "bad"]) | list %}
+{% if quiet %}
+<ul class="service-lines">
+{% for s in quiet %}
+  <li id="{{ s.service }}">
+  {% if s.state == "off" %}
+    {% set name, section = needs[s.service] %}
+    <div class="line">
+      <span class="line-name">{{ s.label }}</span>
+      <span class="line-state">not connected</span>
+      <span class="line-facts">{% if s.service == "plex" %}Plex's activity comes from Tautulli. {% endif %}<a href="/settings/connections#{{ section }}">Connect {{ name }}</a></span>
+    </div>
+  {% else %}
+    <details>
+      <summary class="line">
+        <span class="line-name">{{ s.label }}{% if s.version %} <span class="version">{{ s.version }}</span>{% endif %}</span>
+        <span class="line-state">ok</span>
+        <span class="line-facts">{% for label, value in s.facts %}{{ label }} {{ value }}{% if not loop.last %} · {% endif %}{% endfor %}</span>
+      </summary>
+      <div class="line-body">
+        {% if s.problems %}
+        <ul class="problems">
+          {% for p in s.problems %}<li><span class="state-word state-{{ p.level }}">{{ word(p.level) }}</span> {{ p.text }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+        {{ details(s) }}
+      </div>
+    </details>
+  {% endif %}
+  </li>
+{% endfor %}
+</ul>
+{% endif %}
 
 <div class="heading section-heading">
   <h2>Recent problems</h2>
   <a href="/status/history">History</a>
 </div>
-<p class="muted">What the health checks (every {{ check_minutes }} minutes, even with this page closed) saw in the last 7 days.{% if health.finished_at %} Last check {{ health.finished_at | localtime }}.{% endif %}</p>
+<p class="muted">What the health checks (every {{ check_minutes }} minutes, even with this page closed) saw in the last 7 days, ongoing first.</p>
 {% if health.error %}<p class="banner banner-bad">The last health check failed: {{ health.error }}</p>{% endif %}
 {% if recent %}
 {% include "_incidents.html" %}
 {% if recent_total > recent | length %}<p class="muted"><a href="/status/history?days=7">{{ recent_total - recent | length }} more in the last 7 days</a></p>{% endif %}
-{% else %}
+{% elif health.finished_at %}
 <p class="empty">No problems in the last 7 days.</p>
+{% else %}
+<p class="empty">No health checks yet. The first runs when the app starts.</p>
 {% endif %}
 {% endblock %}

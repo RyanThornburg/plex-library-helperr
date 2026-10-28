@@ -163,6 +163,18 @@ class TestPages:
         assert "Recent problems" in page.text
         assert "Sonarr can&#39;t be checked: Couldn&#39;t connect" in page.text and "ongoing" in page.text
         assert "Indexers unavailable" not in page.text
+        # how long the open problem has lasted, on its card and in the summary line
+        assert "Sonarr down, for 2h 0m" in page.text
+
+    def test_ongoing_incidents_come_first(self, client, monkeypatch):
+        monkeypatch.setattr("web.status_routes.check_all", fake_check_all)
+        now = utc_now()
+        for n in range(12):
+            record(client.app.state.engine, [service("plex", problems=[("warn", f"cleared {n}")])], now - timedelta(minutes=60 - n))
+            record(client.app.state.engine, [service("plex")], now - timedelta(minutes=59 - n))
+        page = client.get("/status", headers=auth()).text
+        assert "Sonarr can&#39;t be checked" in page
+        assert page.index("Sonarr can&#39;t be checked") < page.index("cleared 11")
 
     def test_history(self, client):
         page = client.get("/status/history", headers=auth())

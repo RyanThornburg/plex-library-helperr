@@ -138,7 +138,9 @@ class TestArr:
         answers = arr_answers(**{"/api/v3/rootfolder": roots})
         result, _ = run(lambda: status.arr_status("radarr", "Radarr", RADARR, 100), answers)
         assert result.state == "warn"
-        assert [(p.text, p.key) for p in result.problems] == [("Low disk space: 50.0 GB free on /a, /b", "disk:/a, /b")]
+        assert [(p.text, p.key) for p in result.problems] == [
+            ("Low disk space: 50.0 GB free on /a, /b, under the 100 GB minimum", "disk:/a, /b")
+        ]
         # 0 is off
         result, _ = run(lambda: status.arr_status("radarr", "Radarr", RADARR, 0), answers)
         assert result.problems == []
@@ -216,7 +218,7 @@ class TestSabnzbd:
     def test_low_disk_space(self):
         result, _ = run(lambda: status.sabnzbd_status(SAB, NOW, 1000), sab_answers())
         assert [(p.text, p.key) for p in result.problems] == [
-            ("Low disk space: 500.5 GB free on the incomplete folder", "disk:the incomplete folder")
+            ("Low disk space: 500.5 GB free on the incomplete folder, under the 1,000 GB minimum", "disk:the incomplete folder")
         ]
 
     def test_downloading(self):
@@ -287,13 +289,18 @@ class TestSeerr:
         result, fake = run(lambda: status.seerr_status(SEERR), seerr_answers())
         assert result.state == "ok"
         assert result.version == "3.5.1"
-        assert dict(result.facts) == {"Pending approval": "0", "Processing": "433", "Available": "1585", "Open issues": "0"}
+        assert dict(result.facts) == {"Pending approval": "0", "Processing": "433", "Available": "1,585", "Open issues": "0"}
         assert fake.calls[0][1] == {"X-Api-Key": "seerr-key"}
 
-    def test_pending_requests_and_issues_warn(self):
+    def test_open_issues_warn_and_pending_requests_are_a_note(self):
         result, _ = run(lambda: status.seerr_status(SEERR), seerr_answers(pending=2, issues=1))
         assert result.state == "warn"
-        assert [p.text for p in result.problems] == ["2 requests waiting for approval", "1 open issue"]
+        assert [(p.level, p.text) for p in result.problems] == [
+            ("info", "2 requests waiting for approval"),
+            ("warn", "1 open issue"),
+        ]
+        result, _ = run(lambda: status.seerr_status(SEERR), seerr_answers(pending=2))
+        assert result.state == "ok"
 
     def test_an_update_is_only_info(self):
         result, _ = run(lambda: status.seerr_status(SEERR), seerr_answers(updateAvailable=True))
@@ -446,6 +453,29 @@ class TestPages:
         assert "Couldn&#39;t connect" in page.text
         assert 'href="/settings/connections#sabnzbd"' in page.text
         assert '<meta http-equiv="refresh" content="60">' in page.text
+        # the services that need you come first, named in one line
+        assert "2 services need you:" in page.text
+        assert page.text.index('id="radarr"') < page.text.index('id="sabnzbd"')
+        assert 'href="/settings/connections#sonarr">Check the Sonarr connection' in page.text
+
+    def test_refresh_can_be_paused(self, client, monkeypatch):
+        monkeypatch.setattr("web.status_routes.check_all", fake_check_all)
+        page = client.get("/status?refresh=0", headers=auth()).text
+        assert 'http-equiv="refresh"' not in page
+        assert 'href="/status">resume</a>' in page
+
+    def test_all_ok_is_one_line(self, client, monkeypatch):
+        def healthy(settings, now):
+            return [ServiceStatus("radarr", "Radarr", facts=[("Missing", "3")]), ServiceStatus("seerr", "Seerr", state="off")]
+
+        monkeypatch.setattr("web.status_routes.check_all", healthy)
+        page = client.get("/status", headers=auth()).text
+        assert "All 1 connected services are OK." in page
+        assert "No health checks yet." in page
+
+    def test_nothing_connected(self, client, monkeypatch):
+        monkeypatch.setattr("web.status_routes.check_all", lambda s, n: [ServiceStatus("radarr", "Radarr", state="off")])
+        assert "Nothing is connected yet." in client.get("/status", headers=auth()).text
 
     def test_api(self, client, monkeypatch):
         monkeypatch.setattr("web.status_routes.check_all", fake_check_all)
