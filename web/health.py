@@ -30,7 +30,14 @@ CHECK_INTERVAL = timedelta(minutes=5)
 REOPEN_WITHIN = timedelta(minutes=15)
 KEEP = timedelta(days=365)
 STATUS_SETTING = "health_check"
-LABELS = {"plex": "Plex", "radarr": "Radarr", "sonarr": "Sonarr", "sabnzbd": "SABnzbd", "seerr": "Seerr"}
+LABELS = {
+    "plex": "Plex",
+    "radarr": "Radarr",
+    "sonarr": "Sonarr",
+    "bazarr": "Bazarr",
+    "sabnzbd": "SABnzbd",
+    "seerr": "Seerr",
+}
 # work waiting for someone rather than something wrong, left out of the history
 NOT_RECORDED = {("seerr", "pending"), ("seerr", "issues")}
 # radarr/sonarr cards list stuck queue records as items, plex lists streams

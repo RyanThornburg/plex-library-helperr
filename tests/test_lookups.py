@@ -183,6 +183,20 @@ class TestCheckConnection:
                 check_connection("sabnzbd", {"url": "http://sab:8080", "secret": "secret"})
         assert "secret" not in str(e.value)
 
+    def test_bazarr(self):
+        answer = response(body={"data": {"bazarr_version": "1.6.2"}})
+        with patch("web.lookups.requests.get", return_value=answer) as get:
+            assert check_connection("bazarr", {"url": "http://bazarr:6767/subs/", "secret": "key"}) == "Bazarr 1.6.2"
+        assert get.call_args.args[0] == "http://bazarr:6767/subs/api/system/status"
+        assert get.call_args.kwargs["headers"] == {"X-API-KEY": "key"}
+
+    def test_bazarr_without_its_base_url(self):
+        page = response(body=None)
+        page.json.side_effect = requests.exceptions.JSONDecodeError("Expecting value", "<html>", 0)
+        with patch("web.lookups.requests.get", return_value=page):
+            with pytest.raises(LookupFailed, match="add its base URL"):
+                check_connection("bazarr", {"url": "http://bazarr:6767", "secret": "key"})
+
     def test_plex(self):
         server = SimpleNamespace(friendlyName="rattplex", version="1.42")
         with patch("web.lookups.PlexServer", return_value=server):

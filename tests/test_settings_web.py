@@ -243,6 +243,21 @@ class TestConnections:
         post(client, "/settings/connections/radarr", {"version": version(client), "action": "disconnect"})
         assert "public_url" not in document(client).get("radarr", {})
 
+    def test_other_links(self, client):
+        add = {"action": "add", "name": "Tracearr", "url": "http://unraid:3000/", "public_url": ""}
+        assert post(client, "/settings/links", {"version": 0, **add}).status_code == 303
+        post(client, "/settings/links", {"version": version(client), **add, "name": "Unraid", "url": "", "public_url": "https://unraid.example.com"})
+        assert document(client)["links"] == [
+            {"name": "Tracearr", "url": "http://unraid:3000"}, {"name": "Unraid", "public_url": "https://unraid.example.com"},
+        ]
+        assert "Tracearr" in client.get("/settings/connections", headers=auth()).text
+        response = post(client, "/settings/links", {"version": version(client), **add, "url": "unraid:3000"})
+        assert "url must start with http" in response.text
+        post(client, "/settings/links", {"version": version(client), "action": "remove", "index": "1"})
+        post(client, "/settings/links", {"version": version(client), "action": "remove", "index": "1"})
+        assert "links" not in document(client)
+        assert post(client, "/settings/links", {"version": version(client), "action": "remove", "index": "1"}).status_code == 404
+
     def test_autoscan_without_password(self, client):
         response = post(client, "/settings/connections/autoscan", {"version": 0, "action": "save", "url": "http://autoscan:3030", "username": ""})
         assert response.status_code == 303

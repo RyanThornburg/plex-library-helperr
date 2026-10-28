@@ -396,6 +396,11 @@ button.mute {
 }
 button.mute:hover { color: var(--text); }
 .verdict-part:not([hidden]) ~ .verdict-part:not([hidden])::before { content: " · "; color: var(--muted); font-weight: 400; }
+.link-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--border); }
+.link-list li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.link-list li > div { display: flex; flex-direction: column; min-width: 0; }
+.link-list form { margin: 0; }
+.other-links { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; margin: 0 0 8px; }
 .link-choice { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; margin: 0 0 8px; font-size: 13px; }
 .choice-inline { display: inline-flex; gap: 4px; align-items: baseline; }
 

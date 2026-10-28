@@ -12,8 +12,8 @@ from typing import Any
 
 import requests
 
-from config.models import ArrConfig, ConfigSettings, SabnzbdConfig, SeerrConfig, TautulliConfig
-from web.lookups import redact
+from config.models import ArrConfig, BazarrConfig, ConfigSettings, SabnzbdConfig, SeerrConfig, TautulliConfig
+from web.lookups import BAZARR_NOT_API, redact
 
 logger = logging.getLogger(__name__)
 
@@ -491,6 +491,62 @@ def seerr_status(seerr: SeerrConfig | None) -> ServiceStatus:
 
 
 # ---------------------------------------------------------------------------
+# bazarr
+# ---------------------------------------------------------------------------
+
+
+def bazarr_answers(status: ServiceStatus, about: dict[str, Any], badges: dict[str, Any],
+                   health: list[dict[str, Any]], providers: list[dict[str, Any]]) -> None:
+    """bazarr's system/status, badges, system/health and providers on its card"""
+    status.version = about.get("bazarr_version")
+    for issue in health:
+        where, text = issue.get("object"), str(issue.get("issue") or "unknown issue")
+        status.problem("warn", f"{where}: {text}" if where else text, f"health:{where or text}")
+    throttled = [p for p in providers if (p.get("status") or "Good") != "Good"]
+    for provider in throttled:
+        retry = provider.get("retry")
+        status.problem(
+            "warn",
+            f"Provider {provider.get('name')} is throttled: {provider.get('status')}"
+            + (f" (retries {retry})" if retry and retry != "-" else ""),
+            f"provider:{provider.get('name')}",
+        )
+    # signalr is how bazarr hears about new episodes and movies right away, it's only
+    # connected for the arrs bazarr uses (they have a version)
+    live = []
+    for arr, label in (("sonarr", "Sonarr"), ("radarr", "Radarr")):
+        if not about.get(f"{arr}_version"):
+            continue
+        if badges.get(f"{arr}_signalr") == "DOWN":
+            status.problem("warn", f"Not getting live updates from {label}, new media waits for the next sync", f"signalr:{arr}")
+        else:
+            live.append(label)
+    episodes, movies = _int(badges.get("episodes")), _int(badges.get("movies"))
+    status.facts.append(("Wanted", f"{episodes:,} episode, {movies:,} movie subtitles"))
+    status.facts.append(("Providers", f"{len(providers)}, {len(throttled)} throttled" if throttled else f"{len(providers)}"))
+    if live:
+        status.facts.append(("Live updates", ", ".join(live)))
+
+
+def bazarr_status(bazarr: BazarrConfig | None) -> ServiceStatus:
+    status = ServiceStatus("bazarr", "Bazarr")
+    if bazarr is None:
+        status.state = "off"
+        return status
+    base, key = bazarr.url.rstrip("/"), bazarr.apikey
+
+    def get(path: str) -> Any:
+        try:
+            body = _get_json(f"{base}/api/{path}", "Bazarr", headers={"X-API-KEY": key})
+        except requests.exceptions.JSONDecodeError:
+            raise Refused(BAZARR_NOT_API)
+        return body.get("data", body) if isinstance(body, dict) else body
+
+    bazarr_answers(status, get("system/status"), get("badges"), get("system/health"), get("providers"))
+    return status
+
+
+# ---------------------------------------------------------------------------
 # plex, through tautulli
 # ---------------------------------------------------------------------------
 
@@ -599,13 +655,14 @@ def check_all(settings: ConfigSettings, now: datetime) -> list[ServiceStatus]:
         (ServiceStatus("plex", "Plex"), lambda: plex_status(settings.tautulli)),
         (ServiceStatus("radarr", "Radarr"), lambda: arr_status("radarr", "Radarr", settings.radarr, min_free)),
         (ServiceStatus("sonarr", "Sonarr"), lambda: arr_status("sonarr", "Sonarr", settings.sonarr, min_free)),
+        (ServiceStatus("bazarr", "Bazarr"), lambda: bazarr_status(settings.bazarr)),
         (ServiceStatus("sabnzbd", "SABnzbd"), lambda: sabnzbd_status(settings.sabnzbd, now, min_free)),
         (ServiceStatus("seerr", "Seerr"), lambda: seerr_status(settings.seerr)),
     ]
     # every key is redacted from every card's error
     secrets = [
         getattr(service, "apikey", None)
-        for service in (settings.radarr, settings.sonarr, settings.sabnzbd, settings.seerr, settings.tautulli)
+        for service in (settings.radarr, settings.sonarr, settings.sabnzbd, settings.seerr, settings.tautulli, settings.bazarr)
         if service
     ]
     with ThreadPoolExecutor(max_workers=len(checks)) as pool:

@@ -398,6 +398,30 @@ class SabnzbdConfig:
 
 
 @dataclass
+class BazarrConfig:
+    """Bazarr's health, providers and wanted subtitles, for the status page"""
+
+    # with its base url when it has one, e.g. http://192.168.1.15:6767/subs
+    url: str
+    apikey: str
+    # where the status page links to away from home, url is the local one
+    public_url: str | None = None
+
+    def __repr__(self):
+        public = f",public_url={self.public_url}" if self.public_url else ""
+        return f"BazarrConfig(url={self.url}{public},apikey={len(self.apikey) * '*'})"
+
+
+@dataclass
+class LinkConfig:
+    """another tool the status page links to, e.g. Tracearr"""
+
+    name: str
+    url: str | None = None
+    public_url: str | None = None
+
+
+@dataclass
 class PlexConfig:
     """Plex class for refreshing library"""
 
@@ -485,8 +509,10 @@ class ConfigSettings:
     tautulli: TautulliConfig | None = None
     seerr: SeerrConfig | None = None
     sabnzbd: SabnzbdConfig | None = None
+    bazarr: BazarrConfig | None = None
+    links: list[LinkConfig] = field(default_factory=list[LinkConfig])
     empty_trash: EmptyTrashSettings = field(default_factory=EmptyTrashSettings)
     web: WebDefaults = field(default_factory=WebDefaults)
 
     def __repr__(self):
-        return f"ConfigSettings(filter_time={self.filter_time}, web={self.web}, plex={self.plex}, empty_trash={self.empty_trash}, tautulli={self.tautulli}, seerr={self.seerr}, sabnzbd={self.sabnzbd}, autoscan={self.autoscan}, sonarr={self.sonarr}, radarr={self.radarr})"
+        return f"ConfigSettings(filter_time={self.filter_time}, web={self.web}, plex={self.plex}, empty_trash={self.empty_trash}, tautulli={self.tautulli}, seerr={self.seerr}, sabnzbd={self.sabnzbd}, bazarr={self.bazarr}, links={self.links}, autoscan={self.autoscan}, sonarr={self.sonarr}, radarr={self.radarr})"

@@ -24,7 +24,7 @@
   <form method="post" action="/settings/connections/{{ service }}#{{ service }}" class="form form-compact">
     {{ f.version_field() }}
     <label for="{{ service }}-url">URL</label>
-    <input id="{{ service }}-url" name="url" value="{{ values.url }}" placeholder="http://192.168.1.15:{{ {'radarr': 7878, 'sonarr': 8989, 'plex': 32400, 'tautulli': 8181, 'seerr': 5055, 'sabnzbd': 8080, 'autoscan': 3030}[service] }}" spellcheck="false" autocomplete="off">
+    <input id="{{ service }}-url" name="url" value="{{ values.url }}" placeholder="http://192.168.1.15:{{ {'radarr': 7878, 'sonarr': 8989, 'plex': 32400, 'tautulli': 8181, 'seerr': 5055, 'sabnzbd': 8080, 'bazarr': 6767, 'autoscan': 3030}[service] }}" spellcheck="false" autocomplete="off">
     {% if service in public_url_services %}
     <label for="{{ service }}-public-url">Public URL</label>
     <div>
@@ -50,6 +50,41 @@
   </form>
 </section>
 {% endfor %}
+<section class="card" id="links">
+  <div class="heading"><h2>Other links</h2></div>
+  <p class="hint">Other tools the Status page links to, like Tracearr or Unraid. Give the local URL, the public one, or both: each browser opens the one chosen on the Status page.</p>
+  {% if active == "links" %}{% for error in service_errors %}<p class="banner banner-bad">{{ error }}</p>{% endfor %}{% endif %}
+  {% if other_links %}
+  <ul class="link-list">
+    {% for link in other_links %}
+    <li>
+      <div>
+        <strong>{{ link.name }}</strong>
+        {% if link.url %}<span class="machine muted">{{ link.url }}</span>{% endif %}
+        {% if link.public_url %}<span class="machine muted">{{ link.public_url }}</span>{% endif %}
+      </div>
+      <form method="post" action="/settings/links">
+        {{ f.version_field() }}
+        <input type="hidden" name="index" value="{{ loop.index }}">
+        <button type="submit" name="action" value="remove" class="button-secondary" aria-label="Remove {{ link.name }}">Remove</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% set link = forms.get("links", {}) %}
+  <form method="post" action="/settings/links#links" class="form form-compact">
+    {{ f.version_field() }}
+    <label for="link-name">Name</label>
+    <input id="link-name" name="name" value="{{ link.name }}" placeholder="Tracearr" autocomplete="off">
+    <label for="link-url">URL</label>
+    <input id="link-url" name="url" value="{{ link.url }}" placeholder="http://192.168.1.15:3000" spellcheck="false" autocomplete="off">
+    <label for="link-public-url">Public URL</label>
+    <input id="link-public-url" name="public_url" value="{{ link.public_url }}" placeholder="https://tracearr.example.com" spellcheck="false" autocomplete="off">
+    <span></span>
+    <div class="actions"><button type="submit" name="action" value="add">Add link</button></div>
+  </form>
+</section>
 </div>
 <p class="hint">Disconnect forgets the URL and {{ "key" }}, rules are kept. Test uses what's in the form, with the saved key when the field is empty.</p>
 {% endblock %}

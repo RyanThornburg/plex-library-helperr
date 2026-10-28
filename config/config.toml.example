@@ -66,6 +66,27 @@ password = ''
 # apikey = ''
 
 #############################################################
+# BAZARR (optional)
+#   Health, throttled providers and wanted subtitles, for the
+#   web app's Status page. Include Bazarr's base URL if it has
+#   one, e.g. http://192.168.1.15:6767/subs
+#############################################################
+# [bazarr]
+# url = ''
+# public_url = ''  # optional, where the Status page links to away from home
+# apikey = ''
+
+#############################################################
+# OTHER LINKS (optional)
+#   Other tools the web app's Status page links to. A url,
+#   a public_url, or both.
+#############################################################
+# [[links]]
+# name = 'Tracearr'
+# url = 'http://192.168.1.15:3000'
+# public_url = 'https://tracearr.example.com'
+
+#############################################################
 # RADARR
 #############################################################
 [radarr]

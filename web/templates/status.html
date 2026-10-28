@@ -4,7 +4,8 @@
 {% macro word(level) %}{{ {"bad": "error", "warn": "warning", "info": "note"}.get(level, level) }}{% endmacro %}
 {% macro since(service, key) %}{% set d = open_for.get((service, key)) %}{% if d %} <span class="muted">· for {{ d }}</span>{% endif %}{% endmacro %}
 {# the service's own web ui, public unless this browser chose local (app.js) #}
-{% macro open_link(s) %}{% set l = links.get(s.service) %}{% if l %}<a class="open-link" href="{{ l.public or l.local }}" target="_blank" rel="noopener"{% if l.local %} data-local="{{ l.local }}"{% endif %}{% if l.public %} data-public="{{ l.public }}"{% endif %}>Open {{ "Tautulli" if s.service == "plex" else s.label }}</a>{% endif %}{% endmacro %}
+{% macro ext_link(l, text) %}<a class="open-link" href="{{ l.public or l.local }}" target="_blank" rel="noopener"{% if l.local %} data-local="{{ l.local }}"{% endif %}{% if l.public %} data-public="{{ l.public }}"{% endif %}>{{ text }}</a>{% endmacro %}
+{% macro open_link(s) %}{% set l = links.get(s.service) %}{% if l %}{{ ext_link(l, "Open " ~ ("Tautulli" if s.service == "plex" else s.label)) }}{% endif %}{% endmacro %}
 {# a card's or line's facts, items and the notes a healthy service can have #}
 {% macro details(s) %}
     {% if s.facts %}
@@ -125,7 +126,10 @@
 {% endfor %}
 </ul>
 {% endif %}
-{% if links.values() | selectattr("local") | selectattr("public") | list %}
+{% if other_links %}
+<p class="other-links"><span class="muted">Also open</span>{% for l in other_links %} {{ ext_link(l, l.name) }}{% endfor %}</p>
+{% endif %}
+{% if (links.values() | list + other_links) | selectattr("local") | selectattr("public") | list %}
 <p class="muted link-choice" data-link-choice hidden>
   Service links open
   <label class="choice-inline"><input type="radio" name="link-choice" value="public"> public addresses</label>

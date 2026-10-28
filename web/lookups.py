@@ -280,6 +280,10 @@ class Lookups:
         return self._cached(("plex", baseurl), fetch)
 
 
+# without its base url bazarr redirects the api to its web page
+BAZARR_NOT_API = "Bazarr answered with its web page, not its API: add its base URL, e.g. http://192.168.1.15:6767/subs"
+
+
 def check_connection(service: str, values: dict[str, str]) -> str:
     """check a service's url and credentials, returns what answered. Raises LookupFailed"""
     url = values.get("url", "").rstrip("/")
@@ -327,6 +331,16 @@ def check_connection(service: str, values: dict[str, str]) -> str:
                 raise LookupFailed(f"SABnzbd refused the API key (HTTP {response.status_code})")
             response.raise_for_status()
             return f"SABnzbd {response.json().get('queue', {}).get('version', '')}"
+        if service == "bazarr":
+            response = requests.get(f"{url}/api/system/status", headers={"X-API-KEY": secret}, timeout=TIMEOUT)
+            if response.status_code in (401, 403):
+                raise LookupFailed(f"Bazarr refused the API key (HTTP {response.status_code})")
+            response.raise_for_status()
+            try:
+                about = response.json().get("data", {})
+            except requests.exceptions.JSONDecodeError:
+                raise LookupFailed(BAZARR_NOT_API)
+            return f"Bazarr {about.get('bazarr_version', '')}"
         if service == "autoscan":
             username = values.get("username", "")
             response = requests.get(

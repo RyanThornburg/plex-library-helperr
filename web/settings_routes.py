@@ -53,15 +53,16 @@ SERVICES: dict[str, tuple[str, str, str]] = {
     "tautulli": ("Tautulli", "API key", "url"),
     "seerr": ("Seerr", "API key", "url"),
     "sabnzbd": ("SABnzbd", "API key", "url"),
+    "bazarr": ("Bazarr", "API key", "url"),
     "autoscan": ("Autoscan", "Password", "url"),
 }
 SERVICE_SECRETS = {
     service: name for name, (service, _) in SECRET_FIELDS.items()
 }
 # the services the status page links to, which can have a public url too
-PUBLIC_URL_SERVICES = ("radarr", "sonarr", "tautulli", "seerr", "sabnzbd")
+PUBLIC_URL_SERVICES = ("radarr", "sonarr", "tautulli", "seerr", "sabnzbd", "bazarr")
 # secrets a service can't work without (autoscan may have no password)
-REQUIRED_SECRETS = ("radarr", "sonarr", "plex", "tautulli", "seerr", "sabnzbd")
+REQUIRED_SECRETS = ("radarr", "sonarr", "plex", "tautulli", "seerr", "sabnzbd", "bazarr")
 SERVICE_HINTS = {
     "radarr": "Settings → General → API Key in Radarr.",
     "sonarr": "Settings → General → API Key in Sonarr.",
@@ -69,6 +70,7 @@ SERVICE_HINTS = {
     "tautulli": "Settings → Web Interface → API key. Watch history for removers' watch protection; without it, Plex history is used (completed plays only).",
     "seerr": "Settings → General → API Key in Seerr (or Overseerr). Requests and who made them, for the Requests page.",
     "sabnzbd": "Config → General → API Key in SABnzbd (not the NZB key). Queue, speed, warnings and failed downloads, for the Status page.",
+    "bazarr": "Settings → General → API Key in Bazarr. Health, throttled providers and wanted subtitles, for the Status page. Include Bazarr's base URL if it has one (e.g. /subs).",
     "autoscan": "Moved folders go to Autoscan's manual trigger instead of refreshing whole Plex libraries. Leave the username empty if Autoscan has no auth.",
 }
 
@@ -357,6 +359,7 @@ def connections(
             "service_secrets": SERVICE_SECRETS,
             "hints": SERVICE_HINTS,
             "public_url_services": PUBLIC_URL_SERVICES,
+            "other_links": document.get("links", []),
             "active": service,
             "service_errors": errors or [],
             "tested": tested,
@@ -449,6 +452,33 @@ async def save_connection(request: Request, service: str) -> Response:
         failed, "/settings/connections",
         {secret_name: new_secret} if new_secret else None, check_live=False,
     )
+
+
+@router.post("/settings/links")
+async def save_links(request: Request) -> Response:
+    """other tools the status page links to: add one, or remove one by its number"""
+    fields = await form_lists(request)
+    action = first(fields, "action")
+    values = {key: first(fields, key).strip().rstrip("/") for key in ("name", "url", "public_url")}
+    _, document = store(request).document()
+    links = document.setdefault("links", [])
+
+    def failed(message: str) -> HTMLResponse:
+        return connections(request, "links", values, [message])
+
+    if action == "remove":
+        index = first(fields, "index")
+        if not index.isdigit() or not 1 <= int(index) <= len(links):
+            raise HTTPException(status_code=404)
+        note = f"Link {links.pop(int(index) - 1).get('name')} removed"
+    elif action == "add":
+        links.append({key: value for key, value in values.items() if value})
+        note = f"Link {values['name'] or '(no name)'} added"
+    else:
+        raise HTTPException(status_code=422)
+    if not links:
+        document.pop("links")
+    return commit(request, fields, document, note, failed, "/settings/connections#links", check_live=False)
 
 
 # ---------------------------------------------------------------------------

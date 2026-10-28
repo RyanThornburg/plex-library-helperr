@@ -51,6 +51,7 @@ NEEDS = {
     "plex": ("Tautulli", "tautulli"),
     "radarr": ("Radarr", "radarr"),
     "sonarr": ("Sonarr", "sonarr"),
+    "bazarr": ("Bazarr", "bazarr"),
     "sabnzbd": ("SABnzbd", "sabnzbd"),
     "seerr": ("Seerr", "seerr"),
 }
@@ -64,13 +65,17 @@ HISTORY_DAYS = {1: "Last 24 hours", 7: "Last 7 days", 30: "Last 30 days", 90: "L
 DEFAULT_HISTORY_DAYS = 30
 
 
-def statuses(request: Request) -> tuple[list[ServiceStatus], str | None, dict[str, dict[str, str]]]:
-    """every service's status and links to it, or none and why the settings can't load"""
+def statuses(
+    request: Request,
+) -> tuple[list[ServiceStatus], str | None, dict[str, dict[str, str]], list[dict[str, str]]]:
+    """every service's status, links to them and to other tools, or none and why the
+    settings can't load"""
     try:
         settings: ConfigSettings = request.app.state.load_config()
     except (SecretError, ValueError) as e:
-        return [], str(e), {}
-    return check_all(settings, utc_now()), None, links(settings)
+        return [], str(e), {}, []
+    others = [{"name": l.name, "local": l.url, "public": l.public_url} for l in settings.links]
+    return check_all(settings, utc_now()), None, links(settings), others
 
 
 def links(settings: ConfigSettings) -> dict[str, dict[str, str]]:
@@ -80,6 +85,7 @@ def links(settings: ConfigSettings) -> dict[str, dict[str, str]]:
         ("plex", settings.tautulli),
         ("radarr", settings.radarr),
         ("sonarr", settings.sonarr),
+        ("bazarr", settings.bazarr),
         ("sabnzbd", settings.sabnzbd),
         ("seerr", settings.seerr),
     ):
@@ -95,7 +101,7 @@ def links(settings: ConfigSettings) -> dict[str, dict[str, str]]:
 @router.get("/status", response_class=HTMLResponse)
 def status_page(request: Request) -> HTMLResponse:
     checked_at = utc_now()
-    services, config_error, service_links = statuses(request)
+    services, config_error, service_links, other_links = statuses(request)
     recent = incidents(request.app.state.engine, checked_at - RECENT)
     # ongoing first, so one that started days ago isn't cut off by newer ones that cleared
     recent.sort(key=lambda i: i.ended_at is not None)
@@ -114,6 +120,7 @@ def status_page(request: Request) -> HTMLResponse:
             "services": services,
             "config_error": config_error,
             "links": service_links,
+            "other_links": other_links,
             "checked_at": checked_at,
             # ?refresh=0 pauses it, for reading (or a screen reader) without the page reloading
             "refresh": 0 if request.query_params.get("refresh") == "0" else REFRESH_SECONDS,
@@ -135,7 +142,7 @@ def status_page(request: Request) -> HTMLResponse:
 @router.get("/api/status")
 def api_status(request: Request) -> JSONResponse:
     checked_at = utc_now()
-    services, config_error, _ = statuses(request)
+    services, config_error, _, _ = statuses(request)
     if config_error:
         return JSONResponse({"error": config_error}, status_code=503)
     return JSONResponse(

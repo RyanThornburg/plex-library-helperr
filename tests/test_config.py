@@ -1,3 +1,4 @@
+import re
 """Tests for config module"""
 
 import tomllib
@@ -351,6 +352,33 @@ class TestSabnzbdConfig:
 
     def test_missing_apikey_is_none(self):
         assert load("[sabnzbd]\nurl = 'http://sab:8080'\n").sabnzbd is None
+
+
+class TestBazarrConfig:
+    def test_configured(self):
+        settings = load("[bazarr]\nurl = 'http://bazarr:6767/subs'\npublic_url = 'https://bazarr.example.com'\napikey = 'abc123'\n")
+        assert (settings.bazarr.url, settings.bazarr.public_url) == ("http://bazarr:6767/subs", "https://bazarr.example.com")
+        assert "abc123" not in repr(settings)
+
+    def test_missing_apikey_is_none(self):
+        assert load("[bazarr]\nurl = 'http://bazarr:6767'\n").bazarr is None
+
+
+class TestLinks:
+    def test_links(self):
+        settings = load("[[links]]\nname = 'Tracearr'\nurl = 'http://unraid:3000'\n\n[[links]]\nname = 'Unraid'\npublic_url = 'https://unraid.example.com'\n")
+        assert [(l.name, l.url, l.public_url) for l in settings.links] == [
+            ("Tracearr", "http://unraid:3000", None), ("Unraid", None, "https://unraid.example.com"),
+        ]
+
+    @pytest.mark.parametrize("toml, error", [
+        ("[[links]]\nurl = 'http://x'\n", "#1: needs a name"),
+        ("[[links]]\nname = 'X'\n", "#1 (X): needs a url or a public_url"),
+        ("[[links]]\nname = 'X'\nurl = 'x:3000'\n", "#1 (X): url must start with http"),
+    ])
+    def test_invalid(self, toml, error):
+        with pytest.raises(ValueError, match=re.escape(error)):
+            load(toml)
 
 
 class TestConfigTomlPath:

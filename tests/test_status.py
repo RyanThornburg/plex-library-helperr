@@ -8,7 +8,7 @@ import pytest
 import requests
 from fastapi.testclient import TestClient
 
-from config.models import ArrConfig, ConfigSettings, SabnzbdConfig, SeerrConfig, TautulliConfig
+from config.models import ArrConfig, BazarrConfig, ConfigSettings, LinkConfig, SabnzbdConfig, SeerrConfig, TautulliConfig
 from tests.test_web import ORIGIN, FakeKeys, auth, fake_run_job
 from tests.test_web import settings  # noqa: F401 (fixture)
 from web import status
@@ -21,6 +21,7 @@ SONARR = ArrConfig(baseurl="http://sonarr:8989", apikey="sonarr-key", tag=None)
 SAB = SabnzbdConfig(url="http://sab:8080", apikey="sab-key")
 SEERR = SeerrConfig(url="http://seerr:5055", apikey="seerr-key")
 TAUTULLI = TautulliConfig(url="http://tautulli:8181", apikey="tautulli-key")
+BAZARR = BazarrConfig(url="http://bazarr:6767/subs", apikey="bazarr-key")
 
 
 def response(body=None, code=200):
@@ -272,6 +273,56 @@ class TestSabnzbd:
 
 
 # ---------------------------------------------------------------------------
+# bazarr, answers as bazarr 1.6.2 gives them
+# ---------------------------------------------------------------------------
+
+
+def bazarr_answers(health=(), providers=None, radarr_signalr="", radarr_version="6.4.4.10685"):
+    good = [{"name": n, "status": "Good", "retry": "-"} for n in ("gestdown", "opensubtitlescom", "subf2m")]
+    return {
+        "/subs/api/system/status": {"data": {"bazarr_version": "1.6.2", "sonarr_version": "4.0.20.3014", "radarr_version": radarr_version}},
+        "/subs/api/badges": {"episodes": 1702, "movies": 129, "providers": 0, "status": 0, "sonarr_signalr": "", "radarr_signalr": radarr_signalr},
+        "/subs/api/system/health": {"data": list(health)},
+        "/subs/api/providers": {"data": good if providers is None else providers},
+    }
+
+
+class TestBazarr:
+    def test_counts(self):
+        result, fake = run(lambda: status.bazarr_status(BAZARR), bazarr_answers(radarr_version=""))
+        assert result.state == "ok"
+        assert result.version == "1.6.2"
+        assert dict(result.facts) == {
+            "Wanted": "1,702 episode, 129 movie subtitles", "Providers": "3", "Live updates": "Sonarr",
+        }
+        assert fake.calls[0][1] == {"X-API-KEY": "bazarr-key"}
+
+    def test_problems(self):
+        answers = bazarr_answers(
+            health=[{"object": "/tv", "issue": "Not accessible"}],
+            providers=[{"name": "subf2m", "status": "TooManyRequests", "retry": "2026-10-28 14:00"}, {"name": "gestdown", "status": "Good", "retry": "-"}],
+            radarr_signalr="DOWN",
+        )
+        result, _ = run(lambda: status.bazarr_status(BAZARR), answers)
+        assert result.state == "warn"
+        assert [(p.text, p.key) for p in result.problems] == [
+            ("/tv: Not accessible", "health:/tv"),
+            ("Provider subf2m is throttled: TooManyRequests (retries 2026-10-28 14:00)", "provider:subf2m"),
+            ("Not getting live updates from Radarr, new media waits for the next sync", "signalr:radarr"),
+        ]
+        assert dict(result.facts)["Providers"] == "2, 1 throttled"
+
+    def test_without_its_base_url(self):
+        page = MagicMock(status_code=200)
+        page.json.side_effect = requests.exceptions.JSONDecodeError("Expecting value", "<html>", 0)
+        result, _ = run(lambda: status.check_all(ConfigSettings(plex=None, radarr=None, sonarr=None, bazarr=BAZARR), NOW)[3], {
+            "/subs/api/system/status": page,
+        })
+        assert result.state == "bad"
+        assert "add its base URL" in result.error
+
+
+# ---------------------------------------------------------------------------
 # seerr
 # ---------------------------------------------------------------------------
 
@@ -379,7 +430,7 @@ class TestPlex:
 # ---------------------------------------------------------------------------
 
 
-EVERYTHING = ConfigSettings(plex=None, radarr=RADARR, sonarr=SONARR, tautulli=TAUTULLI, seerr=SEERR, sabnzbd=SAB)
+EVERYTHING = ConfigSettings(plex=None, radarr=RADARR, sonarr=SONARR, tautulli=TAUTULLI, seerr=SEERR, sabnzbd=SAB, bazarr=BAZARR)
 
 
 class TestCheckAll:
@@ -388,13 +439,16 @@ class TestCheckAll:
             if url.startswith("http://sonarr"):
                 raise requests.exceptions.ConnectionError("http://sonarr:8989 refused")
             host = urlparse(url).hostname
-            answers = {"radarr": arr_answers(), "sab": sab_answers(), "seerr": seerr_answers(), "tautulli": plex_answers()}[host]
+            answers = {
+                "radarr": arr_answers(), "sab": sab_answers(), "seerr": seerr_answers(), "tautulli": plex_answers(),
+                "bazarr": bazarr_answers(),
+            }[host]
             return FakeServices(answers)(url, timeout, headers, params)
 
         with patch.object(status.requests, "get", side_effect=fake_get):
             results = check_all(EVERYTHING, NOW)
         assert [(s.service, s.state) for s in results] == [
-            ("plex", "ok"), ("radarr", "ok"), ("sonarr", "bad"), ("sabnzbd", "ok"), ("seerr", "ok"),
+            ("plex", "ok"), ("radarr", "ok"), ("sonarr", "bad"), ("bazarr", "ok"), ("sabnzbd", "ok"), ("seerr", "ok"),
         ]
         assert results[2].error == "Couldn't connect"
 
@@ -409,7 +463,7 @@ class TestCheckAll:
             results = check_all(EVERYTHING, NOW)
         for result in results:
             assert result.state == "bad"
-            for key in ("sab-key", "radarr-key", "sonarr-key", "seerr-key", "tautulli-key"):
+            for key in ("sab-key", "radarr-key", "sonarr-key", "seerr-key", "tautulli-key", "bazarr-key"):
                 assert key not in result.error
 
     def test_nothing_connected(self):
@@ -469,8 +523,18 @@ class TestPages:
         assert 'href="https://radarr.example.com" target="_blank" rel="noopener" data-local="http://radarr:7878" data-public="https://radarr.example.com">Open Radarr' in page
         assert 'href="http://sonarr:8989" target="_blank" rel="noopener" data-local="http://sonarr:8989">Open Sonarr' in page
         assert "data-link-choice" in page
+        assert "Also open" not in page
         # radarr's warning can be muted, sonarr's outage can't
         assert 'data-unmutable' in page and 'id="sonarr" data-service="sonarr" data-unmutable' in page
+
+    def test_links_to_other_tools(self, settings, monkeypatch):  # noqa: F811
+        monkeypatch.setattr("web.status_routes.check_all", fake_check_all)
+        config = ConfigSettings(plex=None, radarr=None, sonarr=None, links=[LinkConfig("Tracearr", "http://unraid:3000", "https://tracearr.example.com")])
+        app = create_app(settings, keys=FakeKeys(), run_job=fake_run_job, load_config=lambda: config, run_scheduler=False)
+        with TestClient(app) as c:
+            page = c.get("/status", headers=auth()).text
+        assert 'href="https://tracearr.example.com" target="_blank" rel="noopener" data-local="http://unraid:3000" data-public="https://tracearr.example.com">Tracearr</a>' in page
+        assert "data-link-choice" in page
 
     def test_problems_can_be_muted(self, client, monkeypatch):
         def warn(settings, now):

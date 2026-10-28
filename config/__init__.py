@@ -12,8 +12,10 @@ from typing import Any
 from config.models import (
     ArrConfig,
     AutoscanConfig,
+    BazarrConfig,
     ConfigSettings,
     EmptyTrashSettings,
+    LinkConfig,
     MoverRule,
     MovieRemoverRule,
     PlexConfig,
@@ -199,6 +201,27 @@ def read_toml(path: pathlib.Path) -> dict[str, Any]:
         return tomllib.load(f)
 
 
+def _build_links(data: Any) -> list[LinkConfig]:
+    if not isinstance(data, list):
+        raise ValueError("[[links]] must be a list")
+    links = []
+    for i, item in enumerate(data, start=1):
+        label = f"[[links]] #{i}"
+        if not isinstance(item, Mapping):
+            raise ValueError(f"{label}: must be a table")
+        name = str(item.get("name") or "").strip()
+        if not name:
+            raise ValueError(f"{label}: needs a name")
+        urls = {key: str(item.get(key) or "").strip() for key in ("url", "public_url")}
+        if not any(urls.values()):
+            raise ValueError(f"{label} ({name}): needs a url or a public_url")
+        for key, url in urls.items():
+            if url and not re.match(r"^https?://[^\s/]+", url):
+                raise ValueError(f"{label} ({name}): {key} must start with http:// or https://")
+        links.append(LinkConfig(name, urls["url"] or None, urls["public_url"] or None))
+    return links
+
+
 def build_config(data: Mapping[str, Any]) -> ConfigSettings:
     """settings from a config document, raises ValueError naming what's invalid"""
     raw_settings = data.get("settings", {})
@@ -206,6 +229,7 @@ def build_config(data: Mapping[str, Any]) -> ConfigSettings:
     tautulli_config = data.get("tautulli", {})
     seerr_config = data.get("seerr", {})
     sabnzbd_config = data.get("sabnzbd", {})
+    bazarr_config = data.get("bazarr", {})
     autoscan_config = data.get("autoscan", {})
     radarr_config = data.get("radarr")
     sonarr_config = data.get("sonarr")
@@ -253,6 +277,15 @@ def build_config(data: Mapping[str, Any]) -> ConfigSettings:
         if sabnzbd_config.get("url") and sabnzbd_config.get("apikey")
         else None
     )
+    bazarr = (
+        BazarrConfig(
+            url=bazarr_config["url"],
+            apikey=bazarr_config["apikey"],
+            public_url=bazarr_config.get("public_url") or None,
+        )
+        if bazarr_config.get("url") and bazarr_config.get("apikey")
+        else None
+    )
     autoscan = (
         AutoscanConfig(
             url=autoscan_config["url"],
@@ -283,6 +316,8 @@ def build_config(data: Mapping[str, Any]) -> ConfigSettings:
         tautulli=tautulli,
         seerr=seerr,
         sabnzbd=sabnzbd,
+        bazarr=bazarr,
+        links=_build_links(data.get("links", [])),
         empty_trash=empty_trash,
         web=_build_web(data.get("web", {})),
     )
