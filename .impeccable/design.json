@@ -314,10 +314,6 @@
         "displayName": "Title",
         "purpose": "h2 section and card titles."
       },
-      "metric": {
-        "displayName": "Metric",
-        "purpose": "Big tabular number in playback tiles."
-      },
       "body": {
         "displayName": "Body",
         "purpose": "All running text, table cells and fields."

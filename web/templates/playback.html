@@ -15,8 +15,7 @@
     <button type="submit" class="button-secondary"{% if syncing or missing %} disabled{% endif %}>{{ "Syncing…" if syncing else "Sync now" }}</button>
   </form>
 </div>
-<p class="muted">How Plex streamed each movie and episode played in the window, and why it transcoded, from Tautulli. Plays are kept for {{ keep_days }} days; tracking started {{ backfill_days }} days before the first sync and never reads older history. Synced every {{ interval_minutes }} minutes; a play shows once it's stopped (what's playing now is on <a href="/status#plex">Status</a>).
-{% if status.finished_at %}Last sync {{ status.finished_at | localtime }}, {{ status.plays_read }} new play{{ "s" if status.plays_read != 1 }}.{% endif %}</p>
+<p class="muted">How Plex streamed movies and episodes once they stopped, and why they transcoded, from Tautulli (what's playing now is on <a href="/status#plex">Status</a>). Synced every {{ interval_minutes }} minutes{% if status.finished_at %}, last {{ status.finished_at | localtime }}{% endif %}; plays are kept {{ keep_days }} days, from {{ backfill_days }} days before the first sync.</p>
 {% if syncing %}<p class="banner">Syncing. The first sync reads {{ backfill_days }} days of plays and takes a minute or two; this page refreshes until it's done.</p>{% endif %}
 {% if missing %}<p class="banner banner-warn">Connect {{ missing | join(" and ") }} on <a href="/settings/connections">Settings → Connections</a> to see how Plex streams plays here.</p>{% endif %}
 {% if status.error %}<p class="banner banner-bad">{{ status.error }}</p>{% endif %}
@@ -42,18 +41,36 @@
 {% if not r.plays %}
 <p class="empty">{% if status.finished_at %}No plays in the {{ WINDOWS[filters.window][0] | lower }}{% if filters.user is not none %} for this user{% endif %}.{% else %}Nothing synced yet.{% endif %}</p>
 {% else %}
-<section class="tiles">
-  <div class="tile"><span class="tile-value">{{ r.plays }}</span><span class="tile-label">plays</span></div>
-  <div class="tile tile-ok"><span class="tile-value">{{ r.direct_play_percent }}%</span><span class="tile-label">direct play ({{ r.direct_play }})</span></div>
-  <div class="tile"><span class="tile-value">{{ r.direct_stream_percent }}%</span><span class="tile-label">direct stream ({{ r.direct_stream }})</span></div>
-  <div class="tile tile-warn"><span class="tile-value">{{ r.transcode_percent }}%</span><span class="tile-label">transcode ({{ r.transcode }})</span></div>
-  <div class="tile"><span class="tile-value">{{ r.remote }}</span><span class="tile-label">remote plays</span></div>
-  <div class="tile{% if r.software %} tile-warn{% endif %}"><span class="tile-value">{{ r.software }}</span><span class="tile-label">CPU video transcodes</span></div>
-</section>
-<p class="muted">Direct stream: the video and audio are sent as they are, only repackaged (cheap). CPU video transcodes didn't use Plex's hardware transcoding.</p>
+{% set fx = r.fixes %}
+<p class="verdict">{{ r.transcode }} of {{ r.plays }} play{{ "s" if r.plays != 1 }} transcoded ({{ r.transcode_percent }}%).{% if fx.devices %} {{ fx.devices | length }} device{{ " accounts" if fx.devices | length == 1 else "s account" }} for {{ fx.percent }}% of them.{% endif %}</p>
+{% if r.software %}<p class="banner banner-warn">{{ r.software }} video transcode{{ "s" if r.software != 1 }} ran on the CPU: Plex's hardware transcoding wasn't used.</p>{% endif %}
+
+{% if fx.devices %}
+<h2>Fix these</h2>
+<p class="muted">{% if r.remote_percent %}{{ r.remote_percent }}% of plays were remote. {% endif %}A low quality setting is usually the app's default; raise one only if that person's connection, and your upload, can take Original.</p>
+<div class="table-scroll">
+<table class="fixes">
+  <thead><tr><th>Who</th><th>Device</th><th>Transcoded</th><th>Change</th></tr></thead>
+  <tbody>
+    {% for d in fx.devices %}
+    <tr>
+      <td class="long"><a href="/playback?{{ filters.query(user=d.user_id) | urlencode }}">{{ d.user }}</a></td>
+      <td class="long">{{ d.player }}</td>
+      <td class="count"><span class="decision decision-transcode">{{ d.transcodes }}</span> of {{ d.plays }}</td>
+      <td class="change">{{ d.cause }}{% if d.now %}: {{ d.now }}{% endif %} <span class="muted">→</span> <strong>{{ d.change }}</strong></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% if fx.more %}<p class="muted">{{ fx.more }} more device{{ "s" if fx.more != 1 }} transcoded {{ fx.more_transcodes }} play{{ "s" if fx.more_transcodes != 1 }}, under By device.</p>{% endif %}
+{% elif r.transcode %}
+<p class="muted">No device transcoded more than a couple of plays.</p>
+{% endif %}
 
 {% if r.causes %}
-<h2>Why plays transcoded</h2>
+<details class="fold">
+<summary><h2>Why plays transcoded</h2> <span class="muted">{{ r.causes | length }} cause{{ "s" if r.causes | length != 1 }}</span></summary>
 <p class="muted">Each transcode counted once, under its main cause.</p>
 <div class="table-scroll">
 <table>
@@ -70,9 +87,11 @@
   </tbody>
 </table>
 </div>
+</details>
 {% endif %}
 
-<h2>By user</h2>
+<details class="fold">
+<summary><h2>By user</h2> <span class="muted">{{ r.users | length }}</span></summary>
 <div class="table-scroll">
 <table>
   <thead><tr><th>User</th><th>Plays</th><th>Direct play</th><th>Direct stream</th><th>Transcode</th><th>Main cause</th><th>Players</th><th>Latest play</th></tr></thead>
@@ -92,11 +111,13 @@
   </tbody>
 </table>
 </div>
+</details>
 
-<h2>By player</h2>
+<details class="fold">
+<summary><h2>By device</h2> <span class="muted">{{ r.players | length }}</span></summary>
 <div class="table-scroll">
 <table>
-  <thead><tr><th>Player</th><th>Plays</th><th>Users</th><th>Direct play</th><th>Direct stream</th><th>Transcode</th><th>Main cause</th><th>Latest play</th></tr></thead>
+  <thead><tr><th>Device</th><th>Plays</th><th>Users</th><th>Direct play</th><th>Direct stream</th><th>Transcode</th><th>Main cause</th><th>Latest play</th></tr></thead>
   <tbody>
     {% for p in r.players %}
     <tr>
@@ -113,10 +134,12 @@
   </tbody>
 </table>
 </div>
+</details>
 
-<h2>File formats that transcode</h2>
-<p class="muted">How often each format in the files (audio, subtitles shown, video format, HDR) made a play transcode, of all plays of that format, and on which players. Quality limited plays count under their quality setting, not here. A high rate across many players points at the files you get; one player that can't play what others can is about that player's settings (audio passthrough, Direct Play) or app, so take it up with its user.</p>
 {% if r.formats %}
+<details class="fold">
+<summary><h2>File formats that transcode</h2> <span class="muted">{{ r.formats | length }}</span></summary>
+<p class="muted">How often each format in the files (audio, subtitles shown, video format, HDR) made a play transcode, of all plays of that format, and on which players. Quality limited plays count under their quality setting, not here. A high rate across many players points at the files you get; one player that can't play what others can is about that player's settings (audio passthrough, Direct Play) or app, so take it up with its user.</p>
 <div class="table-scroll">
 <table>
   <thead><tr><th>Cause</th><th>Format</th><th>Transcoded</th><th>Users</th><th>Players</th><th>Last transcode</th></tr></thead>
@@ -134,13 +157,13 @@
   </tbody>
 </table>
 </div>
-{% else %}
-<p class="empty">None in the {{ WINDOWS[filters.window][0] | lower }}.</p>
+</details>
 {% endif %}
 
-<h2>Files that transcode for several people</h2>
-<p class="muted">The same file transcoding for {{ file_min_users }} or more people because of the file. A better version of it fixes every player.</p>
 {% if r.files %}
+<details class="fold">
+<summary><h2>Files that transcode for several people</h2> <span class="muted">{{ r.files | length }}</span></summary>
+<p class="muted">The same file transcoding for {{ file_min_users }} or more people because of the file. A better version of it fixes every player.</p>
 <div class="table-scroll">
 <table>
   <thead><tr><th>Title</th><th>Cause</th><th>File</th><th>Users</th><th>Plays</th><th>Last played</th></tr></thead>
@@ -158,12 +181,12 @@
   </tbody>
 </table>
 </div>
-{% else %}
-<p class="empty">None in the {{ WINDOWS[filters.window][0] | lower }}.</p>
+</details>
 {% endif %}
 
-<h2>Recent transcodes</h2>
 {% if r.recent %}
+<details class="fold">
+<summary><h2>Recent transcodes</h2> <span class="muted">{{ r.recent | length }}</span></summary>
 <div class="table-scroll">
 <table>
   <thead><tr><th>Started</th><th>User</th><th>Title</th><th>Player</th><th>Why</th><th>Stream</th></tr></thead>
@@ -181,8 +204,7 @@
   </tbody>
 </table>
 </div>
-{% else %}
-<p class="empty">No transcodes in the {{ WINDOWS[filters.window][0] | lower }}.</p>
+</details>
 {% endif %}
 {% endif %}
 {% endblock %}

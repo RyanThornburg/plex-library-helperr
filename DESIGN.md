@@ -33,12 +33,6 @@ typography:
     fontSize: "16px"
     fontWeight: 700
     lineHeight: 1.5
-  metric:
-    fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif"
-    fontSize: "22px"
-    fontWeight: 700
-    lineHeight: 1.5
-    fontFeature: "tnum"
   body:
     fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif"
     fontSize: "15px"
@@ -182,7 +176,6 @@ A cool slate neutral scale with three signal colors, of which amber also carries
 ### Hierarchy
 - **Headline** (700, 20px, 1.5): the page `h1`, one per page, often in a heading row with the page's primary action on the right.
 - **Title** (700, 16px, 1.5): `h2` section and card titles.
-- **Metric** (700, 22px, tabular numerals): the big number in a playback tile.
 - **Body** (400, 15px, 1.5): everything else, including table cells and form fields.
 - **Label** (600, 13px): table headers and form labels (form labels are 600 at body size); card subheadings (`h3`) are 13px in Dim Ink. Hints, tags and the user email are 12–13px at 400.
 - **Mono** (400, 12px, 1.45): logs, file lists and diffs; inline `code` is 13px and doesn't wrap.
@@ -196,7 +189,7 @@ A cool slate neutral scale with three signal colors, of which amber also carries
 
 A single centered column, at most 1100px wide, 16px padding, under a full-width top bar holding the brand, the page links and the signed-in email. Pages flow top to bottom: heading row (title left, primary action right), then banners, then cards or tables, with 24px above each section heading.
 
-Groups of cards use auto-fit grids, each with its own minimum: job cards 260px, status cards 340px, connection forms 420px, metric tiles 140px, all with a 12px gap. Forms are a two-column grid (labels at max-content, fields up to 520px) with 12px × 16px gaps. Fact lists use the same two-column `dt`/`dd` grid.
+Groups of cards use auto-fit grids, each with its own minimum: job cards 260px, status cards 340px, connection forms 420px, all with a 12px gap. Forms are a two-column grid (labels at max-content, fields up to 520px) with 12px × 16px gaps. Fact lists use the same two-column `dt`/`dd` grid.
 
 Spacing steps are 4, 8, 12, 16 and 24px. At 700px and below, card grids collapse to one column, forms stack labels over fields, and wide tables scroll sideways inside their own box instead of the page.
 
@@ -211,7 +204,7 @@ Flat. There are no shadows anywhere. Depth is tonal: a panel (white / slate) on 
 
 Gently rounded rectangles. Small controls (buttons, inputs, chip fields, banners, logs, diffs) use a 6px radius; cards and tiles use 8px; tags and chips are full pills. Tables are square-cornered. Borders are always 1px: Rule Line, or the state color for a container in a state (below).
 
-**State markers.** A container in a state takes the state color on its whole 1px border (warning cards, banners, playback's transcode tile, the verdict); never a thick colored edge on one side. Inside, the state is said in words: a bold 13px state word ("error", "warning", "down", "note") before the line, so color is never the only signal. A container's problems sit in a block with a 10% wash of its state color (`color-mix`), 6px radius, 8px × 12px padding. Ongoing incident rows get the same wash across the row.
+**State markers.** A container in a state takes the state color on its whole 1px border (warning cards, banners, the verdict); never a thick colored edge on one side. Inside, the state is said in words: a bold 13px state word ("error", "warning", "down", "note") before the line, so color is never the only signal. A container's problems sit in a block with a 10% wash of its state color (`color-mix`), 6px radius, 8px × 12px padding. Ongoing incident rows get the same wash across the row.
 
 ### Named Rules
 **The Whole Border Rule.** State is an outline, a fill or a wash, never a stripe. The 4px left border was retired in October 2026.
@@ -264,8 +257,11 @@ Healthy and unconnected services, as rows of one Panel with 1px rules between th
 ### State Cards
 A service that needs you: a card with its whole border in the state color, a filled state tag in the header, then the problem block (problems with state words and how long each has lasted), then its facts and items. A down card's block says why and links to that service's connection form. Cards sit in an auto-fit grid (340px minimum), aligned to the top, never stretched to equal height.
 
-### Metric Tiles
-Small panels in an auto-fit grid: a 22px tabular number over a 13px Dim Ink label. Used on Playback for counts and rates; a tile that needs attention (transcodes) takes an amber border.
+### Fix List
+Playback leads with what to change, not rates: a verdict sentence ("178 of 466 plays transcoded (38%). 5 devices account for 77% of them."), then a "Fix these" table with one row per person and device (a setting lives on one app on one device), worst first, ending in the change: the cause and current value, a Dim Ink arrow, and the target in bold. It stops once it covers three quarters of the transcodes. Below 700px a row stacks: name and count, the device in Dim Ink, the change.
+
+### Folds
+Detail sections a page keeps for digging in (Playback's by user, by device, formats, recent) are closed `<details>`: the h2 in the summary with its count in Dim Ink after it, and the same CSS chevron as Service Lines. Empty ones are left out rather than shown as an empty fold.
 
 ### Logs and Diffs
 Panel boxes in 12px monospace, capped at 60% of the viewport height with their own scroll. Diffs color whole lines with a 15% green or red wash.

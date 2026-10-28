@@ -343,9 +343,39 @@ class TestReport:
         assert [t["title"] for t in recent] == ["Title 1", "Title 2", "Title 3", "Title 6", "Title 7", "Title 8"]
         assert recent[0]["causes"] == ["Quality setting"] and recent[0]["remote"] is True
 
+    def test_fix_list(self):
+        fx = report(self.plays())["fixes"]
+        # one device of user 10 makes 3 of the 6 transcodes; the others make too few to list
+        assert [(d["user_id"], d["player"], d["transcodes"], d["plays"]) for d in fx["devices"]] == [(10, "Plex for Roku", 3, 3)]
+        assert (fx["devices"][0]["cause"], fx["devices"][0]["now"], fx["devices"][0]["change"]) == (
+            "Quality setting", "4 Mbps 720p", "Original or Maximum"
+        )
+        assert (fx["percent"], fx["more"], fx["more_transcodes"]) == (50, 2, 3)
+
+    def test_fix_list_is_per_device_and_names_the_format(self):
+        plays = [play(i, user_id=12, **AUDIO) for i in range(1, 4)]
+        plays += [play(i, user_id=12) for i in range(4, 8)]
+        for p in plays[3:]:
+            p.product = "Plex for LG"
+        fx = report(plays)["fixes"]
+        assert [(d["player"], d["transcodes"], d["now"]) for d in fx["devices"]] == [
+            ("Plex for LG", 4, "4 Mbps 720p"),
+            ("Plex for Roku", 3, "can't play EAC3 5.1"),
+        ]
+        assert fx["devices"][1]["change"] == "audio passthrough, or an AC3/AAC track"
+
+    def test_fix_list_stops_once_it_covers_most_transcodes(self):
+        plays = [play(i, user_id=10) for i in range(1, 11)]
+        plays += [play(i, user_id=11) for i in range(11, 14)]
+        fx = report(plays)["fixes"]
+        # 10 of 13 is past three quarters, the next device isn't listed
+        assert [d["user_id"] for d in fx["devices"]] == [10]
+        assert (fx["percent"], fx["more"], fx["more_transcodes"]) == (77, 1, 3)
+
     def test_nothing(self):
         r = report([])
         assert r["plays"] == 0 and r["transcode_percent"] is None and r["users"] == []
+        assert r["fixes"] == {"devices": [], "percent": None, "more": 0, "more_transcodes": 0}
 
 
 # ---------------------------------------------------------------------------
@@ -381,6 +411,19 @@ class TestPlaybackPage:
         # 20 days ago is outside the window
         assert "Subtitles burned in" not in page.text
         assert '<option value="7d" selected>' in page.text
+
+    def test_fix_list(self, client):
+        page = client.get("/playback", headers=auth())
+        assert "2 of 3 plays transcoded (67%)." in page.text
+        assert "Fix these" not in page.text and "No device transcoded more than a couple of plays." in page.text
+        now = utc_now()
+        with Session(client.app.state.engine) as session:
+            session.add_all([play(i, user_id=10, started=now - timedelta(hours=i)) for i in range(5, 8)])
+            session.commit()
+        page = client.get("/playback", headers=auth())
+        assert "1 device accounts for 80% of them." in page.text and "Fix these" in page.text
+        assert "Quality setting: 4 Mbps 720p" in page.text and "<strong>Original or Maximum</strong>" in page.text
+        assert "1 more device transcoded 1 play, under By device." in page.text
 
     def test_windows_and_users(self, client):
         page = client.get("/playback?window=24h", headers=auth())

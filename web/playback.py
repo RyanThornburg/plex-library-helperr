@@ -104,6 +104,21 @@ DEFAULT_WINDOW = "7d"
 RECENT = 50
 FILES = 25
 FORMATS = 25
+# what to change for a person's device that transcodes, by its main cause
+CHANGES = {
+    "quality": "Original or Maximum",
+    "subtitles": "SRT subtitles",
+    "hdr": "an SDR version, or an HDR player",
+    "video_codec": "an H.264 version, or a newer player",
+    "resolution": "a 1080p version",
+    "audio": "audio passthrough, or an AC3/AAC track",
+    "unknown": "check their connection",
+}
+# the fix list stops at FIXES devices, once it covers FIXES_COVER of the transcodes, or at
+# a device with fewer than FIX_MIN_TRANSCODES (a few are noise, not a setting to change)
+FIXES = 8
+FIXES_COVER = 0.75
+FIX_MIN_TRANSCODES = 3
 # a file one person's player can't play is about the player, see the formats table
 FILE_MIN_USERS = 2
 
@@ -414,6 +429,54 @@ def _group(plays: list[Playback]) -> dict[str, Any]:
     }
 
 
+def fixes(plays: list[Playback]) -> dict[str, Any]:
+    """the people's devices that cause most transcodes, worst first, and what to change on
+    each: a setting lives on one app on one device, so by user and player together"""
+    by_device: dict[tuple[int, str], list[Playback]] = defaultdict(list)
+    for p in plays:
+        by_device[p.user_id, player_name(p)].append(p)
+    devices = []
+    for (user_id, player), group in by_device.items():
+        transcodes = [p for p in group if p.transcode_decision == "transcode"]
+        if not transcodes:
+            continue
+        main = Counter(causes(p)[0] for p in transcodes).most_common(1)[0][0]
+        of_main = [p for p in transcodes if causes(p)[0] == main]
+        now = None
+        if main == "quality":
+            now = Counter(p.quality_profile for p in of_main).most_common(1)[0][0]
+        elif main in FILE_CAUSES and (formats := Counter(f for p in of_main if (f := file_format(p, main)))):
+            now = "can't play " + formats.most_common(1)[0][0]
+        devices.append(
+            {
+                "user_id": user_id,
+                "user": group[0].user,
+                "player": player,
+                "plays": len(group),
+                "transcodes": len(transcodes),
+                "cause": CAUSES[main][0],
+                "now": now,
+                "change": CHANGES[main],
+            }
+        )
+    devices.sort(key=lambda d: (-d["transcodes"], -d["plays"]))
+    total = sum(d["transcodes"] for d in devices)
+    shown: list[dict[str, Any]] = []
+    for d in devices:
+        if len(shown) == FIXES or d["transcodes"] < FIX_MIN_TRANSCODES:
+            break
+        if sum(s["transcodes"] for s in shown) >= FIXES_COVER * total:
+            break
+        shown.append(d)
+    rest = devices[len(shown):]
+    return {
+        "devices": shown,
+        "percent": _percent(sum(d["transcodes"] for d in shown), total),
+        "more": len(rest),
+        "more_transcodes": sum(d["transcodes"] for d in rest),
+    }
+
+
 def report(plays: Iterable[Playback]) -> dict[str, Any]:
     """what the page shows, from plays newest first"""
     plays = list(plays)
@@ -518,6 +581,8 @@ def report(plays: Iterable[Playback]) -> dict[str, Any]:
         "direct_stream_percent": _percent(decisions["copy"], len(plays)),
         "transcode_percent": _percent(len(transcodes), len(plays)),
         "remote": sum(p.location == "wan" for p in plays),
+        "remote_percent": _percent(sum(p.location == "wan" for p in plays), len(plays)),
+        "fixes": fixes(plays),
         # video transcodes the cpu encoded, plex's hardware transcoding wasn't used
         "software": sum(p.video_decision == "transcode" and p.hw_encoding is False for p in transcodes),
         "causes": cause_rows,

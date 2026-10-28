@@ -501,11 +501,49 @@ summary.line:focus-visible { outline: 2px solid var(--text); outline-offset: -2p
 }
 
 /* playback */
-.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 0 0 8px; }
-.tile { display: flex; flex-direction: column; gap: 2px; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
-.tile-warn { border-color: var(--accent); }
-.tile-value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.tile-label { color: var(--muted); font-size: 13px; }
+/* playback's fix list: a person's device, worst first, and what to change */
+.fixes td.count { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.fixes .change { min-width: 16rem; }
+
+/* below 700px a fix stacks: who and count, the device, the change */
+@media (max-width: 700px) {
+  .fixes, .fixes tbody { display: block; }
+  .fixes thead { display: none; }
+  .fixes tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "who count" "device device" "change change";
+    gap: 2px 12px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .fixes tr:last-child { border-bottom: 0; }
+  .fixes td { padding: 0; border: 0; min-width: 0; }
+  .fixes td:nth-child(1) { grid-area: who; font-weight: 600; }
+  .fixes td:nth-child(2) { grid-area: device; color: var(--muted); }
+  .fixes td:nth-child(3) { grid-area: count; }
+  .fixes td:nth-child(4) { grid-area: change; }
+}
+
+/* detail sections kept for digging in: closed, the heading and its count in the summary */
+.fold { margin-top: 24px; }
+.fold + .fold { margin-top: 4px; }
+.fold[open] + .fold { margin-top: 24px; }
+.fold > summary { display: flex; align-items: baseline; gap: 8px; padding: 6px 0; cursor: pointer; list-style: none; }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: translateY(-2px) rotate(-45deg);
+}
+.fold[open] > summary::before { transform: translateY(-4px) rotate(45deg); }
+.fold > summary h2 { margin: 0; }
+.fold > summary:hover h2 { color: var(--accent); }
+.fold > :not(summary) { margin-top: 8px; }
 .decision { font-weight: 600; white-space: nowrap; }
 .decision-direct_play { color: var(--ok); }
 .decision-transcode { color: var(--warn-text); }
