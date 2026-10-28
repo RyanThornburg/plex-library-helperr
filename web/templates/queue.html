@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}{{ label }} queue · Helperr{% endblock %}
+{% block content %}
+<p><a href="/status#{{ service }}">← Status</a></p>
+<div class="heading">
+  <h1>Stuck in {{ label }}'s queue</h1>
+  <a class="button button-secondary" href="/status/{{ service }}/queue">Refresh</a>
+</div>
+
+{% if removed is not none %}
+<p class="banner banner-ok">Removed {{ removed }} download{{ "s" if removed != 1 }} from {{ label }}'s queue.{% if gone %} {{ gone }} selected {{ "weren't" if gone != 1 else "wasn't" }} stuck any more, so {{ "they were" if gone != 1 else "it was" }} left alone.{% endif %}</p>
+{% endif %}
+{% if error %}
+<p class="banner banner-bad">{{ error }}{% if "isn't connected" in error %} <a href="/settings/connections#{{ service }}">Connections</a>{% endif %}</p>
+{% endif %}
+
+{% if downloads %}
+<p class="muted">{{ label }} won't import or retry these on its own. Removing works like Remove in {{ label }}'s queue: each selected download is checked again first, and one that isn't stuck any more is left alone.</p>
+<form method="post" action="/status/{{ service }}/queue/remove">
+<table>
+  <thead>
+    <tr>
+      <th><input type="checkbox" data-select-all="download" aria-label="Select all"></th>
+      <th>{{ "Movie" if service == "radarr" else "Episodes" }}</th><th>Problem</th><th>Download</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for d in downloads %}
+    <tr>
+      <td><input type="checkbox" name="download" value="{{ d.key }}" aria-label="Remove {{ d.titles[0] }}"></td>
+      <td>
+        {% if d.titles | length > 3 %}
+        <details>
+          <summary>{{ d.titles[0] }} and {{ d.titles | length - 1 }} more</summary>
+          <ul class="items">{% for title in d.titles[1:] %}<li>{{ title }}</li>{% endfor %}</ul>
+        </details>
+        {% else %}{{ d.titles | join(", ") }}{% endif %}
+      </td>
+      <td><span class="status status-{{ 'failed' if d.level == 'bad' else 'blocked' }}">{{ "error" if d.level == "bad" else "warning" }}</span> {{ d.detail }}</td>
+      <td class="muted item-title">{{ d.release }}{% if d.client %} · {{ d.client }}{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<div class="form table-actions">
+  <label for="method">Removal</label>
+  <select id="method" name="method">
+    {% for value, text in methods.items() %}<option value="{{ value }}">{{ text }}</option>{% endfor %}
+  </select>
+  <label for="blocklist">Blocklist</label>
+  <select id="blocklist" name="blocklist">
+    {% for value, text in blocklist.items() %}<option value="{{ value }}">{{ text }}</option>{% endfor %}
+  </select>
+  <span></span>
+  <div class="actions"><button type="submit" class="button-danger">Remove selected</button></div>
+</div>
+</form>
+{% elif not error %}
+<p class="empty">Nothing is stuck in {{ label }}'s queue.</p>
+{% endif %}
+{% endblock %}

@@ -9,7 +9,7 @@ import requests
 from fastapi.testclient import TestClient
 
 from config.models import ArrConfig, ConfigSettings, SabnzbdConfig, SeerrConfig, TautulliConfig
-from tests.test_web import FakeKeys, auth, fake_run_job
+from tests.test_web import ORIGIN, FakeKeys, auth, fake_run_job
 from tests.test_web import settings  # noqa: F401 (fixture)
 from web import status
 from web.app import create_app
@@ -467,3 +467,223 @@ class TestPages:
         with TestClient(app) as c:
             assert "[radarr] bad" in c.get("/status", headers=auth()).text
             assert c.get("/api/status", headers=auth()).status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# stuck downloads
+# ---------------------------------------------------------------------------
+
+
+def stuck_record(id, download="SABnzbd_nzo_1", episode=None, **fields):
+    record = {
+        "id": id,
+        "downloadId": download,
+        "title": "Show.S01.1080p",
+        "downloadClient": "SABnzbd",
+        "trackedDownloadState": "importBlocked",
+        "trackedDownloadStatus": "warning",
+        "statusMessages": [{"title": "x", "messages": ["Unable to parse"]}],
+        "series": {"title": "Show"},
+        "episode": {"seasonNumber": 1, "episodeNumber": episode or id},
+    }
+    return record | fields
+
+
+class TestStuckDownloads:
+    def test_a_season_pack_is_one_download(self):
+        records = [
+            stuck_record(1),
+            stuck_record(2, trackedDownloadStatus="error", errorMessage="Sample"),
+            stuck_record(3, download="SABnzbd_nzo_2", title="Other.Release", series={"title": "Other"}),
+            stuck_record(4, download="SABnzbd_nzo_3", trackedDownloadState="downloading", trackedDownloadStatus="ok"),
+        ]
+        first, second = status.stuck_downloads(records)
+        assert first == status.StuckDownload(
+            "SABnzbd_nzo_1", [1, 2], ["Show S01E01", "Show S01E02"], "Show.S01.1080p", "SABnzbd",
+            "Unable to parse; Sample", "bad",
+        )
+        assert (second.key, second.ids, second.titles) == ("SABnzbd_nzo_2", [3], ["Other S01E03"])
+
+    def test_without_a_download_id_the_record_is_its_own(self):
+        [download] = status.stuck_downloads([stuck_record(7, download=None)])
+        assert download.key == "queue:7"
+
+    def test_records_without_an_id_are_skipped(self):
+        assert status.stuck_downloads([stuck_record(None)]) == []
+
+
+class FakeQueue:
+    def __init__(self, records):
+        self.records = records
+        self.calls = []
+
+    def get(self, url, timeout, headers=None, params=None):
+        self.calls.append(("GET", url, params))
+        return response({"totalRecords": len(self.records), "records": self.records})
+
+    def delete(self, url, headers=None, json=None, params=None, timeout=None):
+        self.calls.append(("DELETE", url, params, json))
+        ids = {r["id"] for r in self.records}
+        self.records = [r for r in self.records if r["id"] not in json["ids"]]
+        return response(code=200 if set(json["ids"]) <= ids else 404)
+
+
+@pytest.fixture
+def fake_queue():
+    fake = FakeQueue([stuck_record(1), stuck_record(2), stuck_record(3, download="SABnzbd_nzo_2")])
+    with patch.object(status.requests, "get", side_effect=fake.get), patch.object(
+        status.requests, "delete", side_effect=fake.delete
+    ):
+        yield fake
+
+
+class TestArrQueueRemoval:
+    def test_reads_the_whole_queue(self, fake_queue):
+        status.ArrQueue("sonarr", "Sonarr", SONARR).stuck()
+        _, url, params = fake_queue.calls[0]
+        assert url == "http://sonarr:8989/api/v3/queue"
+        assert params["pageSize"] == status.ARR_QUEUE_ALL
+        assert params["includeEpisode"] == "true"
+
+    @pytest.mark.parametrize(
+        "method, blocklist, expected",
+        [
+            ("client", "none", {"removeFromClient": "true", "blocklist": "false", "skipRedownload": "false"}),
+            ("ignore", "search", {"removeFromClient": "false", "blocklist": "true", "skipRedownload": "false"}),
+            ("client", "only", {"removeFromClient": "true", "blocklist": "true", "skipRedownload": "true"}),
+        ],
+    )
+    def test_removal_options(self, fake_queue, method, blocklist, expected):
+        queue = status.ArrQueue("sonarr", "Sonarr", SONARR)
+        removed, gone = status.clear_stuck(queue, ["SABnzbd_nzo_1"], method, blocklist)
+        assert [d.key for d in removed] == ["SABnzbd_nzo_1"] and gone == 0
+        verb, url, params, body = fake_queue.calls[-1]
+        assert (verb, url, params, body) == ("DELETE", "http://sonarr:8989/api/v3/queue/bulk", expected, {"ids": [1, 2]})
+
+    def test_only_whats_still_stuck_is_removed(self, fake_queue):
+        queue = status.ArrQueue("sonarr", "Sonarr", SONARR)
+        # nzo_2 imported since the page was loaded
+        fake_queue.records[2]["trackedDownloadState"] = "importing"
+        fake_queue.records[2]["trackedDownloadStatus"] = "ok"
+        removed, gone = status.clear_stuck(queue, ["SABnzbd_nzo_1", "SABnzbd_nzo_2", "SABnzbd_nzo_1", "gone"], "client", "none")
+        assert [d.key for d in removed] == ["SABnzbd_nzo_1"]
+        assert gone == 2
+        assert fake_queue.calls[-1][3] == {"ids": [1, 2]}
+
+    def test_nothing_still_stuck_removes_nothing(self, fake_queue):
+        removed, gone = status.clear_stuck(status.ArrQueue("sonarr", "Sonarr", SONARR), ["gone"], "client", "none")
+        assert (removed, gone) == ([], 1)
+        assert [c[0] for c in fake_queue.calls] == ["GET"]
+
+    def test_unknown_options_raise(self, fake_queue):
+        with pytest.raises(ValueError):
+            status.clear_stuck(status.ArrQueue("sonarr", "Sonarr", SONARR), ["SABnzbd_nzo_1"], "delete", "none")
+        assert fake_queue.calls == []
+
+    def test_a_record_gone_meanwhile_removes_nothing(self):
+        queue = status.ArrQueue("radarr", "Radarr", RADARR)
+        with patch.object(status.requests, "delete", return_value=response(code=404)):
+            with pytest.raises(status.Refused, match="nothing was removed"):
+                queue.remove([1], "client", "none")
+
+
+@pytest.fixture
+def queue_client(settings, fake_queue):  # noqa: F811
+    app = create_app(
+        settings, keys=FakeKeys(), run_job=fake_run_job, load_config=lambda: EVERYTHING, run_scheduler=False
+    )
+    with TestClient(app) as c:
+        c.app.state.health.sync_now = MagicMock()
+        yield c
+
+
+class TestQueuePages:
+    def test_status_card_links_to_it(self, client, monkeypatch):
+        monkeypatch.setattr("web.status_routes.check_all", fake_check_all)
+        page = client.get("/status", headers=auth()).text
+        assert 'href="/status/radarr/queue"' in page
+        assert 'href="/status/sabnzbd/queue"' not in page
+
+    def test_lists_stuck_downloads(self, queue_client):
+        page = queue_client.get("/status/sonarr/queue", headers=auth())
+        assert page.status_code == 200
+        assert 'data-select-all="download"' in page.text
+        assert 'value="SABnzbd_nzo_1"' in page.text
+        assert "Show S01E01, Show S01E02" in page.text
+
+    def test_remove_selected(self, queue_client, fake_queue):
+        response = queue_client.post(
+            "/status/sonarr/queue/remove",
+            content="download=SABnzbd_nzo_1&download=SABnzbd_nzo_2&download=gone&method=ignore&blocklist=only",
+            headers={**auth(), **ORIGIN, "Content-Type": "application/x-www-form-urlencoded"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert response.headers["location"] == "/status/sonarr/queue?removed=2&gone=1"
+        assert fake_queue.calls[-1][2:] == (
+            {"removeFromClient": "false", "blocklist": "true", "skipRedownload": "true"},
+            {"ids": [1, 2, 3]},
+        )
+        queue_client.app.state.health.sync_now.assert_called_once()
+        page = queue_client.get(response.headers["location"], headers=auth()).text
+        assert "Removed 2 downloads" in page
+        assert "1 selected wasn&#39;t stuck any more" in page
+        assert "Nothing is stuck" in page
+
+    def test_nothing_selected(self, queue_client, fake_queue):
+        response = queue_client.post(
+            "/status/sonarr/queue/remove",
+            content="method=client&blocklist=none",
+            headers={**auth(), **ORIGIN, "Content-Type": "application/x-www-form-urlencoded"},
+        )
+        assert response.status_code == 422
+        assert "Select at least one download." in response.text
+        assert "DELETE" not in [c[0] for c in fake_queue.calls]
+
+    def test_unknown_service_or_option(self, queue_client):
+        assert queue_client.get("/status/sabnzbd/queue", headers=auth()).status_code == 404
+        assert queue_client.get("/api/status/plex/queue", headers=auth()).status_code == 404
+        response = queue_client.post(
+            "/status/sonarr/queue/remove",
+            content="download=SABnzbd_nzo_1&method=delete",
+            headers={**auth(), **ORIGIN, "Content-Type": "application/x-www-form-urlencoded"},
+        )
+        assert response.status_code == 422
+
+    def test_not_connected(self, settings):  # noqa: F811
+        app = create_app(
+            settings, keys=FakeKeys(), run_job=fake_run_job,
+            load_config=lambda: ConfigSettings(plex=None, radarr=None, sonarr=None), run_scheduler=False,
+        )
+        with TestClient(app) as c:
+            page = c.get("/status/radarr/queue", headers=auth()).text
+            assert "Radarr isn&#39;t connected." in page
+            assert 'href="/settings/connections#radarr"' in page
+            assert c.get("/api/status/radarr/queue", headers=auth()).status_code == 409
+
+    def test_errors_never_hold_a_key(self, queue_client):
+        error = requests.exceptions.HTTPError("500 Error for url http://sonarr?apikey=sonarr-key")
+        with patch.object(status.requests, "get", side_effect=error):
+            page = queue_client.get("/status/sonarr/queue", headers=auth())
+            body = queue_client.get("/api/status/sonarr/queue", headers=auth())
+        assert "HTTPError" in page.text and "sonarr-key" not in page.text
+        assert body.status_code == 502 and "sonarr-key" not in body.text
+
+    def test_api(self, queue_client, fake_queue):
+        listed = queue_client.get("/api/status/sonarr/queue", headers=auth()).json()
+        assert [d["key"] for d in listed["downloads"]] == ["SABnzbd_nzo_1", "SABnzbd_nzo_2"]
+        assert listed["downloads"][0]["ids"] == [1, 2]
+        response = queue_client.post(
+            "/api/status/sonarr/queue/remove", json={"downloads": ["SABnzbd_nzo_2"]}, headers={**auth(), **ORIGIN}
+        )
+        assert response.status_code == 200
+        assert [d["key"] for d in response.json()["removed"]] == ["SABnzbd_nzo_2"]
+        assert fake_queue.calls[-1][2]["removeFromClient"] == "true"
+        assert queue_client.post(
+            "/api/status/sonarr/queue/remove", json={"downloads": ["x"], "blocklist": "always"}, headers={**auth(), **ORIGIN}
+        ).status_code == 422
+        assert queue_client.post("/api/status/sonarr/queue/remove", json={"downloads": []}, headers={**auth(), **ORIGIN}).status_code == 422
+
+    def test_needs_access(self, queue_client):
+        assert queue_client.get("/status/sonarr/queue").status_code == 403
+        assert queue_client.post("/api/status/sonarr/queue/remove", json={"downloads": ["x"]}, headers=ORIGIN).status_code == 403

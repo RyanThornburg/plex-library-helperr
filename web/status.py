@@ -1,6 +1,7 @@
 """status.py - what radarr, sonarr, sabnzbd, seerr and plex (through tautulli) are doing
-right now, for the status page. Read only. Every service is asked at once, and one that
-is down or slow only marks its own card"""
+right now, for the status page. Read only, except ArrQueue, which removes stuck downloads
+someone selected. Every service is asked at once, and one that is down or slow only marks
+its own card"""
 
 import logging
 from collections.abc import Callable
@@ -19,6 +20,8 @@ logger = logging.getLogger(__name__)
 TIMEOUT = 10
 # queue records read from radarr/sonarr, enough to find the stuck ones
 ARR_QUEUE_PAGE = 200
+# queue records read to clear stuck downloads: all of them, a season pack is one per episode
+ARR_QUEUE_ALL = 2000
 # sabnzbd downloads listed on the card
 SAB_QUEUE_LIMIT = 10
 # failed sabnzbd downloads within this long are a warning
@@ -31,6 +34,16 @@ LEVELS = {"ok": 0, "info": 0, "warn": 1, "bad": 2}
 # a queue record that needs someone to look at it: radarr/sonarr won't import it on
 # their own, or the download failed
 STUCK_STATES = {"importBlocked", "importPending", "failedPending", "failed"}
+# how a stuck download leaves the queue, like Remove in the arrs' queue
+REMOVAL_METHODS = {
+    "client": "Remove from the download client",
+    "ignore": "Remove from the queue only, the download stays in the client",
+}
+BLOCKLIST = {
+    "none": "Don't blocklist",
+    "search": "Blocklist and search for a replacement",
+    "only": "Blocklist only",
+}
 
 
 class Refused(Exception):
@@ -142,33 +155,39 @@ def arr_title(record: dict[str, Any]) -> str:
     return str(record.get("title") or "Unknown")
 
 
+def stuck_level(record: dict[str, Any]) -> str | None:
+    """warn or bad when radarr/sonarr won't finish the record on their own"""
+    state = record.get("trackedDownloadState")
+    health = record.get("trackedDownloadStatus")
+    if state not in STUCK_STATES and health not in ("warning", "error"):
+        return None
+    return "bad" if health == "error" or state in ("failedPending", "failed") else "warn"
+
+
+def stuck_messages(record: dict[str, Any]) -> list[str]:
+    """why a record is stuck, from its messages, else its state"""
+    messages = [
+        m
+        for s in record.get("statusMessages") or []
+        for m in (s.get("messages") or [s.get("title")])
+        if m
+    ]
+    if record.get("errorMessage"):
+        messages.insert(0, record["errorMessage"])
+    return list(dict.fromkeys(messages)) or [
+        str(record.get("trackedDownloadState") or record.get("trackedDownloadStatus"))
+    ]
+
+
 def arr_queue(status: ServiceStatus, records: list[dict[str, Any]], total: int) -> None:
     """the queue's size and the records radarr/sonarr won't finish on their own"""
     downloading = 0
     for record in records:
-        state = record.get("trackedDownloadState")
-        health = record.get("trackedDownloadStatus")
-        if state == "downloading":
+        if record.get("trackedDownloadState") == "downloading":
             downloading += 1
-        if state not in STUCK_STATES and health not in ("warning", "error"):
-            continue
-        messages = [
-            m
-            for s in record.get("statusMessages") or []
-            for m in (s.get("messages") or [s.get("title")])
-            if m
-        ]
-        if record.get("errorMessage"):
-            messages.insert(0, record["errorMessage"])
-        level = "bad" if health == "error" or state in ("failedPending", "failed") else "warn"
-        status.items.append(
-            Item(
-                arr_title(record),
-                "; ".join(dict.fromkeys(messages)) or str(state or health),
-                level=level,
-            )
-        )
-        status.raise_state(level)
+        if level := stuck_level(record):
+            status.items.append(Item(arr_title(record), "; ".join(stuck_messages(record)), level=level))
+            status.raise_state(level)
     status.items_label = "Needs attention in the queue"
     queue = f"{total}"
     if downloading:
@@ -176,6 +195,114 @@ def arr_queue(status: ServiceStatus, records: list[dict[str, Any]], total: int) 
     if status.items:
         queue += f", {len(status.items)} need attention"
     status.facts.append(("Queue", queue))
+
+
+@dataclass
+class StuckDownload:
+    """a download stuck in a radarr/sonarr queue. A season pack is a queue record per
+    episode, removing any of them removes the download"""
+
+    # the download client's id, else queue:<record id>
+    key: str
+    ids: list[int]
+    # the movie, or each episode
+    titles: list[str]
+    release: str
+    client: str
+    detail: str
+    level: str
+
+
+def stuck_downloads(records: list[dict[str, Any]]) -> list[StuckDownload]:
+    """the queue's stuck records, one per download in queue order"""
+    downloads: dict[str, StuckDownload] = {}
+    messages: dict[str, list[str]] = {}
+    for record in records:
+        level = stuck_level(record)
+        if level is None or not isinstance(record.get("id"), int):
+            continue
+        key = str(record.get("downloadId") or f"queue:{record['id']}")
+        title = arr_title(record)
+        if download := downloads.get(key):
+            download.ids.append(record["id"])
+            if title not in download.titles:
+                download.titles.append(title)
+            if LEVELS[level] > LEVELS[download.level]:
+                download.level = level
+        else:
+            downloads[key] = StuckDownload(
+                key,
+                [record["id"]],
+                [title],
+                str(record.get("title") or ""),
+                str(record.get("downloadClient") or ""),
+                "",
+                level,
+            )
+        messages[key] = list(dict.fromkeys(messages.get(key, []) + stuck_messages(record)))
+    for key, download in downloads.items():
+        download.detail = "; ".join(messages[key])
+    return list(downloads.values())
+
+
+class ArrQueue:
+    """radarr's or sonarr's queue, to remove what's stuck in it"""
+
+    def __init__(self, service: str, label: str, arr: ArrConfig):
+        self.service = service
+        self.label = label
+        self.base = arr.baseurl.rstrip("/")
+        self.apikey = arr.apikey
+        self.headers = {"X-Api-Key": arr.apikey}
+
+    def stuck(self) -> list[StuckDownload]:
+        include = (
+            {"includeMovie": "true"}
+            if self.service == "radarr"
+            else {"includeSeries": "true", "includeEpisode": "true"}
+        )
+        queue = _get_json(
+            f"{self.base}/api/v3/queue",
+            self.label,
+            headers=self.headers,
+            params={"pageSize": ARR_QUEUE_ALL, **include},
+        )
+        return stuck_downloads(queue.get("records") or [])
+
+    def remove(self, ids: list[int], method: str, blocklist: str) -> None:
+        """removes the records' downloads. The arr looks every id up first and removes
+        nothing when one is gone, so pass ids it just listed"""
+        response = requests.delete(
+            f"{self.base}/api/v3/queue/bulk",
+            headers=self.headers,
+            json={"ids": ids},
+            params={
+                "removeFromClient": str(method == "client").lower(),
+                "blocklist": str(blocklist != "none").lower(),
+                "skipRedownload": str(blocklist == "only").lower(),
+            },
+            timeout=TIMEOUT,
+        )
+        if response.status_code in (401, 403):
+            raise Refused(f"{self.label} refused the API key (HTTP {response.status_code})")
+        if response.status_code == 404:
+            raise Refused(f"{self.label} no longer has one of them in its queue, nothing was removed")
+        response.raise_for_status()
+
+
+def clear_stuck(
+    queue: ArrQueue, keys: list[str], method: str, blocklist: str
+) -> tuple[list[StuckDownload], int]:
+    """removes the selected downloads that are still stuck, from a fresh read of the
+    queue. Returns them and how many selected ones weren't stuck any more"""
+    if method not in REMOVAL_METHODS or blocklist not in BLOCKLIST:
+        raise ValueError("Unknown removal method or blocklist option")
+    keys = list(dict.fromkeys(keys))
+    stuck = {d.key: d for d in queue.stuck()}
+    chosen = [stuck[k] for k in keys if k in stuck]
+    if chosen:
+        queue.remove([i for d in chosen for i in d.ids], method, blocklist)
+    return chosen, len(keys) - len(chosen)
 
 
 def arr_status(service: str, label: str, arr: ArrConfig | None, min_free_gb: int = 0) -> ServiceStatus:
@@ -437,19 +564,25 @@ def plex_status(tautulli: TautulliConfig | None) -> ServiceStatus:
 # ---------------------------------------------------------------------------
 
 
+def failure(e: Exception, label: str, *secrets: str | None) -> str:
+    """why a request to a service failed, secrets redacted"""
+    if isinstance(e, Refused):
+        return redact(str(e), *secrets)
+    if isinstance(e, requests.exceptions.ConnectionError):
+        return "Couldn't connect"
+    if isinstance(e, requests.exceptions.Timeout):
+        return f"No answer within {TIMEOUT}s"
+    text = redact(f"{type(e).__name__}: {e}", *secrets)
+    logger.warning("WEB\t %s failed: %s", label, text)
+    return text
+
+
 def _checked(status: ServiceStatus, check: Callable[[], ServiceStatus], *secrets: str | None) -> ServiceStatus:
     """the check's status, or the card marked bad with why (secrets redacted)"""
     try:
         return check()
-    except Refused as e:
-        status.error = redact(str(e), *secrets)
-    except requests.exceptions.ConnectionError:
-        status.error = "Couldn't connect"
-    except requests.exceptions.Timeout:
-        status.error = f"No answer within {TIMEOUT}s"
     except Exception as e:
-        status.error = redact(f"{type(e).__name__}: {e}", *secrets)
-        logger.warning("WEB\t Status of %s failed: %s", status.label, status.error)
+        status.error = failure(e, f"Status of {status.label}", *secrets)
     status.state = "bad"
     return status
 

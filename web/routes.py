@@ -249,15 +249,20 @@ def schedule_to_dict(schedule: Schedule, now: datetime) -> dict[str, Any]:
     }
 
 
-async def form_fields(request: Request) -> dict[str, str]:
-    """a urlencoded form body, without python-multipart. Unchecked boxes are absent"""
+async def form_lists(request: Request) -> dict[str, list[str]]:
+    """a urlencoded form body with every value of each field, without python-multipart.
+    Unchecked boxes are absent"""
     body = b""
     async for chunk in request.stream():
         body += chunk
         if len(body) > MAX_FORM_BYTES:
             raise HTTPException(status_code=413)
-    fields = parse_qs(body.decode("utf-8", "replace"), keep_blank_values=True)
-    return {key: values[-1] for key, values in fields.items()}
+    return parse_qs(body.decode("utf-8", "replace"), keep_blank_values=True)
+
+
+async def form_fields(request: Request) -> dict[str, str]:
+    """a urlencoded form body, the last value of each field"""
+    return {key: values[-1] for key, values in (await form_lists(request)).items()}
 
 
 # ---------------------------------------------------------------------------

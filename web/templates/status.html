@@ -48,6 +48,7 @@
       </li>
       {% endfor %}
     </ul>
+    {% if s.service in queues %}<p><a href="/status/{{ s.service }}/queue">Remove stuck downloads…</a></p>{% endif %}
     {% endif %}
     {% endif %}
   </article>

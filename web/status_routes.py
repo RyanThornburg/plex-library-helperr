@@ -1,20 +1,36 @@
 """status_routes.py - the status page: radarr, sonarr, sabnzbd, seerr and plex right now,
-and the history of problems web.health recorded"""
+the history of problems web.health recorded, and removing stuck downloads from the queues"""
 
+import logging
+from dataclasses import asdict
 from datetime import timedelta
+from typing import Literal
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from pydantic import BaseModel
 
 from config.models import ConfigSettings
 from web.health import CHECK_INTERVAL, KEEP, LABELS, STATUS_SETTING, incident_dict, incidents, summary
 from web.jobs import utc_now
-from web.routes import templates
+from web.routes import form_lists, templates
 from web.secret_box import SecretError
 from web.stats import sync_status
-from web.status import MAX_PROBLEMS, ServiceStatus, check_all
+from web.status import (
+    BLOCKLIST,
+    MAX_PROBLEMS,
+    REMOVAL_METHODS,
+    ArrQueue,
+    ServiceStatus,
+    StuckDownload,
+    check_all,
+    clear_stuck,
+    failure,
+)
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # the page refreshes itself this often
@@ -27,6 +43,8 @@ NEEDS = {
     "sabnzbd": ("SABnzbd", "sabnzbd"),
     "seerr": ("Seerr", "seerr"),
 }
+# the arrs whose stuck downloads can be removed here
+QUEUES = {"radarr": "Radarr", "sonarr": "Sonarr"}
 # the status page's recent problems
 RECENT = timedelta(days=7)
 RECENT_LIMIT = 10
@@ -60,6 +78,7 @@ def status_page(request: Request) -> HTMLResponse:
             "refresh": REFRESH_SECONDS,
             "needs": NEEDS,
             "max_problems": MAX_PROBLEMS,
+            "queues": QUEUES,
             "recent": [incident_dict(i, checked_at) for i in recent[:RECENT_LIMIT]],
             "recent_total": len(recent),
             "health": sync_status(request.app.state.engine, STATUS_SETTING),
@@ -139,3 +158,141 @@ def api_history(request: Request) -> JSONResponse:
             }
         )
     )
+
+
+# ---------------------------------------------------------------------------
+# stuck downloads
+# ---------------------------------------------------------------------------
+
+
+class QueueError(Exception):
+    """why a queue can't be read or changed, shown as is"""
+
+    def __init__(self, message: str, status_code: int):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+def arr_queue(request: Request, service: str) -> ArrQueue:
+    if service not in QUEUES:
+        raise HTTPException(status_code=404)
+    try:
+        settings: ConfigSettings = request.app.state.load_config()
+    except (SecretError, ValueError) as e:
+        raise QueueError(f"The settings can't be loaded: {e}", 503)
+    arr = getattr(settings, service)
+    if arr is None or not arr.baseurl or not arr.apikey:
+        raise QueueError(f"{QUEUES[service]} isn't connected.", 409)
+    return ArrQueue(service, QUEUES[service], arr)
+
+
+def read_stuck(queue: ArrQueue) -> list[StuckDownload]:
+    try:
+        return queue.stuck()
+    except Exception as e:
+        raise QueueError(failure(e, f"Reading {queue.label}'s queue", queue.apikey), 502)
+
+
+def remove_stuck(
+    request: Request, queue: ArrQueue, keys: list[str], method: str, blocklist: str
+) -> tuple[list[StuckDownload], int]:
+    """removes the selected stuck downloads and logs who did"""
+    try:
+        removed, gone = clear_stuck(queue, keys, method, blocklist)
+    except Exception as e:
+        raise QueueError(failure(e, f"Removing from {queue.label}'s queue", queue.apikey), 502)
+    if removed:
+        logger.info(
+            "WEB\t %s removed %s stuck download(s) from %s's queue (%s, %s): %s",
+            request.state.user,
+            len(removed),
+            queue.label,
+            method,
+            blocklist,
+            "; ".join(d.release or ", ".join(d.titles) for d in removed),
+        )
+        # the health checks see they're gone without waiting 5 minutes
+        request.app.state.health.sync_now()
+    return removed, gone
+
+
+def queue_page(request: Request, service: str, error: str | None = None, status_code: int = 200) -> HTMLResponse:
+    downloads: list[StuckDownload] = []
+    if error is None:
+        try:
+            downloads = read_stuck(arr_queue(request, service))
+        except QueueError as e:
+            error = str(e)
+    params = request.query_params
+    return templates.TemplateResponse(
+        request,
+        "queue.html",
+        {
+            "user": request.state.user,
+            "service": service,
+            "label": QUEUES[service],
+            "downloads": downloads,
+            "error": error,
+            "removed": int(params["removed"]) if params.get("removed", "").isdigit() else None,
+            "gone": int(params["gone"]) if params.get("gone", "").isdigit() else 0,
+            "methods": REMOVAL_METHODS,
+            "blocklist": BLOCKLIST,
+        },
+        status_code=status_code,
+    )
+
+
+@router.get("/status/{service}/queue", response_class=HTMLResponse)
+def queue_get(request: Request, service: str) -> HTMLResponse:
+    if service not in QUEUES:
+        raise HTTPException(status_code=404)
+    return queue_page(request, service)
+
+
+@router.post("/status/{service}/queue/remove", response_model=None)
+async def queue_remove(request: Request, service: str) -> HTMLResponse | RedirectResponse:
+    if service not in QUEUES:
+        raise HTTPException(status_code=404)
+    fields = await form_lists(request)
+    keys = fields.get("download", [])
+    method = (fields.get("method") or ["client"])[-1]
+    blocklist = (fields.get("blocklist") or ["none"])[-1]
+    if method not in REMOVAL_METHODS or blocklist not in BLOCKLIST:
+        raise HTTPException(status_code=422)
+    if not keys:
+        return queue_page(request, service, "Select at least one download.", 422)
+    try:
+        queue = arr_queue(request, service)
+        removed, gone = remove_stuck(request, queue, keys, method, blocklist)
+    except QueueError as e:
+        return queue_page(request, service, str(e), e.status_code)
+    query = urlencode({"removed": len(removed), "gone": gone})
+    return RedirectResponse(f"/status/{service}/queue?{query}", status_code=303)
+
+
+class RemoveRequest(BaseModel):
+    # StuckDownload keys from GET /api/status/{service}/queue
+    downloads: list[str]
+    method: Literal["client", "ignore"] = "client"
+    blocklist: Literal["none", "search", "only"] = "none"
+
+
+@router.get("/api/status/{service}/queue")
+def api_queue(request: Request, service: str) -> JSONResponse:
+    try:
+        downloads = read_stuck(arr_queue(request, service))
+    except QueueError as e:
+        return JSONResponse({"error": str(e)}, status_code=e.status_code)
+    return JSONResponse({"downloads": [asdict(d) for d in downloads]})
+
+
+@router.post("/api/status/{service}/queue/remove")
+def api_queue_remove(request: Request, service: str, body: RemoveRequest) -> JSONResponse:
+    if not body.downloads:
+        return JSONResponse({"error": "Select at least one download."}, status_code=422)
+    try:
+        queue = arr_queue(request, service)
+        removed, gone = remove_stuck(request, queue, body.downloads, body.method, body.blocklist)
+    except QueueError as e:
+        return JSONResponse({"error": str(e)}, status_code=e.status_code)
+    return JSONResponse({"removed": [asdict(d) for d in removed], "gone": gone})
