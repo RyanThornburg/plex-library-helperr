@@ -403,8 +403,6 @@ td.date { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .problem-block p + p { margin-top: 4px; }
 .status-board .facts { margin: 0; }
 .version { font-size: 13px; font-weight: 400; }
-.tag-ok { border-color: var(--ok); color: var(--ok); }
-.tag-bad { border-color: var(--bad); color: var(--bad); }
 .card h3, .line-body h3 { font-size: 13px; margin: 4px 0 0; color: var(--muted); }
 .problems { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .problems li { overflow-wrap: anywhere; }

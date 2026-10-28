@@ -34,11 +34,6 @@ REMOVED_FILES_MAX_AGE = timedelta(days=90)
 RunJob = Callable[..., JobResult]
 LoadConfig = Callable[[], ConfigSettings]
 LoadDefaults = Callable[[], WebDefaults]
-MoviePlays = Callable[[ConfigSettings], PlayLookup]
-
-
-def no_config() -> ConfigSettings:
-    raise ValueError("no config to run with")
 
 
 def utc_now() -> datetime:
@@ -57,16 +52,10 @@ class ApplyRefused(Exception):
     """a plan can't be applied, the message says why and is shown to the user"""
 
 
-def removal_service(removal: dict[str, Any]) -> str:
-    """SONARR or RADARR. Runs stored before radarr removers only had sonarr's"""
-    return removal.get("service", "SONARR")
-
-
 def removal_key(removal: dict[str, Any]) -> str:
     """how a planned removal is selected for approval: sonarr:<series id> or
-    radarr:<movie id>. Runs stored before radarr removers called the id series_id"""
-    media_id = removal.get("media_id", removal.get("series_id"))
-    return f"{removal_service(removal).lower()}:{media_id}"
+    radarr:<movie id>"""
+    return f"{removal['service'].lower()}:{removal['media_id']}"
 
 
 def approvable(run: JobRun) -> list[dict[str, Any]]:
@@ -125,11 +114,10 @@ class JobRunner:
     def __init__(
         self,
         engine: Engine,
-        run_job: RunJob | None = None,
-        load_config: LoadConfig = no_config,
+        run_job: RunJob | None,
+        load_config: LoadConfig,
         allow_apply: bool = False,
         defaults: LoadDefaults = WebDefaults,
-        movie_plays: MoviePlays | None = None,
     ):
         self.engine = engine
         self.load_config = load_config
@@ -142,11 +130,10 @@ class JobRunner:
 
             run_job = main_run_job
         self.run_job = run_job
-        if movie_plays is None:
-            from web.stats import movie_play_lookup
+        from web.stats import movie_play_lookup
 
-            def movie_plays(settings: ConfigSettings) -> PlayLookup:
-                return movie_play_lookup(engine, settings)
+        def movie_plays(settings: ConfigSettings) -> PlayLookup:
+            return movie_play_lookup(engine, settings)
 
         # radarr removers' play history, from the plays table
         self.movie_plays = movie_plays
@@ -297,7 +284,7 @@ class JobRunner:
                 raise ApplyRefused("Some selected series or movies aren't in this plan.")
             approved = [
                 {
-                    "service": removal_service(removals[key]),
+                    "service": removals[key]["service"],
                     "media_id": int(key.split(":", 1)[1]),
                     "title": removals[key]["title"],
                     "file_ids": [f["id"] for f in removals[key]["files"]],

@@ -204,7 +204,7 @@ if (board) {
       const part = document.querySelector(`.verdict-part[data-service="${card.dataset.service}"]`);
       if (!part) continue;
       part.hidden = quiet;
-      if (part.dataset.errors === undefined || card.querySelector(".problem-block p")) continue;
+      if (card.querySelector(".problem-block p")) continue;
       const count = (level) => items.filter((li) => li.dataset.level === level && !li.classList.contains("is-muted")).length;
       const parts = [];
       if (count("bad")) parts.push(plural(count("bad"), "error"));

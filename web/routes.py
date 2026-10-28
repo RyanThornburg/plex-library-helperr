@@ -26,7 +26,6 @@ from web.jobs import (
     JobRunner,
     approvable,
     removal_key,
-    removal_service,
     utc_now,
 )
 from web.secret_box import SecretError
@@ -100,7 +99,6 @@ templates.env.globals["run_source"] = run_source
 templates.env.globals["JOB_INFO"] = JOB_INFO
 templates.env.globals["APPROVABLE"] = APPROVABLE
 templates.env.globals["removal_key"] = removal_key
-templates.env.globals["removal_service"] = removal_service
 
 # a schedule form is a few short fields
 MAX_FORM_BYTES = 10_000
@@ -122,7 +120,7 @@ CONNECTION_LABELS = {"seerr": "Seerr", "tautulli": "Tautulli", "radarr": "Radarr
 
 
 def missing_connections(request: Request, *services: str) -> list[str]:
-    """the connections a page needs that aren't set up. None when the settings can't
+    """the connections a page needs that aren't set up. [] when the settings can't
     load: the page's sync status says why"""
     try:
         settings = request.app.state.load_config()
@@ -442,7 +440,7 @@ def apply_confirm(
     except Exception:  # the run would fail the same way, its log will say why
         settings = None
     for service in ("SONARR", "RADARR"):
-        removals = [r for r in selected if removal_service(r) == service]
+        removals = [r for r in selected if r["service"] == service]
         if not removals:
             continue
         arr = getattr(settings, service.lower()) if settings else None
@@ -733,16 +731,13 @@ def api_run_job(request: Request, job: str, body: RunRequest) -> JSONResponse:
 class ApplyRequest(BaseModel):
     # removal keys: sonarr:<series id> or radarr:<movie id>
     items: list[str] = []
-    # sonarr series, from before radarr removers
-    series_ids: list[int] = []
 
 
 @router.post("/api/runs/{run_id}/apply", status_code=202)
 def api_apply_plan(request: Request, run_id: int, body: ApplyRequest) -> JSONResponse:
     """removes the approved series/movies of a removers run's plan"""
-    keys = body.items + [f"sonarr:{series_id}" for series_id in body.series_ids]
     try:
-        new_id = runner(request).submit_apply(run_id, keys, "api", request.state.user)
+        new_id = runner(request).submit_apply(run_id, body.items, "api", request.state.user)
     except LookupError:
         raise HTTPException(status_code=404) from None
     except ApplyRefused as e:

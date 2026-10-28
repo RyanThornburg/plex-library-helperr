@@ -270,7 +270,7 @@ class TestRemoverConfig:
         assert arr.remover_settings.max_deletes == 50
 
     def test_remover_dry_run_is_gone(self):
-        # removers only delete approvals, config.document drops it from config.toml
+        # removers only delete approvals
         with pytest.raises(ValueError, match="remover_settings"):
             _build_arr_config({"remover_settings": {"dry_run": False}}, False, "sonarr")
 
@@ -392,16 +392,6 @@ class TestBadShapes:
     def test_value_errors(self, document, error):
         with pytest.raises(ValueError, match=re.escape(error)):
             config.build_config(document)
-
-
-class TestConfigTomlPath:
-    def test_in_data_dir(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("DATA_DIR", str(tmp_path))
-        assert config.config_toml_path() == tmp_path / "config.toml"
-
-    def test_next_to_the_package_without_it(self, monkeypatch):
-        monkeypatch.delenv("DATA_DIR", raising=False)
-        assert config.config_toml_path().parent.name == "config"
 
 
 def movie_remover(**kwargs):

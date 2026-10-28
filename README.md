@@ -12,7 +12,7 @@ I used **Movers** for moving files to different library. I use **Profilers** pri
 - **Time filter**  -  only evaluate media added within a recent window
 - **Movers**  -  moves movies (radarr)/series (sonarr) to a different root folder based on genre, studio, network, certification, or a combination
 - **Profilers**  -  assigns a quality profile to movies/series matched by title or studio/network
-- **Removers**  -  (Sonarr only) unmonitors and deletes old seasons/episodes from tagged series, keeping the latest ones
+- **Removers**  -  unmonitors and deletes old seasons/episodes from tagged series, keeping the latest ones (Sonarr), and deletes old movies from a root folder (Radarr)
 - **Empty trash**  -  empties Plex library trash on demand, skipping libraries that are scanning or have a suspiciously full trash
 
 **Removers delete files.** They only plan: nothing is deleted until you approve a plan in the web app, or turn on auto-approve for a rule there. Run from the command line, they log their plan and delete nothing.
@@ -40,13 +40,13 @@ uv run main.py --empty-trash
 
 Each run ends with a summary of what it changed (or would change in a dry run) and exits with status 1 if anything failed.
 
-The command line uses the web app's settings: the database `helperr.db` in `DATA_DIR` (or the repo), with `HELPERR_SECRET_KEY` set to the same value as the web app, since it decrypts the API keys. On the first run, a `config.toml` there is imported, like the web app does.
+The command line uses the web app's settings: the database `helperr.db` in `DATA_DIR` (or the repo), with `HELPERR_SECRET_KEY` set to the same value as the web app, since it decrypts the API keys.
 
 `--remove` is a separate run so you can schedule it on its own, less often than the movers. It ignores `filter_time`.
 
 `--empty-trash` is for Plex servers with "Empty trash automatically after every scan" turned off. Removers and movers only trigger a scan, which moves deleted files to the trash. Schedule `--empty-trash` to run after those scans have finished (with Autoscan, the scan happens after its `minimum-age`).
 
-Settings are made in the web app (see below). To start from a `config.toml` instead, put it in `DATA_DIR` before the first start; [`config.toml.example`](config/config.toml.example) shows the format.
+Settings are made in the web app (see below).
 
 ## Docker (Unraid)
 
@@ -106,7 +106,6 @@ docker image prune -f --filter "label=org.opencontainers.image.title=plex-librar
 - **History:** every save is a version with who and when. A version's page shows what changed, and can restore it (as a new version).
 - **Status:** one page with what each service is doing now, so you don't have to open each one. Plex (from Tautulli): who's playing what, direct play or transcode, and bandwidth. Radarr and Sonarr: their health warnings, queue downloads that need attention (stuck imports, failed downloads, with the reason), missing and cutoff-unmet counts, and free space. SABnzbd: status, speed, what's left, free space, warnings, failed downloads in the last 7 days and the queue. Bazarr: health issues, throttled providers, whether it gets live updates from Sonarr and Radarr, and how many episode and movie subtitles are wanted. Seerr: requests waiting for approval (a note, not a warning), processing and available, and open issues. The page opens with one line saying whether anything needs you. A service with a warning, an error or that's down gets a card with its problems first and how long each has lasted (a down card links to its connection settings); healthy and unconnected services are one line each, opened for their details. A service that's down only marks its own card. Each service links to its own web UI: the public URL you set on its connection when there is one, or the local one; links to other tools (`[[links]]`, e.g. Tracearr) sit under the services; a switch under them makes this browser use the local addresses instead (remembered in the browser, so a desktop at home can use local ones and a phone the public ones). A warning or error can be muted in the browser until it clears; a service with everything muted goes quiet and leaves the summary line (muting doesn't change the health history). It refreshes every minute (`?refresh=0` pauses it) and only reads (`/api/status`). The one thing it changes is on request: **Remove stuck downloads…** under Radarr's or Sonarr's card lists the stuck downloads (a season pack is one row) with checkboxes and Select all, and removes the selected ones like Remove in the arr's queue: from the download client or only from the queue, and don't blocklist, blocklist and search for a replacement, or blocklist only. Each one is checked again first, and one that isn't stuck any more is left alone (`GET /api/status/{radarr,sonarr}/queue`, `POST /api/status/{radarr,sonarr}/queue/remove` with `{"downloads": [keys], "method": "client"|"ignore", "blocklist": "none"|"search"|"only"}`). Health checks run the same checks every 5 minutes in the background, so problems are recorded even when nobody has the page open: each problem (a service that's down, a health warning, low disk space under `[web] min_free_gb`, a stuck queue record, SABnzbd paused, a failed download or warning, Plex unreachable) is kept from when it was first seen to when it cleared. Status lists the last 7 days' problems, and Status history (`/status/history`, `/api/status/history` with `days=1|7|30|90|365` and `service`) shows them per service with how long each was down. Seerr's pending requests and open issues aren't recorded, they're work rather than faults. A service that can't be checked counts as down, and its other problems stay open until it can be checked again. Kept for a year.
 - **Secrets:** API keys, the Plex token and the Autoscan password are encrypted with `HELPERR_SECRET_KEY` before they're stored, kept out of the history, and never shown again: leave a key field empty to keep the saved one. If `HELPERR_SECRET_KEY` changes, the keys can't be decrypted and have to be entered again.
-- **config.toml** is imported once, on the first start with an empty database, then never read again. Delete it afterwards, it holds your keys in plain text. `remover_settings.dry_run` isn't imported (see auto-approve).
 - Each job has a **Dry run** button, which forces every dry run setting on, and a **Run…** button, which uses the settings as they are. Run… always goes to a confirmation page that says whether the run will make changes.
 - **Remover plans:** removers runs only plan. Every removers run saves its plan: the seasons/episodes it would remove from each series, and the movies Radarr removers would delete, with their file paths. On the run's page, select series/movies and review: the confirmation page shows how many files will be deleted, then an apply run removes them. The apply run plans each approved series or movie again from fresh Sonarr/Radarr data and removes only what was approved and is still eligible: anything watched, replaced, downloading or no longer outside the keep window since is skipped and reported. Each *arr's `max_deletes` still applies. A plan can be applied once, within 7 days (Settings → General). Applying is off unless the container has `REMOVERS_ALLOW_APPLY=true`.
 - **Auto-approve:** the Removers page lists the remover rules, each with an auto-approve switch (off by default, turning it on goes through a confirmation page). A removers run that isn't forced dry (Run…, or a schedule without "Force dry run") deletes an auto-approved rule's removals without review; other rules' removals are planned for review. Forced dry runs never delete, `max_deletes` applies, and it needs `REMOVERS_ALLOW_APPLY=true` like applying a plan. Editing or deleting a rule turns its auto-approve back off.
@@ -117,7 +116,7 @@ docker image prune -f --filter "label=org.opencontainers.image.title=plex-librar
 - Jobs run one at a time in the order queued. A job that's already queued or running can't be queued again.
 - Every run is kept with who started it, what it changed (or would change), errors and its log. Runs interrupted by a restart are marked failed and never re-run automatically.
 - **Schedules** run a job on a cron expression (`minute hour day month weekday`, or `@hourly`/`@daily`/`@weekly`/`@monthly`) in the schedule's own time zone, which a new schedule takes from your browser. They're created and edited on the Schedules page. Like the buttons, a schedule either forces dry run (the default) or uses the settings. A schedule whose job is still queued or running skips that time, and times missed while the app was down are skipped rather than caught up.
-- The same actions are available as JSON: `POST /api/jobs/<movers|removers|empty_trash>` (body `{"dry_run": false}` for a config run, dry by default), `GET /api/runs`, `GET /api/runs/<id>`, and `GET`/`POST /api/schedules`, `GET`/`PUT`/`DELETE /api/schedules/<id>` (body `{"name", "job", "cron", "timezone": "UTC", "dry_run": true, "enabled": true}`), `POST /api/runs/<id>/apply` (body `{"items": ["sonarr:<series id>", "radarr:<movie id>"]}`, or the older `{"series_ids": [...]}` for Sonarr) to apply a removers plan, `GET /api/removers`, `POST /api/removers/auto-approve` (body `{"rule": "<a Sonarr remover's tags, lowercased, sorted, comma joined, or radarr:<root folder>>", "enabled": true}`), and the settings: `GET /api/config` (the settings in config.toml's shape, without secrets, and its `version`), `PUT /api/config` (body `{"version", "config", "confirm_live": false}`: 409 when `version` isn't the current one, 422 when invalid or when it turns a job live without `confirm_live`; keys are only set on Settings → Connections), `GET /api/config/versions`, `GET /api/config/versions/<id>` and `POST /api/config/versions/<id>/restore` (body `{"version", "confirm_live": false}`).
+- The same actions are available as JSON: `POST /api/jobs/<movers|removers|empty_trash>` (body `{"dry_run": false}` for a config run, dry by default), `GET /api/runs`, `GET /api/runs/<id>`, and `GET`/`POST /api/schedules`, `GET`/`PUT`/`DELETE /api/schedules/<id>` (body `{"name", "job", "cron", "timezone": "UTC", "dry_run": true, "enabled": true}`), `POST /api/runs/<id>/apply` (body `{"items": ["sonarr:<series id>", "radarr:<movie id>"]}`) to apply a removers plan, `GET /api/removers`, `POST /api/removers/auto-approve` (body `{"rule": "<a Sonarr remover's tags, lowercased, sorted, comma joined, or radarr:<root folder>>", "enabled": true}`), and the settings: `GET /api/config` (the settings as sections like the ones under Configuration, without secrets, and its `version`), `PUT /api/config` (body `{"version", "config", "confirm_live": false}`: 409 when `version` isn't the current one, 422 when invalid or when it turns a job live without `confirm_live`; keys are only set on Settings → Connections), `GET /api/config/versions`, `GET /api/config/versions/<id>` and `POST /api/config/versions/<id>/restore` (body `{"version", "confirm_live": false}`).
 - Times on the pages are shown in your browser's time zone, so the container needs no `TZ`.
 
 The web app logs to `logs/web.log`, separate from the CLI's `logs/log.log`.
@@ -162,14 +161,14 @@ The database is `helperr.db` in `/config`. Keep `/config` on a cache pool (not t
 
 ## Configuration
 
-Settings are edited in the web app. These are the keys of `config.toml`, which the app imports on its first start; `GET`/`PUT /api/config` use the same shape, without the keys and tokens.
+Settings are edited in the web app. These are the keys behind its forms, grouped in sections the way its error messages name them (e.g. `[[radarr.movers]] #2`); `GET`/`PUT /api/config` use the same shape, without the keys and tokens.
 
 ### `[settings]`
 
 | Key           | Description                                                                                                           |
 |-----          |-------------                                                                                                          |
-| `dry_run`     | `true` to preview changes without applying them (config.toml's default: `false`; the app's when it's missing: `true`) |
-| `filter_time` | Only evaluate movies added within this window. Format: `7d`, `12h`, `30m`. Comment out/delete to evaluate all movies. An invalid value is an error. |
+| `dry_run`     | `true` to preview changes without applying them (default: `true`)                                     |
+| `filter_time` | Only evaluate movies added within this window. Format: `7d`, `12h`, `30m`. Leave empty to evaluate all movies. An invalid value is an error. |
 
 ### `[web]` (optional)
 
@@ -372,10 +371,6 @@ How rules are applied:
 - Plays are any play by any user, partial ones too, from the Tautulli history the web app copies for the Requests page (new plays are copied first). Movies are matched to plays by Plex guid and by their TMDb/IMDb ids, so plays from before a move to another library or before Plex's new agents count. A movie Plex doesn't have is kept when the rule checks plays, and if the history can't be read the rule's movies are all kept for that run. Only the web app has the history: `main.py --remove` keeps every movie of a rule that checks plays.
 - After removing, each movie's folder is scanned by Autoscan, or `plex_library` is refreshed if Autoscan isn't configured.
 
-### Example config
-
-See [`config/config.toml.example`](config/config.toml.example) for a full working example.
-
 ### Tests
 
 Used claude to generate test coverage in `/tests`.
@@ -386,7 +381,6 @@ uv run pytest tests/ -v
 
 ## TODO
 
-- [ ] Command-line argument support
 - [ ] could improve some of the looping / set checks
 
 ## TBD

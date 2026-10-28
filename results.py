@@ -43,7 +43,7 @@ class PlannedRemoval:
     files: list[PlannedFile]
     status: Status
     detail: str = ""
-    service: str = "SONARR"  # SONARR or RADARR, runs stored before radarr removers have none
+    service: str = "SONARR"  # SONARR or RADARR
 
 
 @dataclass

@@ -14,7 +14,7 @@
   <article class="card">
     <h2>{{ title }}</h2>
     <p class="muted">{{ description }}</p>
-    <p class="mode">
+    <p>
       <a href="/settings">Settings</a>:
       {% if config_error %}<span class="tag">unknown</span>
       {% elif mode is none and job == "removers" and auto_rules %}<a class="tag tag-warn" href="/removers">review, auto-approve on for {{ auto_rules | length }}</a>

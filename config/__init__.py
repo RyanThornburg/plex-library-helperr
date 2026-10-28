@@ -1,10 +1,6 @@
-"""__init__.py - builds ConfigSettings from a config document, the web app's stored config.
-It's shaped like config.toml, which is only read to import it (config.document)"""
+"""__init__.py - builds ConfigSettings from a config document, the web app's stored config"""
 
-import os
-import pathlib
 import re
-import tomllib
 from collections.abc import Mapping
 from datetime import timedelta
 from typing import Any
@@ -192,19 +188,6 @@ def format_duration(value: timedelta) -> str:
     return f"{seconds}s"
 
 
-def config_toml_path() -> pathlib.Path:
-    """config.toml, in DATA_DIR (e.g. a docker volume) or next to this package"""
-    data_dir = os.environ.get("DATA_DIR")
-    return (pathlib.Path(data_dir) if data_dir else pathlib.Path(__file__).parent) / (
-        "config.toml"
-    )
-
-
-def read_toml(path: pathlib.Path) -> dict[str, Any]:
-    with path.open(mode="rb") as f:
-        return tomllib.load(f)
-
-
 def _build_links(data: Any) -> list[LinkConfig]:
     if not isinstance(data, list):
         raise ValueError("[[links]] must be a list")
@@ -257,7 +240,7 @@ def _build_config(data: Mapping[str, Any]) -> ConfigSettings:
     autoscan_config = data.get("autoscan", {})
     radarr_config = data.get("radarr")
     sonarr_config = data.get("sonarr")
-    # dry unless it's turned off, config.document writes config.toml's default (false)
+    # dry unless it's turned off
     dry_run = raw_settings.get("dry_run", True)
     if not isinstance(dry_run, bool):
         raise ValueError(f"[settings] dry_run must be true or false, got '{dry_run}'")

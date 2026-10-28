@@ -60,7 +60,7 @@
       {% if selectable %}
       <td>{% if removal.status in APPROVABLE %}<input type="checkbox" name="item" value="{{ removal_key(removal) }}" aria-label="Remove {{ removal.title }}">{% endif %}</td>
       {% endif %}
-      <td class="long">{{ removal.title }}{% if removal_service(removal) == "RADARR" %} <span class="tag">movie</span>{% endif %}</td>
+      <td class="long">{{ removal.title }}{% if removal.service == "RADARR" %} <span class="tag">movie</span>{% endif %}</td>
       <td class="long muted">{{ removal.rule }}</td>
       <td class="units">{{ removal.labels | join(", ") }}</td>
       <td>

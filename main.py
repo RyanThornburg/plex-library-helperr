@@ -381,8 +381,7 @@ def serve() -> None:
 
 
 def load_settings() -> ConfigSettings:
-    """the web app's stored config, the same one its jobs run with (config.toml is
-    imported into it the first time)"""
+    """the web app's stored config, the same one its jobs run with"""
     from web.config_store import open_store
 
     return open_store().load_settings()

@@ -1,10 +1,8 @@
-"""config_store.py - the config, stored as versions of a document plus encrypted secrets.
-config.toml is imported once, into the first version, and isn't read after that"""
+"""config_store.py - the config, stored as versions of a document plus encrypted secrets"""
 
 import copy
 import logging
 import os
-import pathlib
 import threading
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -19,7 +17,6 @@ from config.document import (
     DEFAULT_DOCUMENT,
     SECRET_FIELDS,
     canonical,
-    from_toml,
     with_secrets,
 )
 from config.models import ConfigSettings, WebDefaults
@@ -214,37 +211,13 @@ class ConfigStore:
                 .order_by(ConfigVersion.id.desc())
             )
 
-    def import_toml(self, path: pathlib.Path) -> str | None:
-        """import config.toml when there's no config yet. Returns why it failed, None when
-        it was imported or there was nothing to import"""
-        if self.current() is not None or not path.exists():
-            return None
-        try:
-            document, secrets, notes = from_toml(config.read_toml(path))
-            self.save(
-                document,
-                None,
-                "; ".join([f"Imported from {path.name}", *notes]),
-                0,
-                secrets,
-            )
-        except Exception as e:  # shown on the settings page, the app still starts
-            logger.exception("WEB\t Importing %s failed", path)
-            return f"{type(e).__name__}: {e}"
-        logger.info("WEB\t Imported %s, it isn't read again", path)
-        return None
-
 
 def open_store(env: Mapping[str, str] = os.environ) -> ConfigStore:
-    """the store of $DATA_DIR/helperr.db for the command line, importing config.toml if
-    the web app hasn't yet"""
+    """the store of $DATA_DIR/helperr.db for the command line"""
     problems: list[str] = []
     secret_key = secret_key_problems(env, problems)
     if problems:
         raise ValueError("; ".join(problems))
     engine = make_engine(database_path(env))
     migrate(engine)
-    store = ConfigStore(engine, SecretBox(secret_key))
-    if error := store.import_toml(config.config_toml_path()):
-        raise ValueError(f"config.toml couldn't be imported: {error}")
-    return store
+    return ConfigStore(engine, SecretBox(secret_key))

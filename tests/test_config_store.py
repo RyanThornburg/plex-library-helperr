@@ -1,4 +1,4 @@
-"""Tests for the stored config: versions, encrypted secrets, the config.toml import"""
+"""Tests for the stored config: versions, encrypted secrets"""
 
 from datetime import timedelta
 
@@ -131,40 +131,10 @@ class TestAutoApproveReset:
         assert store.current().note == f"Sonarr remover 1 edited; auto-approve turned off for remover rm-2 ({change})"
 
 
-class TestImport:
-    def test_imports_once(self, store, tmp_path):
-        path = tmp_path / "config.toml"
-        path.write_text(
-            "[settings]\ndry_run = false\n[radarr]\nbaseurl = 'http://radarr'\napikey = 'radarr-key'\n"
-            "[sonarr.remover_settings]\ndry_run = false\n"
-        )
-        assert store.import_toml(path) is None
-        version = store.current()
-        assert version.note.startswith("Imported from config.toml; sonarr.remover_settings.dry_run = false was dropped")
-        assert version.created_by is None
-        assert store.load_settings().radarr.apikey == "radarr-key"
-        assert "radarr-key" not in repr(version.document)
-        # later starts leave the stored config alone
-        path.write_text("[settings]\ndry_run = true\n")
-        assert store.import_toml(path) is None
-        assert store.current().id == version.id
-
-    def test_invalid_toml_is_reported_and_nothing_stored(self, store, tmp_path):
-        path = tmp_path / "config.toml"
-        path.write_text("[settings]\nfilter_time = 'tomorrow'\n")
-        assert "filter_time" in store.import_toml(path)
-        assert store.current() is None
-
-    def test_no_file_nothing_to_do(self, store, tmp_path):
-        assert store.import_toml(tmp_path / "config.toml") is None
-        assert store.current() is None
-
-
 class TestOpenStore:
-    def test_command_line_uses_the_same_store(self, tmp_path, monkeypatch):
-        (tmp_path / "config.toml").write_text("[radarr]\nbaseurl = 'http://radarr'\napikey = 'radarr-key'\n")
-        monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    def test_command_line_uses_the_same_store(self, tmp_path):
         env = {"DATA_DIR": str(tmp_path), "HELPERR_SECRET_KEY": KEY}
+        open_store(env).save(RADARR, None, "a", 0, {"radarr.apikey": "radarr-key"})
         assert open_store(env).load_settings().radarr.apikey == "radarr-key"
         assert (tmp_path / "helperr.db").exists()
 

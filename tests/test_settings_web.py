@@ -151,23 +151,6 @@ class TestGeneral:
         assert response.status_code == 400
         assert "changed since this page was loaded" in response.text
 
-    def test_imported_toml_is_shown(self, settings, tmp_path, monkeypatch):  # noqa: F811
-        monkeypatch.setenv("DATA_DIR", str(tmp_path))
-        (tmp_path / "config.toml").write_text("[settings]\ndry_run = true\n[radarr]\nbaseurl = 'http://r'\napikey = 'radarr-key'\n")
-        app = create_app(settings, keys=FakeKeys(), run_job=lambda job, s: JobResult(job), run_scheduler=False, lookups=FakeLookups())
-        with TestClient(app) as c:
-            page = c.get("/settings", headers=auth()).text
-            assert "Imported from config.toml" in page
-            assert "delete" in page and "config.toml" in page
-            assert c.app.state.store.load_settings().radarr.apikey == "radarr-key"
-
-    def test_broken_toml_is_shown(self, settings, tmp_path, monkeypatch):  # noqa: F811
-        monkeypatch.setenv("DATA_DIR", str(tmp_path))
-        (tmp_path / "config.toml").write_text("[settings]\nfilter_time = 'soon'\n")
-        app = create_app(settings, keys=FakeKeys(), run_job=lambda job, s: JobResult(job), run_scheduler=False, lookups=FakeLookups())
-        with TestClient(app) as c:
-            assert "config.toml couldn't be imported" in c.get("/settings", headers=auth()).text
-
 
 class TestConnections:
     def test_key_is_saved_encrypted_and_never_shown(self, client, runs):

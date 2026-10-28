@@ -441,22 +441,6 @@ class TestApplyMovies:
         assert callable(movie_plays)
         runner.stop()
 
-    def test_plans_stored_before_radarr_removers_are_sonarrs(self, engine):
-        plan_id = add_plan(engine)
-        with Session(engine) as session:
-            run = session.get_one(JobRun, plan_id)
-            old = JobResult("removers", removals=[removal(4)]).to_dict()
-            for r in old["removals"]:
-                r["series_id"] = r.pop("media_id")
-                del r["service"]
-            run.result = old
-            session.commit()
-        runner = make_runner(engine, self.run_job, allow_apply=True)
-        run_id = runner.submit_apply(plan_id, ["sonarr:4"], "manual", None)
-        runner.wait_idle()
-        assert get(engine, run_id).approved[0]["service"] == "SONARR"
-        runner.stop()
-
     def test_movie_plays_only_with_radarr_removers(self, engine):
         runner = make_runner(engine, lambda job, settings: self.calls.append(job) or JobResult(job))
         runner.submit("removers", False, "manual", None)

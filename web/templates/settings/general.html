@@ -2,12 +2,6 @@
 {% import "settings/_fields.html" as f with context %}
 {% set tab = "general" %}
 {% block settings %}
-{% if import_error %}
-<p class="banner banner-bad">config.toml couldn't be imported: {{ import_error }}. Fix it and restart the app to try again, or set everything up here.</p>
-{% elif imported %}
-<p class="banner">Imported from config.toml on {{ imported.created_at | localtime }}. The file isn't read anymore{% if toml_exists %}. It still holds your API keys in plain text, so delete <code>{{ toml_path }}</code> once you've checked everything here{% endif %}.</p>
-{% endif %}
-
 <form method="post" action="/settings" class="form">
   {{ f.version_field() }}
   <span></span>

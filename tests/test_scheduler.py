@@ -238,7 +238,7 @@ class TestTrashFollowup:
     def test_blocked_follow_up_is_retried_then_given_up(self, engine):
         add_run(engine, "removers", START, REMOVED)
         last = START
-        for attempt in range(TRASH_FOLLOWUP_ATTEMPTS):
+        for _ in range(TRASH_FOLLOWUP_ATTEMPTS):
             assert due(engine, last) == last + TRASH_FOLLOWUP_DELAY
             last = last + TRASH_FOLLOWUP_DELAY + timedelta(minutes=1)
             add_run(engine, "empty_trash", last, BLOCKED, trigger="followup")

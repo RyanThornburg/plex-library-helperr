@@ -14,7 +14,6 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-import config
 from web.auth import AccessMiddleware, AccessVerifier, SigningKeyClient
 from web.config_store import ConfigStore
 from web.db import make_engine, migrate
@@ -102,8 +101,6 @@ def create_app(
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         migrate(engine)
         api_key(engine)  # generated on the first start, like the *arrs
-        # config.toml is imported into the first config version, then never read again
-        app.state.import_error = store.import_toml(config.config_toml_path())
         runner.start()
         if run_scheduler:
             scheduler.start()
@@ -136,7 +133,6 @@ def create_app(
     app.state.load_config = load_config
     app.state.store = store
     app.state.lookups = lookups or Lookups()
-    app.state.import_error = None
     app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
     app.include_router(router)
     app.include_router(settings_router)

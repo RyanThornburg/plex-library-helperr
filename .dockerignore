@@ -1,5 +1,6 @@
 # allowlist: nothing reaches the build context unless listed here,
-# so config/config.toml (real credentials) can never end up in an image
+# so local files (a dev helperr.db, logs, a leftover config/config.toml with real
+# credentials) can never end up in an image
 *
 !pyproject.toml
 !uv.lock

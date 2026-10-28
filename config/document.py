@@ -1,5 +1,4 @@
-"""document.py - the config document the web app stores: config.toml's shape, as json,
-without secrets (stored encrypted on their own) and with rules in a canonical form"""
+"""document.py - the config document the web app stores, as json, without secrets (stored encrypted on their own) and with rules in a canonical form"""
 
 import copy
 from dataclasses import fields
@@ -92,23 +91,3 @@ def canonical(document: dict[str, Any]) -> dict[str, Any]:
                 section.pop(rule_type, None)
     return document
 
-
-def from_toml(data: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str], list[str]]:
-    """a parsed config.toml as (document, secrets, notes on what changed). Raises
-    ValueError when it's invalid"""
-    data = copy.deepcopy(data)
-    notes: list[str] = []
-    # config.toml without it was live, a document without it is dry
-    data.setdefault("settings", {}).setdefault("dry_run", False)
-    for arr_name in ARRS:
-        settings = data.get(arr_name, {}).get("remover_settings", {})
-        if "dry_run" in settings:
-            # removers only delete what's approved now, by review or auto-approve
-            if settings.pop("dry_run") is False:
-                notes.append(
-                    f"{arr_name}.remover_settings.dry_run = false was dropped: removers "
-                    "plan for review, turn on auto-approve per rule to delete without it"
-                )
-    document, secrets = strip_secrets(data)
-    build_config(with_secrets(document, secrets))
-    return canonical(document), secrets, notes

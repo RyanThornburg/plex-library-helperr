@@ -560,7 +560,7 @@ class TestPlanReview:
         page = client.get("/runs/1", headers=auth()).text
         assert "REMOVERS_ALLOW_APPLY=true" in page
         assert 'name="item"' not in page
-        response = client.post("/api/runs/1/apply", json={"series_ids": [1]}, headers={**auth(), **ORIGIN})
+        response = client.post("/api/runs/1/apply", json={"items": ["sonarr:1"]}, headers={**auth(), **ORIGIN})
         assert response.status_code == 422
 
     def test_confirm_page_totals_the_selection(self, plan_client):
@@ -621,14 +621,14 @@ class TestPlanReview:
 
     def test_api_apply(self, plan_client):
         headers = {**auth(), **ORIGIN}
-        response = plan_client.post("/api/runs/1/apply", json={"series_ids": [1, 2]}, headers=headers)
+        response = plan_client.post("/api/runs/1/apply", json={"items": ["sonarr:1", "sonarr:2"]}, headers=headers)
         assert response.status_code == 202
         wait(plan_client)
         run = plan_client.get(f"/api/runs/{response.json()['id']}", headers=auth()).json()
         assert run["status"] == "succeeded"
         assert len(run["approved"]) == 2
-        assert plan_client.post("/api/runs/99/apply", json={"series_ids": [1]}, headers=headers).status_code == 404
-        refused = plan_client.post("/api/runs/1/apply", json={"series_ids": [1]}, headers=headers)
+        assert plan_client.post("/api/runs/99/apply", json={"items": ["sonarr:1"]}, headers=headers).status_code == 404
+        refused = plan_client.post("/api/runs/1/apply", json={"items": ["sonarr:1"]}, headers=headers)
         assert refused.status_code == 422
         assert "already applied" in refused.json()["error"]
 

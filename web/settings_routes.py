@@ -255,18 +255,6 @@ def checked_int(value: str, label: str, errors: list[str], minimum: int, optiona
 # ---------------------------------------------------------------------------
 
 
-def toml_status(request: Request) -> dict[str, Any]:
-    path = config.config_toml_path()
-    versions = store(request).history(limit=1000)
-    imported = next((v for v in reversed(versions) if v.note.startswith("Imported from")), None)
-    return {
-        "import_error": request.app.state.import_error,
-        "imported": imported,
-        "toml_exists": path.exists(),
-        "toml_path": str(path),
-    }
-
-
 @router.get("/settings", response_class=HTMLResponse)
 def general_page(request: Request) -> HTMLResponse:
     return general(request)
@@ -282,7 +270,7 @@ def general(request: Request, values: dict[str, Any] | None = None, errors: list
         except ValueError as e:
             web, errors = WebDefaults(), [*(errors or []), f"The saved settings are invalid: {e}"]
     values = values or {
-        "dry_run": document.get("settings", {}).get("dry_run", False),
+        "dry_run": document.get("settings", {}).get("dry_run", True),
         "filter_time": document.get("settings", {}).get("filter_time", ""),
         "followup_delay": config.format_duration(web.followup_delay),
         "followup_attempts": web.followup_attempts,
@@ -290,7 +278,7 @@ def general(request: Request, values: dict[str, Any] | None = None, errors: list
         "plan_max_age": config.format_duration(web.plan_max_age),
         "min_free_gb": web.min_free_gb,
     }
-    return page(request, "general", {"values": values, **toml_status(request)}, errors)
+    return page(request, "general", {"values": values}, errors)
 
 
 @router.post("/settings")
