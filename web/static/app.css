@@ -454,7 +454,7 @@ summary.line:focus-visible { outline: 2px solid var(--text); outline-offset: -2p
   text-overflow: ellipsis;
   font-variant-numeric: tabular-nums;
 }
-.line-link { font-size: 13px; white-space: nowrap; }
+.line-link { display: inline-flex; gap: 12px; font-size: 13px; white-space: nowrap; }
 .line-body { display: flex; flex-direction: column; gap: 8px; padding: 2px 16px 14px 48px; }
 .line-body .facts { margin: 0; }
 

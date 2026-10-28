@@ -375,6 +375,7 @@ class TestLinks:
         ("[[links]]\nurl = 'http://x'\n", "#1: needs a name"),
         ("[[links]]\nname = 'X'\n", "#1 (X): needs a url or a public_url"),
         ("[[links]]\nname = 'X'\nurl = 'x:3000'\n", "#1 (X): url must start with http"),
+        ("[[links]]\nname = 'X'\nurl = 'http://x'\nservice = 'kometa'\n", "#1 (X): service must be one of plex,"),
     ])
     def test_invalid(self, toml, error):
         with pytest.raises(ValueError, match=re.escape(error)):

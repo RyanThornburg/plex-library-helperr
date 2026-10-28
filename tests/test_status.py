@@ -536,6 +536,20 @@ class TestPages:
         assert 'href="https://tracearr.example.com" target="_blank" rel="noopener" data-local="http://unraid:3000" data-public="https://tracearr.example.com">Tracearr</a>' in page
         assert "data-link-choice" in page
 
+    def test_a_link_shown_with_its_service(self, settings, monkeypatch):  # noqa: F811
+        monkeypatch.setattr("web.status_routes.check_all", lambda s, n: [ServiceStatus("plex", "Plex", facts=[("Streams", "0")])])
+        config = ConfigSettings(
+            plex=None, radarr=None, sonarr=None, tautulli=TAUTULLI,
+            links=[LinkConfig("Tracearr", "http://unraid:3000", service="plex"), LinkConfig("Unraid", "http://unraid")],
+        )
+        app = create_app(settings, keys=FakeKeys(), run_job=fake_run_job, load_config=lambda: config, run_scheduler=False)
+        with TestClient(app) as c:
+            page = c.get("/status", headers=auth()).text
+        line = page[page.index('<li id="plex">'):page.index("</li>", page.index('<li id="plex">'))]
+        assert ">Open Tautulli</a> <a" in line and ">Tracearr</a>" in line
+        also = page[page.index("Also open"):]
+        assert ">Unraid</a>" in also and "Tracearr" not in also
+
     def test_problems_can_be_muted(self, client, monkeypatch):
         def warn(settings, now):
             sonarr = ServiceStatus("sonarr", "Sonarr")

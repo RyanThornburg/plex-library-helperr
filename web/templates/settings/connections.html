@@ -52,14 +52,14 @@
 {% endfor %}
 <section class="card" id="links">
   <div class="heading"><h2>Other links</h2></div>
-  <p class="hint">Other tools the Status page links to, like Tracearr or Unraid. Give the local URL, the public one, or both: each browser opens the one chosen on the Status page.</p>
+  <p class="hint">Other tools the Status page links to, like Tracearr (next to Plex) or Unraid. Give the local URL, the public one, or both: each browser opens the one chosen on the Status page.</p>
   {% if active == "links" %}{% for error in service_errors %}<p class="banner banner-bad">{{ error }}</p>{% endfor %}{% endif %}
   {% if other_links %}
   <ul class="link-list">
     {% for link in other_links %}
     <li>
       <div>
-        <strong>{{ link.name }}</strong>
+        <strong>{{ link.name }}{% if link.service %} <span class="muted">with {{ link_services[link.service] }}</span>{% endif %}</strong>
         {% if link.url %}<span class="machine muted">{{ link.url }}</span>{% endif %}
         {% if link.public_url %}<span class="machine muted">{{ link.public_url }}</span>{% endif %}
       </div>
@@ -81,6 +81,11 @@
     <input id="link-url" name="url" value="{{ link.url }}" placeholder="http://192.168.1.15:3000" spellcheck="false" autocomplete="off">
     <label for="link-public-url">Public URL</label>
     <input id="link-public-url" name="public_url" value="{{ link.public_url }}" placeholder="https://tracearr.example.com" spellcheck="false" autocomplete="off">
+    <label for="link-service">Show with</label>
+    <select id="link-service" name="service">
+      <option value="">Under the services</option>
+      {% for key, label in link_services.items() %}<option value="{{ key }}"{% if link.service == key %} selected{% endif %}>{{ label }}, next to its link</option>{% endfor %}
+    </select>
     <span></span>
     <div class="actions"><button type="submit" name="action" value="add">Add link</button></div>
   </form>

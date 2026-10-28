@@ -252,6 +252,10 @@ class TestConnections:
             {"name": "Tracearr", "url": "http://unraid:3000"}, {"name": "Unraid", "public_url": "https://unraid.example.com"},
         ]
         assert "Tracearr" in client.get("/settings/connections", headers=auth()).text
+        post(client, "/settings/links", {"version": version(client), **add, "name": "Tracearr2", "service": "plex"})
+        assert document(client)["links"][-1] == {"name": "Tracearr2", "url": "http://unraid:3000", "service": "plex"}
+        assert "with Plex" in client.get("/settings/connections", headers=auth()).text
+        post(client, "/settings/links", {"version": version(client), "action": "remove", "index": "3"})
         response = post(client, "/settings/links", {"version": version(client), **add, "url": "unraid:3000"})
         assert "url must start with http" in response.text
         post(client, "/settings/links", {"version": version(client), "action": "remove", "index": "1"})

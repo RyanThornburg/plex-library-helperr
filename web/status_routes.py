@@ -74,7 +74,7 @@ def statuses(
         settings: ConfigSettings = request.app.state.load_config()
     except (SecretError, ValueError) as e:
         return [], str(e), {}, []
-    others = [{"name": l.name, "local": l.url, "public": l.public_url} for l in settings.links]
+    others = [{"name": l.name, "local": l.url, "public": l.public_url, "service": l.service} for l in settings.links]
     return check_all(settings, utc_now()), None, links(settings), others
 
 

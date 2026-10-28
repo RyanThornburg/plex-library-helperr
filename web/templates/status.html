@@ -5,7 +5,8 @@
 {% macro since(service, key) %}{% set d = open_for.get((service, key)) %}{% if d %} <span class="muted">· for {{ d }}</span>{% endif %}{% endmacro %}
 {# the service's own web ui, public unless this browser chose local (app.js) #}
 {% macro ext_link(l, text) %}<a class="open-link" href="{{ l.public or l.local }}" target="_blank" rel="noopener"{% if l.local %} data-local="{{ l.local }}"{% endif %}{% if l.public %} data-public="{{ l.public }}"{% endif %}>{{ text }}</a>{% endmacro %}
-{% macro open_link(s) %}{% set l = links.get(s.service) %}{% if l %}{{ ext_link(l, "Open " ~ ("Tautulli" if s.service == "plex" else s.label)) }}{% endif %}{% endmacro %}
+{# the service's own link, then the other links shown with it (e.g. Tracearr with Plex) #}
+{% macro open_link(s) %}{% set l = links.get(s.service) %}{% if l %}{{ ext_link(l, "Open " ~ ("Tautulli" if s.service == "plex" else s.label)) }}{% endif %}{% for o in other_links if o.service == s.service %}{{ " " if l or not loop.first }}{{ ext_link(o, ("Open " if not l and loop.first else "") ~ o.name) }}{% endfor %}{% endmacro %}
 {# a card's or line's facts, items and the notes a healthy service can have #}
 {% macro details(s) %}
     {% if s.facts %}
@@ -83,7 +84,7 @@
     {% endif %}
     {{ details(s) }}
     {% set remove = s.service in queues and s.items | rejectattr("level", "equalto", "ok") | list %}
-    {% if remove or links.get(s.service) %}
+    {% if remove or links.get(s.service) or other_links | selectattr("service", "equalto", s.service) | list %}
     <p class="card-links">{% if remove %}<a href="/status/{{ s.service }}/queue">Remove stuck downloads…</a>{% endif %}{{ open_link(s) }}</p>
     {% endif %}
   </article>
@@ -102,7 +103,7 @@
       <span class="line-name">{{ s.label }}</span>
       <span class="line-state">not connected</span>
       <span class="line-facts">{% if s.service == "plex" %}Plex's activity comes from Tautulli. {% endif %}<a href="/settings/connections#{{ section }}">Connect {{ name }}</a></span>
-      <span></span>
+      <span class="line-link">{{ open_link(s) }}</span>
     </div>
   {% else %}
     <details>
@@ -126,8 +127,9 @@
 {% endfor %}
 </ul>
 {% endif %}
-{% if other_links %}
-<p class="other-links"><span class="muted">Also open</span>{% for l in other_links %} {{ ext_link(l, l.name) }}{% endfor %}</p>
+{% set loose = other_links | rejectattr("service") | list %}
+{% if loose %}
+<p class="other-links"><span class="muted">Also open</span>{% for l in loose %} {{ ext_link(l, l.name) }}{% endfor %}</p>
 {% endif %}
 {% if (links.values() | list + other_links) | selectattr("local") | selectattr("public") | list %}
 <p class="muted link-choice" data-link-choice hidden>

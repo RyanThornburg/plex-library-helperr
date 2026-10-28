@@ -85,6 +85,7 @@ password = ''
 # name = 'Tracearr'
 # url = 'http://192.168.1.15:3000'
 # public_url = 'https://tracearr.example.com'
+# service = 'plex'  # optional, shown next to Plex's link instead of under the services
 
 #############################################################
 # RADARR

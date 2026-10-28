@@ -14,6 +14,7 @@ from config.models import (
     AutoscanConfig,
     BazarrConfig,
     ConfigSettings,
+    LINK_SERVICES,
     EmptyTrashSettings,
     LinkConfig,
     MoverRule,
@@ -221,7 +222,10 @@ def _build_links(data: Any) -> list[LinkConfig]:
         for key, url in urls.items():
             if url and not re.match(r"^https?://[^\s/]+", url):
                 raise ValueError(f"{label} ({name}): {key} must start with http:// or https://")
-        links.append(LinkConfig(name, urls["url"] or None, urls["public_url"] or None))
+        service = item.get("service") or None
+        if service is not None and service not in LINK_SERVICES:
+            raise ValueError(f"{label} ({name}): service must be one of {', '.join(LINK_SERVICES)}")
+        links.append(LinkConfig(name, urls["url"] or None, urls["public_url"] or None, service))
     return links
 
 

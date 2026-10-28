@@ -18,7 +18,7 @@ from pydantic import BaseModel
 
 import config
 from config.document import RULE_TYPES, SECRET_FIELDS, Rule, rule_class, rule_to_dict
-from config.models import REMOVER_TYPES, ConfigSettings, WebDefaults
+from config.models import LINK_SERVICES, REMOVER_TYPES, ConfigSettings, WebDefaults
 from web.config_store import ConfigConflict, ConfigStore
 from web.db import ConfigVersion
 from web.lookups import (
@@ -376,6 +376,7 @@ def connections(
             "hints": SERVICE_HINTS,
             "public_url_services": PUBLIC_URL_SERVICES,
             "other_links": document.get("links", []),
+            "link_services": LINK_SERVICES,
             "active": service,
             "service_errors": errors or [],
             "tested": tested,
@@ -475,7 +476,7 @@ async def save_links(request: Request) -> Response:
     """other tools the status page links to: add one, or remove one by its number"""
     fields = await form_lists(request)
     action = first(fields, "action")
-    values = {key: first(fields, key).strip().rstrip("/") for key in ("name", "url", "public_url")}
+    values = {key: first(fields, key).strip().rstrip("/") for key in ("name", "url", "public_url", "service")}
     _, document = store(request).document()
     links = document.setdefault("links", [])
 

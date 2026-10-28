@@ -412,6 +412,13 @@ class BazarrConfig:
         return f"BazarrConfig(url={self.url}{public},apikey={len(self.apikey) * '*'})"
 
 
+# the status page's services a link can sit next to
+LINK_SERVICES = {
+    "plex": "Plex", "radarr": "Radarr", "sonarr": "Sonarr",
+    "bazarr": "Bazarr", "sabnzbd": "SABnzbd", "seerr": "Seerr",
+}
+
+
 @dataclass
 class LinkConfig:
     """another tool the status page links to, e.g. Tracearr"""
@@ -419,6 +426,8 @@ class LinkConfig:
     name: str
     url: str | None = None
     public_url: str | None = None
+    # shown next to this service's own link (LINK_SERVICES), else under the services
+    service: str | None = None
 
 
 @dataclass

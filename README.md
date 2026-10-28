@@ -252,6 +252,7 @@ Other tools the web app's Status page links to, like Tracearr. Edited under Sett
 | `name`       | What the link says                           |
 | `url`        | Its local URL (optional if `public_url` is set) |
 | `public_url` | Its public URL (optional if `url` is set)    |
+| `service`    | Optional: `plex`, `radarr`, `sonarr`, `bazarr`, `sabnzbd` or `seerr` shows it next to that service's own link (e.g. Tracearr with Plex) instead of under the services |
 
 ### `[autoscan]` (optional)
 
