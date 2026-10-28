@@ -12,12 +12,13 @@
 <div class="heading">
   <h1>Playback</h1>
   <form method="post" action="/playback/sync">
-    <button type="submit" class="button-secondary"{% if syncing %} disabled{% endif %}>{{ "Syncing…" if syncing else "Sync now" }}</button>
+    <button type="submit" class="button-secondary"{% if syncing or missing %} disabled{% endif %}>{{ "Syncing…" if syncing else "Sync now" }}</button>
   </form>
 </div>
 <p class="muted">How Plex streamed each movie and episode played in the window, and why it transcoded, from Tautulli. Plays are kept for {{ keep_days }} days; tracking started {{ backfill_days }} days before the first sync and never reads older history. Synced every {{ interval_minutes }} minutes; a play shows once it's stopped (what's playing now is on <a href="/status#plex">Status</a>).
 {% if status.finished_at %}Last sync {{ status.finished_at | localtime }}, {{ status.plays_read }} new play{{ "s" if status.plays_read != 1 }}.{% endif %}</p>
 {% if syncing %}<p class="banner">Syncing. The first sync reads {{ backfill_days }} days of plays and takes a minute or two; this page refreshes until it's done.</p>{% endif %}
+{% if missing %}<p class="banner banner-warn">Connect {{ missing | join(" and ") }} on <a href="/settings/connections">Settings → Connections</a> to see how Plex streams plays here.</p>{% endif %}
 {% if status.error %}<p class="banner banner-bad">{{ status.error }}</p>{% endif %}
 
 <form method="get" action="/playback" class="filters">

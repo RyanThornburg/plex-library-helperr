@@ -85,6 +85,8 @@ def lookups(request: Request) -> Lookups:
     return request.app.state.lookups
 
 
+# config versions on a page of the history, older ones a page at a time
+HISTORY_PAGE = 100
 # rule forms hold lists (a profiler's titles), so more than the schedule form's cap
 MAX_SETTINGS_FORM_BYTES = 256_000
 
@@ -617,7 +619,13 @@ def diff(before: ConfigVersion | None, after: ConfigVersion) -> list[tuple[str, 
 
 @router.get("/settings/history", response_class=HTMLResponse)
 def history_page(request: Request) -> HTMLResponse:
-    return page(request, "history", {"versions": store(request).history()})
+    before = request.query_params.get("before", "")
+    before_id = int(before) if before.isdigit() and len(before) < 18 else None
+    versions = store(request).history(HISTORY_PAGE + 1, before_id)
+    return page(
+        request, "history",
+        {"versions": versions[:HISTORY_PAGE], "older": len(versions) > HISTORY_PAGE, "before": before_id},
+    )
 
 
 @router.get("/settings/history/{version_id}", response_class=HTMLResponse)

@@ -29,6 +29,7 @@ from web.jobs import (
     removal_service,
     utc_now,
 )
+from web.secret_box import SecretError
 from web.scheduler import ZONES, next_run_at, schedule_errors, trash_followup_due
 
 logger = logging.getLogger(__name__)
@@ -105,11 +106,26 @@ def get_run(request: Request, run_id: int) -> JobRun:
     return run
 
 
-def recent_runs(request: Request, limit: int) -> list[JobRun]:
+CONNECTION_LABELS = {"seerr": "Seerr", "tautulli": "Tautulli", "radarr": "Radarr", "sonarr": "Sonarr", "plex": "Plex"}
+
+
+def missing_connections(request: Request, *services: str) -> list[str]:
+    """the connections a page needs that aren't set up. None when the settings can't
+    load: the page's sync status says why"""
+    try:
+        settings = request.app.state.load_config()
+    except (SecretError, ValueError):
+        return []
+    return [CONNECTION_LABELS[s] for s in services if getattr(settings, s) is None]
+
+
+def recent_runs(request: Request, limit: int, before: int | None = None) -> list[JobRun]:
+    """newest first, those before a run id when paging back"""
+    query = select(JobRun).order_by(JobRun.id.desc()).limit(limit)
+    if before is not None:
+        query = query.where(JobRun.id < before)
     with Session(request.app.state.engine) as session:
-        return list(
-            session.scalars(select(JobRun).order_by(JobRun.id.desc()).limit(limit))
-        )
+        return list(session.scalars(query))
 
 
 def run_to_dict(run: JobRun, include_log: bool = False) -> dict[str, Any]:
@@ -270,10 +286,17 @@ async def form_fields(request: Request) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
+# runs on the home page, older ones a page at a time
+RUNS_PAGE = 25
+
+
 @router.get("/", response_class=HTMLResponse)
-def index(request: Request) -> HTMLResponse:
+def index(request: Request, before: int | None = Query(default=None, ge=1, le=2**62)) -> HTMLResponse:
     dry_runs, config_error, auto_rules = config_modes(request)
-    runs = recent_runs(request, 25)
+    runs = recent_runs(request, RUNS_PAGE + 1, before)
+    older, runs = len(runs) > RUNS_PAGE, runs[:RUNS_PAGE]
+    # the jobs running now are among the newest runs
+    latest = runs if before is None else recent_runs(request, RUNS_PAGE)
     # each job's soonest scheduled run
     now = utc_now()
     next_runs: dict[str, tuple[datetime, Schedule]] = {}
@@ -289,11 +312,14 @@ def index(request: Request) -> HTMLResponse:
         {
             "user": request.state.user,
             "runs": runs,
+            "before": before,
+            "older": older,
+            "no_arrs": len(missing_connections(request, "radarr", "sonarr")) == 2,
             "jobs": JOBS,
             "dry_runs": dry_runs,
             "config_error": config_error,
             "auto_rules": auto_rules,
-            "active_jobs": {r.job for r in runs if r.status in ACTIVE},
+            "active_jobs": {r.job for r in latest if r.status in ACTIVE},
             "next_runs": next_runs,
             "followup": followup,
         },

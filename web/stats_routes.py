@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from web.db import MediaRequest
 from web.jobs import utc_now
-from web.routes import templates
+from web.routes import missing_connections, templates
 from web.stats import StatsSync, sync_status
 
 router = APIRouter()
@@ -258,6 +258,9 @@ def stats_sync(request: Request) -> StatsSync:
     return request.app.state.stats
 
 
+REQUESTS_SHOWN = 200
+
+
 @router.get("/requests", response_class=HTMLResponse)
 def requests_page(request: Request) -> HTMLResponse:
     filters = parse_filters(request)
@@ -276,6 +279,9 @@ def requests_page(request: Request) -> HTMLResponse:
             "syncing": stats_sync(request).running,
             "filters": filters,
             "requests": shown,
+            # a year of requests is a long page, ?all=1 shows them all
+            "limit": None if request.query_params.get("all") == "1" else REQUESTS_SHOWN,
+            "missing": missing_connections(request, "seerr", "tautulli"),
             "total": len(requests),
             "users": user_summaries([r for r in requests if filters.in_scope(r, now)], now, stale_days),
             "requesters": requesters,

@@ -8,7 +8,7 @@
   <tbody>
     {% for v in versions %}
     <tr>
-      <td><a href="/settings/history/{{ v.id }}">{{ v.id }}</a>{% if loop.first %} <span class="tag">current</span>{% endif %}</td>
+      <td><a href="/settings/history/{{ v.id }}">{{ v.id }}</a>{% if loop.first and not before %} <span class="tag">current</span>{% endif %}</td>
       <td>{{ v.created_at | localtime }}</td>
       <td class="muted">{{ v.created_by or "app" }}</td>
       <td>{{ v.note }}</td>
@@ -16,6 +16,7 @@
     {% endfor %}
   </tbody>
 </table>
+<p>{% if before %}<a href="/settings/history">Newest versions</a>{% endif %}{% if before and older %} · {% endif %}{% if older %}<a href="/settings/history?before={{ versions[-1].id }}">Older versions</a>{% endif %}</p>
 {% else %}
 <p class="empty">Nothing saved yet.</p>
 {% endif %}

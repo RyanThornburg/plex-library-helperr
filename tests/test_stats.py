@@ -621,6 +621,17 @@ class TestRequestsPage:
         assert '<option value="year" selected>' in page.text
         assert "made this year" in page.text
 
+    def test_a_long_list_shows_the_first_ones(self, client, monkeypatch):
+        monkeypatch.setattr("web.stats_routes.REQUESTS_SHOWN", 2)
+        page = client.get("/requests?period=all", headers=auth()).text
+        assert "the first 2 shown" in page and "period=all&amp;all=1" in page
+        assert "the first 2 shown" not in client.get("/requests?period=all&all=1", headers=auth()).text
+
+    def test_says_what_isnt_connected(self, client):
+        # the test config has neither seerr nor tautulli
+        page = client.get("/requests", headers=auth()).text
+        assert "Connect Seerr and Tautulli on" in page
+
     def test_sync_now(self, client):
         with patch.object(client.app.state.stats, "sync_now") as sync_now:
             response = client.post("/requests/sync", headers={**auth(), **ORIGIN}, follow_redirects=False)

@@ -5,12 +5,13 @@
 <div class="heading">
   <h1>Requests</h1>
   <form method="post" action="/requests/sync">
-    <button type="submit" class="button-secondary"{% if syncing %} disabled{% endif %}>{{ "Syncing…" if syncing else "Sync now" }}</button>
+    <button type="submit" class="button-secondary"{% if syncing or missing %} disabled{% endif %}>{{ "Syncing…" if syncing else "Sync now" }}</button>
   </form>
 </div>
 <p class="muted">Seerr requests, and whether the person who asked watched them, from Tautulli's plays. Synced every hour.
 {% if status.finished_at %}Last sync {{ status.finished_at | localtime }}: {{ status.requests }} requests, {{ status.plays_read }} plays read.{% endif %}</p>
 {% if syncing %}<p class="banner">Syncing. The first sync copies all of Tautulli's history and takes a few minutes; this page refreshes until it's done.</p>{% endif %}
+{% if missing %}<p class="banner banner-warn">Connect {{ missing | join(" and ") }} on <a href="/settings/connections">Settings → Connections</a> to see who requests what and whether they watch it here.</p>{% endif %}
 {% if status.error %}<p class="banner banner-bad">{{ status.error }}</p>{% endif %}
 
 <form method="get" action="/requests" class="filters">
@@ -79,19 +80,19 @@
 <h2>Requests</h2>
 
 {% if not total %}
-<p class="empty">No requests synced yet.</p>
+<p class="empty">No requests synced yet.{% if not missing %} The first sync starts with the app; Sync now reads them again.{% endif %}</p>
 {% elif not users and not requests %}
 <p class="empty">No requests made {{ filters.period_label() }}.</p>
 {% elif not requests %}
 <p class="empty">No requests match.</p>
 {% else %}
-<p class="muted">{{ requests | length }} of {{ total }} requests (made {{ filters.period_label() }}).</p>
+<p class="muted">{{ requests | length }} of {{ total }} requests (made {{ filters.period_label() }}){% if limit and requests | length > limit %}, the first {{ limit }} shown. <a href="/requests?{{ filters.query() | urlencode }}&amp;all=1">Show all</a>{% endif %}.</p>
 <table>
   <thead>
     <tr><th>Title</th><th>Requester</th><th>Requested</th><th>In Plex since</th><th>Requester's progress</th><th>Last played</th><th>Others</th></tr>
   </thead>
   <tbody>
-    {% for r in requests %}
+    {% for r in (requests[:limit] if limit else requests) %}
     {% set state = progress(r) %}
     <tr>
       <td>

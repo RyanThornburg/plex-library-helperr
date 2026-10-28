@@ -3,6 +3,8 @@
 {% block content %}
 {% if config_error %}
 <p class="banner banner-bad">The settings can't be loaded, every job will fail until it's fixed: {{ config_error }} <a href="/settings">Settings</a></p>
+{% elif no_arrs %}
+<p class="banner banner-warn">Radarr and Sonarr aren't connected, so movers and removers have nothing to work on. Connect them on <a href="/settings/connections">Settings → Connections</a>.</p>
 {% endif %}
 
 <section class="jobs">
@@ -42,7 +44,10 @@
   {% endfor %}
 </section>
 
-<h1>Recent runs</h1>
+<div class="heading section-heading">
+  <h1>{{ "Older runs" if before else "Recent runs" }}</h1>
+  {% if before %}<a href="/">Newest runs</a>{% endif %}
+</div>
 {% if runs %}
 <table>
   <thead>
@@ -63,7 +68,10 @@
     {% endfor %}
   </tbody>
 </table>
+{% if older %}<p><a href="/?before={{ runs[-1].id }}">Older runs</a></p>{% endif %}
+{% elif before %}
+<p class="empty">No runs before #{{ before }}.</p>
 {% else %}
-<p class="empty">No job runs yet.</p>
+<p class="empty">No job runs yet. Run one above, or <a href="/schedules/new">schedule it</a>.</p>
 {% endif %}
 {% endblock %}

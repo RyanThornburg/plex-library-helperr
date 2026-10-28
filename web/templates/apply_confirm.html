@@ -26,7 +26,7 @@
     {% for removal in selected %}
     <tr>
       <td>{{ removal.title }}{% if removal_service(removal) == "RADARR" %} <span class="tag">movie</span>{% endif %}</td>
-      <td>{{ removal.labels | join(", ") }}</td>
+      <td class="units">{{ removal.labels | join(", ") }}</td>
       <td>
         <details>
           <summary>{{ removal.files | length }}</summary>

@@ -40,7 +40,7 @@
 {% if removals %}
 <h2>{{ "Removed" if run.plan_run_id else "Planned removals" }}</h2>
 {% if applied_by %}
-<p class="banner">Applied by run {% for id in applied_by %}<a href="/runs/{{ id }}">#{{ id }}</a>{% endfor %}.</p>
+<p class="banner">Applied by run{{ "s" if applied_by | length > 1 }} {% for id in applied_by %}<a href="/runs/{{ id }}">#{{ id }}</a>{{ ", " if not loop.last }}{% endfor %}.</p>
 {% elif apply_problem %}
 <p class="banner banner-warn">{{ apply_problem }}</p>
 {% elif selectable %}
@@ -62,7 +62,7 @@
       {% endif %}
       <td>{{ removal.title }}{% if removal_service(removal) == "RADARR" %} <span class="tag">movie</span>{% endif %}</td>
       <td class="muted">{{ removal.rule }}</td>
-      <td>{{ removal.labels | join(", ") }}</td>
+      <td class="units">{{ removal.labels | join(", ") }}</td>
       <td>
         <details>
           <summary>{{ removal.files | length }}</summary>

@@ -37,7 +37,7 @@
         </details>
         {% else %}{{ d.titles | join(", ") }}{% endif %}
       </td>
-      <td class="queue-problem"><span class="state-word state-{{ d.level }}">{{ "error" if d.level == "bad" else "warning" }}</span> {{ d.detail }}</td>
+      <td><span class="state-word state-{{ d.level }}">{{ "error" if d.level == "bad" else "warning" }}</span> {{ d.detail }}</td>
       <td class="muted machine">{{ d.release }}{% if d.client %} · {{ d.client }}{% endif %}</td>
     </tr>
     {% endfor %}

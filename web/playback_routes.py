@@ -23,7 +23,7 @@ from web.playback import (
     report,
     window_plays,
 )
-from web.routes import templates
+from web.routes import missing_connections, templates
 from web.stats import sync_status
 
 router = APIRouter()
@@ -78,6 +78,7 @@ def playback_page(request: Request) -> HTMLResponse:
             "user": request.state.user,
             "status": sync_status(request.app.state.engine, STATUS_SETTING),
             "syncing": playback_sync(request).running,
+            "missing": missing_connections(request, "tautulli"),
             "filters": filters,
             "users": users,
             "report": report(plays),

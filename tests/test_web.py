@@ -284,6 +284,28 @@ class TestJobRoutes:
         assert 'href="/runs/1"' in page
         assert "live" in page  # live_config has dry_run off
 
+    def test_older_runs_a_page_at_a_time(self, client, monkeypatch):
+        monkeypatch.setattr("web.routes.RUNS_PAGE", 2)
+        for _ in range(3):
+            client.post("/jobs/movers?dry_run=true", headers={**auth(), **ORIGIN})
+            wait(client)
+        page = client.get("/", headers=auth()).text
+        assert 'href="/runs/3"' in page and 'href="/runs/1"' not in page
+        assert 'href="/?before=2">Older runs' in page
+        page = client.get("/?before=2", headers=auth()).text
+        assert 'href="/runs/1"' in page and 'href="/runs/3"' not in page and "Older runs</a>" not in page
+
+    def test_error_pages(self, client):
+        html = {**auth(), "Accept": "text/html"}
+        page = client.get("/runs/abc", headers=html)
+        assert page.status_code == 422 and "That can&#39;t be shown" in page.text and 'href="/status"' in page.text
+        page = client.get("/runs/99999999999999999999999", headers=html)
+        assert page.status_code == 404 and "Not found" in page.text
+        assert client.get("/runs/999", headers=html).status_code == 404
+        # the api keeps answering json
+        assert client.get("/api/runs/abc", headers=html).json()["detail"]
+        assert client.get("/api/runs/99999999999999999999999", headers=auth()).status_code == 404
+
     def test_confirm_page_warns_when_live(self, client):
         page = client.get("/jobs/movers/confirm", headers=auth()).text
         assert "will make changes" in page

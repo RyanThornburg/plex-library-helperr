@@ -1,3 +1,4 @@
+import re
 """Tests for the settings pages and config api, against a real store and fake lookups"""
 
 from datetime import timedelta
@@ -257,6 +258,28 @@ class TestConnections:
         post(client, "/settings/links", {"version": version(client), "action": "remove", "index": "1"})
         assert "links" not in document(client)
         assert post(client, "/settings/links", {"version": version(client), "action": "remove", "index": "1"}).status_code == 404
+
+    def test_history_a_page_at_a_time(self, client, monkeypatch):
+        monkeypatch.setattr("web.settings_routes.HISTORY_PAGE", 2)
+        for n in range(3):
+            post(client, "/settings/links", {"version": version(client), "action": "add", "name": f"L{n}", "url": "http://x"})
+        page = client.get("/settings/history", headers=auth()).text
+        assert 'href="/settings/history/3"' in page and 'href="/settings/history/1"' not in page
+        assert 'href="/settings/history?before=2">Older versions' in page
+        page = client.get("/settings/history?before=2", headers=auth()).text
+        assert 'href="/settings/history/1"' in page and '<span class="tag">current</span>' not in page
+
+    def test_a_rule_changed_in_another_tab_isnt_overwritten(self, client):
+        for path in ("/movies/a", "/movies/b"):
+            post(client, "/settings/radarr/movers/new", {"version": version(client), "action": "save", "path": path, "genres": "Family"})
+        form = client.get("/settings/radarr/movers/2", headers=auth()).text
+        loaded = re.search(r'name="loaded" value="(\w+)"', form).group(1)
+        # another tab deletes mover 1, so this form's number 2 no longer exists... or is another rule
+        post(client, "/settings/radarr/movers/new", {"version": version(client), "action": "save", "path": "/movies/c", "genres": "Family"})
+        post(client, "/settings/radarr/movers/1/delete", {"version": version(client)})
+        response = post(client, "/settings/radarr/movers/2", {"version": version(client), "loaded": loaded, "action": "save", "path": "/movies/b2", "genres": "Family"})
+        assert "changed since this form was opened" in response.text
+        assert [m["path"] for m in document(client)["radarr"]["movers"]] == ["/movies/b", "/movies/c"]
 
     def test_autoscan_without_password(self, client):
         response = post(client, "/settings/connections/autoscan", {"version": 0, "action": "save", "url": "http://autoscan:3030", "username": ""})

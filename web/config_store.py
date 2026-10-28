@@ -194,13 +194,13 @@ class ConfigStore:
             logger.info("WEB\t Config version %s saved by %s: %s", version.id, by, version.note)
             return version.id
 
-    def history(self, limit: int = 100) -> list[ConfigVersion]:
+    def history(self, limit: int = 100, before: int | None = None) -> list[ConfigVersion]:
+        """newest first, those before a version id when paging back"""
+        query = select(ConfigVersion).order_by(ConfigVersion.id.desc()).limit(limit)
+        if before is not None:
+            query = query.where(ConfigVersion.id < before)
         with Session(self.engine) as session:
-            return list(
-                session.scalars(
-                    select(ConfigVersion).order_by(ConfigVersion.id.desc()).limit(limit)
-                )
-            )
+            return list(session.scalars(query))
 
     def version(self, version_id: int) -> ConfigVersion | None:
         with Session(self.engine) as session:
