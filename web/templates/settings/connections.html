@@ -11,7 +11,7 @@
 <section class="card" id="{{ service }}">
   <div class="heading">
     <h2>{{ label }}</h2>
-    {% if configured and (secret or service == "autoscan") %}<span class="tag">connected</span>{% else %}<span class="tag tag-warn">not set up</span>{% endif %}
+    {% if configured and (secret or service == "autoscan") %}<span class="tag">connected</span>{% else %}<span class="tag">not set up</span>{% endif %}
   </div>
   <p class="hint">{{ hints[service] }}</p>
   {% if active == service %}

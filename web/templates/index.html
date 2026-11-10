@@ -28,7 +28,7 @@
       <td>
         {% if config_error %}<span class="tag">unknown</span>
         {% elif mode is none and job == "removers" and auto_rules %}<a class="tag tag-warn" href="/removers">review, auto-approve on for {{ auto_rules | length }}</a>
-        {% elif job == "removers" %}<span class="tag">plan for review</span>
+        {% elif job == "removers" %}<span class="tag tag-info">plan for review</span>
         {% elif mode is none %}<span class="tag tag-warn">mixed: live for some *arrs</span>
         {% elif mode %}<span class="tag">dry run</span>
         {% else %}<span class="tag tag-live">live</span>{% endif %}

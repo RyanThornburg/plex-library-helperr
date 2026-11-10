@@ -30,7 +30,7 @@ QUEUES = ("radarr", "sonarr")
 @dataclass
 class Badge:
     count: int
-    # "" (neutral), warn or bad
+    # info (work to do), warn or bad
     level: str
     # says what the count is, for screen readers and the tooltip
     label: str
@@ -189,7 +189,7 @@ def build_shell(path: str, needs: Needs) -> Shell:
                 parts.append(plural(needs.plans, "plan to review", "plans to review"))
             if needs.failed:
                 parts.append(plural(needs.failed, "failed run in the last day", "failed runs in the last day"))
-            item.badge = Badge(needs.plans + needs.failed, "bad" if needs.failed else "", ", ".join(parts))
+            item.badge = Badge(needs.plans + needs.failed, "bad" if needs.failed else "info", ", ".join(parts))
         if item.open:
             current = sub_of(path, subs)
             item.children = [NavItem(k, lbl, h, current=k == current) for k, lbl, h, _ in subs]

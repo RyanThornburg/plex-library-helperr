@@ -54,7 +54,7 @@
     <tr>
       <td class="long"><a href="/playback?{{ filters.query(user=d.user_id) | urlencode }}">{{ d.user }}</a></td>
       <td class="long">{{ d.player }}</td>
-      <td class="count"><span class="decision decision-transcode">{{ d.transcodes }}</span> of {{ d.plays }}</td>
+      <td class="count with-share"><span class="decision decision-transcode">{{ d.transcodes }}</span> of {{ d.plays }}{{ ui.share(d.transcodes * 100 / d.plays if d.plays else 0, rate=True) }}</td>
       <td class="change">{{ d.cause }}{% if d.now %}: {{ d.now }}{% endif %} <span class="muted">→</span> <strong>{{ d.change }}</strong></td>
     </tr>
     {% endfor %}
@@ -100,7 +100,7 @@
       <td>{{ u.plays }}</td>
       <td>{{ u.direct_play }}</td>
       <td>{{ u.direct_stream }}</td>
-      <td>{% if u.transcode %}<span class="decision decision-transcode">{{ u.transcode }}</span> <span class="muted">({{ u.transcode_percent }}%)</span>{% else %}0{% endif %}</td>
+      <td class="with-share">{% if u.transcode %}<span class="decision decision-transcode">{{ u.transcode }}</span> <span class="muted">({{ u.transcode_percent }}%)</span>{{ ui.share(u.transcode_percent, rate=True) }}{% else %}0{{ ui.share(0, rate=True) }}{% endif %}</td>
       <td>{{ u.main_cause or "-" }}{% if u.quality_limit %}<br><span class="muted">set to {{ u.quality_limit }}</span>{% endif %}{% if u.file_format %}<br><span class="muted">files: {{ u.file_format }}</span>{% endif %}</td>
       <td class="long">{{ u.players | join(", ") }}</td>
       <td>{{ latest(u.latest) }}</td>
@@ -124,7 +124,7 @@
       <td>{{ p.users }}</td>
       <td>{{ p.direct_play }}</td>
       <td>{{ p.direct_stream }}</td>
-      <td>{% if p.transcode %}<span class="decision decision-transcode">{{ p.transcode }}</span> <span class="muted">({{ p.transcode_percent }}%)</span>{% else %}0{% endif %}</td>
+      <td class="with-share">{% if p.transcode %}<span class="decision decision-transcode">{{ p.transcode }}</span> <span class="muted">({{ p.transcode_percent }}%)</span>{{ ui.share(p.transcode_percent, rate=True) }}{% else %}0{{ ui.share(0, rate=True) }}{% endif %}</td>
       <td>{{ p.main_cause or "-" }}{% if p.quality_limit %}<br><span class="muted">mostly {{ p.quality_limit }}</span>{% endif %}{% if p.file_format %}<br><span class="muted">files: {{ p.file_format }}</span>{% endif %}</td>
       <td>{{ latest(p.latest) }}</td>
     </tr>
@@ -146,7 +146,7 @@
     <tr>
       <td>{{ f.cause }}</td>
       <td>{{ f.format }}</td>
-      <td><span class="decision decision-transcode">{{ f.transcodes }}</span> of {{ f.plays }} <span class="muted">({{ f.percent }}%)</span></td>
+      <td class="with-share"><span class="decision decision-transcode">{{ f.transcodes }}</span> of {{ f.plays }} <span class="muted">({{ f.percent }}%)</span>{{ ui.share(f.percent, rate=True) }}</td>
       <td>{{ f.users }}</td>
       <td class="long">{% for name, count in f.players %}{{ name }} <span class="muted">({{ count }})</span>{% if not loop.last %}, {% endif %}{% endfor %}</td>
       <td>{{ f.last_transcoded_at | localtime }}</td>

@@ -68,7 +68,7 @@
       <td>{{ u.requests }}</td>
       <td class="date"><time datetime="{{ u.last_requested_at }}Z" data-date>{{ u.last_requested_at[:10] }}</time></td>
       <td>{{ u.available }}</td>
-      <td><a href="/requests?{{ filters.query(user=u.id, progress='finished', min_days=none) | urlencode }}">{{ u.finished }}</a>{% if u.finished_percent is not none %} <span class="muted">({{ u.finished_percent }}%)</span>{% endif %}</td>
+      <td class="with-share"><a href="/requests?{{ filters.query(user=u.id, progress='finished', min_days=none) | urlencode }}">{{ u.finished }}</a>{% if u.finished_percent is not none %} <span class="muted">({{ u.finished_percent }}%)</span>{{ ui.share(u.finished_percent) }}{% endif %}</td>
       <td><a href="/requests?{{ filters.query(user=u.id, progress='started', min_days=none) | urlencode }}">{{ u.started }}</a></td>
       <td><a href="/requests?{{ filters.query(user=u.id, progress='not_started', min_days=none) | urlencode }}">{{ u.not_started }}</a></td>
       <td><a href="/requests?{{ filters.query(user=u.id, progress='not_started', min_days=stale_days) | urlencode }}">{{ u.stale }}</a></td>

@@ -127,16 +127,16 @@
       "link-ink": {
         "role": "primary",
         "displayName": "Link Ink",
-        "canonical": "oklch(50.7% 0.112 66.7)",
+        "canonical": "oklch(52.5% 0.169 257.1)",
         "tonalRamp": [
-          "oklch(15% 0.048 66.7)",
-          "oklch(26% 0.083 66.7)",
-          "oklch(38% 0.112 66.7)",
-          "oklch(49% 0.112 66.7)",
-          "oklch(61% 0.112 66.7)",
-          "oklch(72% 0.090 66.7)",
-          "oklch(84% 0.051 66.7)",
-          "oklch(95% 0.016 66.7)"
+          "oklch(15% 0.073 257.1)",
+          "oklch(26% 0.125 257.1)",
+          "oklch(38% 0.169 257.1)",
+          "oklch(49% 0.169 257.1)",
+          "oklch(61% 0.169 257.1)",
+          "oklch(72% 0.135 257.1)",
+          "oklch(84% 0.078 257.1)",
+          "oklch(95% 0.024 257.1)"
         ]
       },
       "console-floor": {
@@ -423,6 +423,36 @@
           "oklch(84% 0.009 250.7)",
           "oklch(95% 0.003 250.7)"
         ]
+      },
+      "signal-blue": {
+        "role": "secondary",
+        "displayName": "Signal Blue",
+        "canonical": "oklch(52.5% 0.169 257.1)",
+        "tonalRamp": [
+          "oklch(15% 0.073 257.1)",
+          "oklch(26% 0.125 257.1)",
+          "oklch(38% 0.169 257.1)",
+          "oklch(49% 0.169 257.1)",
+          "oklch(61% 0.169 257.1)",
+          "oklch(72% 0.135 257.1)",
+          "oklch(84% 0.078 257.1)",
+          "oklch(95% 0.024 257.1)"
+        ]
+      },
+      "signal-blue-dark": {
+        "role": "secondary",
+        "displayName": "Signal Blue (dark)",
+        "canonical": "oklch(68.6% 0.136 255.2)",
+        "tonalRamp": [
+          "oklch(15% 0.058 255.2)",
+          "oklch(26% 0.100 255.2)",
+          "oklch(38% 0.136 255.2)",
+          "oklch(49% 0.136 255.2)",
+          "oklch(61% 0.136 255.2)",
+          "oklch(72% 0.108 255.2)",
+          "oklch(84% 0.062 255.2)",
+          "oklch(95% 0.019 255.2)"
+        ]
       }
     },
     "typographyMeta": {
@@ -538,7 +568,7 @@
       "kind": "custom",
       "refersTo": "service-line",
       "description": "Healthy services as one dim line each, opened for details.",
-      "html": "<ul class=\"ds-lines\"><li><details><summary class=\"ds-line\"><b>Radarr <span>5.14</span></b><span>ok</span><span>Queue 4 · Missing 132 · Cutoff unmet 867 · Free 37.0 TB</span></summary><p>Facts and items</p></details></li><li><div class=\"ds-line\"><b>Seerr</b><span>not connected</span><span><a href=\"#\">Connect Seerr</a></span></div></li></ul>",
+      "html": "<ul class=\"ds-lines\"><li><details><summary class=\"ds-line\"><b>Radarr <span>5.14</span></b><span>ok</span><span>Queue 4 \u00b7 Missing 132 \u00b7 Cutoff unmet 867 \u00b7 Free 37.0 TB</span></summary><p>Facts and items</p></details></li><li><div class=\"ds-line\"><b>Seerr</b><span>not connected</span><span><a href=\"#\">Connect Seerr</a></span></div></li></ul>",
       "css": ".ds-lines { list-style:none; margin:0; padding:0; font:15px/1.5 system-ui, sans-serif; background:var(--surface, #fff); border:1px solid var(--border, #d9dde3); border-radius:8px; overflow:hidden; } .ds-lines li + li { border-top:1px solid var(--border, #d9dde3); } .ds-line { display:grid; grid-template-columns: 12rem 7rem 1fr; gap:12px; padding:10px 16px; color:var(--muted, #5d6673); cursor:pointer; list-style:none; } .ds-line b { color:var(--text, #1c2128); } .ds-line b span { font-weight:400; font-size:13px; color:var(--muted, #5d6673); } .ds-line:hover { background: color-mix(in srgb, var(--text, #1c2128) 4%, transparent); } .ds-lines p { margin:0; padding:0 16px 12px; }"
     },
     {
@@ -546,7 +576,7 @@
       "kind": "card",
       "refersTo": "card",
       "description": "A service that needs you: whole state border, filled tag, problems first in a wash.",
-      "html": "<article class=\"ds-state-card\"><header><b>Sonarr</b><span class=\"ds-solid\">warning</span></header><ul><li><span class=\"ds-word\">warning</span> Low disk space: 412 GB free on /tv <span class=\"ds-dim\">· for 2d 4h</span></li></ul></article>",
+      "html": "<article class=\"ds-state-card\"><header><b>Sonarr</b><span class=\"ds-solid\">warning</span></header><ul><li><span class=\"ds-word\">warning</span> Low disk space: 412 GB free on /tv <span class=\"ds-dim\">\u00b7 for 2d 4h</span></li></ul></article>",
       "css": ".ds-state-card { font:15px/1.5 system-ui, sans-serif; display:flex; flex-direction:column; gap:8px; padding:14px 16px; max-width:340px; background:var(--surface, #fff); color:var(--text, #1c2128); border:1px solid var(--accent, #c7790b); border-radius:8px; } .ds-state-card header { display:flex; justify-content:space-between; align-items:center; } .ds-solid { padding:1px 8px; border-radius:999px; background:var(--accent, #c7790b); color:#111; font-size:12px; font-weight:600; } .ds-state-card ul { list-style:none; margin:0; padding:8px 12px; border-radius:6px; background: color-mix(in srgb, var(--accent, #c7790b) 10%, transparent); } .ds-word { font-size:13px; font-weight:600; color:var(--warn-text, #8f5600); } .ds-dim { color:var(--muted, #5d6673); }"
     },
     {
@@ -568,7 +598,7 @@
   ],
   "narrative": {
     "northStar": "The Control Room",
-    "overview": "**Creative North Star: \"The Control Room\"**\n\nHelperr is the room you walk into to check that the server is fine. When everything is healthy it is calm: cool grey floors, white (or slate) panels, black ink, thin rule lines, inside a dark frame. Color is reserved for meaning. Green says a thing worked, amber says look at this, red says something failed or something will be deleted. An operator scanning the screen should be able to find every problem by color alone, and a screen with no problems should have almost no color on it.\n\nIt is a dense, expert surface for one admin at a desktop browser. Information is laid out as tables, fact lists and small cards, not prose; numbers are tabular; logs, paths, release names and cron expressions are monospace. There is no imagery, no illustration, no motion and no shadow; the only pictures are small monochrome line icons, each next to a word. Depth comes from a panel sitting on a slightly darker floor, separated by a 1px rule. Light and dark themes follow the operating system (`prefers-color-scheme`); every color token has a dark counterpart.\n\nThe Status page is the reference for the idea: a one-line verdict first (\"All 5 connected services are OK\", or \"2 services need you: …\" linking to each), then a card for each service that needs you, then every healthy or unconnected service as a single dim line in one panel, opened for its details.\n\nThe shell is modelled on Sonarr and Radarr, so Helperr reads as a sibling *arr: a dark header and a dark sidebar in both themes, and a toolbar of icon-over-label actions above each page. The chrome frames the board; it never carries state color except the badges and pill that say something needs you.\n\nThe look is system-native on purpose: system fonts, native form controls, native `<details>`, `<progress>` and checkboxes, so pages render instantly, work without JavaScript, and satisfy a strict CSP with nothing to load.",
+    "overview": "**Creative North Star: \"The Control Room\"**\n\nHelperr is the room you walk into to check that the server is fine. When everything is healthy it is calm: cool grey floors, white (or slate) panels, black ink, thin rule lines, inside a dark frame. Color is reserved for meaning. Green says a thing worked, amber says look at this, red says something failed or something will be deleted. An operator scanning the screen should be able to find every problem by color alone, and a screen with no problems should have almost no color on it.\n\nIt is a dense, expert surface for one admin at a desktop browser. Information is laid out as tables, fact lists and small cards, not prose; numbers are tabular; logs, paths, release names and cron expressions are monospace. There is no imagery, no illustration, no motion and no shadow; the only pictures are small monochrome line icons, each next to a word. Depth comes from a panel sitting on a slightly darker floor, separated by a 1px rule. Light and dark themes follow the operating system (`prefers-color-scheme`); every color token has a dark counterpart.\n\nThe Status page is the reference for the idea: a one-line verdict first (\"All 5 connected services are OK\", or \"2 services need you: \u2026\" linking to each), then a card for each service that needs you, then every healthy or unconnected service as a single dim line in one panel, opened for its details.\n\nThe shell is modelled on Sonarr and Radarr, so Helperr reads as a sibling *arr: a dark header and a dark sidebar in both themes, and a toolbar of icon-over-label actions above each page. The chrome frames the board; it never carries state color except the badges and pill that say something needs you.\n\nThe look is system-native on purpose: system fonts, native form controls, native `<details>`, `<progress>` and checkboxes, so pages render instantly, work without JavaScript, and satisfy a strict CSP with nothing to load.",
     "keyCharacteristics": [
       "Neutral at rest; color only marks state (ok / warn / bad) and, in gold, the brand and where you are. A healthy service has no state color at all.",
       "A dark *arr-style frame in both themes: header, 212px sidebar, then a toolbar of the page's actions.",

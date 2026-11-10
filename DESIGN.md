@@ -5,7 +5,9 @@ colors:
   projector-amber: "#c7790b"
   projector-amber-dark: "#e5a00d"
   warning-ink: "#8f5600"
-  link-ink: "#8f5600"
+  link-ink: "#1a67c9"
+  signal-blue: "#1a67c9"
+  signal-blue-dark: "#5d9cec"
   signal-green: "#1a7f37"
   signal-green-dark: "#3fb950"
   alarm-red: "#c62828"
@@ -159,6 +161,11 @@ components:
     textColor: "{colors.on-amber}"
     rounded: "{rounded.pill}"
     height: "20px"
+  badge-info:
+    backgroundColor: "{colors.signal-blue}"
+    textColor: "{colors.panel}"
+    rounded: "{rounded.pill}"
+    height: "20px"
   badge-bad:
     backgroundColor: "{colors.alarm-fill-dark}"
     textColor: "{colors.panel}"
@@ -172,7 +179,7 @@ components:
 
 **Creative North Star: "The Control Room"**
 
-Helperr is the room you walk into to check that the server is fine. When everything is healthy it is calm: cool grey floors, white (or slate) panels, black ink, thin rule lines, inside a dark frame. Color is reserved for meaning. Green says a thing worked, amber says look at this, red says something failed or something will be deleted. An operator scanning the screen should be able to find every problem by color alone, and a screen with no problems should have almost no color on it.
+Helperr is the room you walk into to check that the server is fine. When everything is healthy it is calm: cool grey floors, white (or slate) panels, black ink, thin rule lines, inside a dark frame. Color is reserved for meaning. Green says a thing worked, amber says look at this, red says something failed or something will be deleted, and blue, as in Sonarr and Radarr, is a link, something in progress, or a number's share; blue is never a problem. An operator scanning the screen should be able to find every problem by color alone, and a screen with no problems should have almost no color on it.
 
 It is a dense, expert surface for one admin at a desktop browser. Information is laid out as tables, fact lists and small cards, not prose; numbers are tabular; logs, paths, release names and cron expressions are monospace. There is no imagery, no illustration, no motion and no shadow; the only pictures are small monochrome line icons, each next to a word. Depth comes from a panel sitting on a slightly darker floor, separated by a 1px rule. Light and dark themes follow the operating system (`prefers-color-scheme`); every color token has a dark counterpart.
 
@@ -195,13 +202,14 @@ The look is system-native on purpose: system fonts, native form controls, native
 A cool slate neutral scale with three signal colors, of which amber also carries the brand, inside a dark slate chrome.
 
 ### Primary
-- **Projector Amber** (light `projector-amber`, dark `projector-amber-dark`, `--accent`): the warning color for borders, fills and washes (a warning card's outline, the filled `WARNING` tag), focus rings on chip inputs and checkbox accents. Amber means brand, where you are, or a warning; it is never the primary action. The dark value is Plex's gold.
+- **Projector Amber** (light `projector-amber`, dark `projector-amber-dark`, `--accent`): the warning color for borders, fills and washes (a warning card's outline, the filled `WARNING` tag), and a share bar past its high mark. Amber means brand, where you are, or a warning; it is never the primary action. The dark value is Plex's gold.
 - **Gold** (`--gold`, the same value as `projector-amber-dark`, in both themes): the chrome's brand color. The "H" mark and the Helperr wordmark, the active sidebar section and sub page, focus rings in the chrome, and the warning badge.
 - **Primary** (`--primary` / `--on-primary`): the primary button. Ink with Panel text in light mode; Ink (dark) with Console Floor (dark) text in dark mode. Ink, so gold keeps meaning brand, here and warning.
-- **Link Ink** (`link-ink`, `--link`; dark mode uses Projector Amber): links, about 6:1 on white. The brand mark and the nav's hover stay Projector Amber.
-- **Warning Ink** (`warning-ink`, `--warn-text`; dark mode uses Projector Amber): amber as text. Warning words, warn tags, running/queued/blocked statuses and transcode decisions use it, because Projector Amber on white is only about 3.4:1.
+- **Link Ink** (`link-ink`, `--link`): Signal Blue in both themes. Links were amber until November 2026, which made every count in a table look like a warning.
+- **Warning Ink** (`warning-ink`, `--warn-text`; dark mode uses Projector Amber): amber as text. Warning words, warn tags, blocked statuses and transcode decisions use it, because Projector Amber on white is only about 3.4:1.
 
 ### Secondary
+- **Signal Blue** (`signal-blue` / `signal-blue-dark`, `--info`; `--info-fill` behind white text): the *arrs' blue, never a problem. Links, running and queued runs, started requests, the plan-for-review tag and the Activity badge's plans, info notes on Status, checkbox/radio/progress accents and text selection, chip-field focus, the rule preview's highlighted rows, and share bars. 5.5:1 on white (#1a67c9), 6.5:1 on the dark floor (#5d9cec, Sonarr's blue).
 - **Signal Green** (`signal-green` / `signal-green-dark`): success only. Succeeded and done runs, healthy services, direct play, finished requests, added diff lines.
 - **Alarm Red** (`alarm-red` / `alarm-red-dark`): failure and destruction. Failed runs, down services, errors, the danger button, the LIVE tag (a run that will really change or delete things), removed diff lines.
 - **Alarm Fill** (`--bad-fill`: Alarm Red in light mode, `alarm-fill-dark` in dark): red behind white text (the danger button, filled `DOWN`/`ERROR` tags). Dark mode's Alarm Red is too light for white text (3.4:1); Alarm Fill is 4.6:1.
@@ -223,11 +231,11 @@ Dark in both themes, a step darker in dark mode so the frame still sits below th
 - **Chrome Muted** (`chrome-muted`, `--chrome-muted`): sidebar sub pages and the signed-in email.
 
 ### Named Rules
-**The Quiet Board Rule.** A healthy screen is almost colorless. Green, amber and red appear only where a state needs reading; never use them for decoration, section color-coding or emphasis. Gold in the chrome marks the brand and where you are, nothing else.
+**The Quiet Board Rule.** A healthy screen is almost colorless. Green, amber and red appear only where a state needs reading; blue only on links, things in progress, selection and data. Never use any of them for decoration, section color-coding or emphasis. Waiting isn't failing: a request not started yet is Ink, not red. Gold in the chrome marks the brand and where you are, nothing else.
 
 **The Red Means Real Rule.** Alarm Red is for failures and for anything that deletes or goes live. A dry run is never red; it's Dim Ink.
 
-**The Amber Contrast Caveat.** Light-mode Projector Amber on white is about 3.4:1, below AA for body-size text. Warning text uses Warning Ink and links Link Ink; Projector Amber stays for fills, borders, focus of chip fields and checkbox/radio accents; Gold sits on the dark chrome, where it reads.
+**The Amber Contrast Caveat.** Light-mode Projector Amber on white is about 3.4:1, below AA for body-size text. Warning text uses Warning Ink; Projector Amber stays for fills, borders and washes; Gold sits on the dark chrome, where it reads.
 
 ## Typography
 
@@ -258,7 +266,7 @@ Spacing steps are 4, 8, 12, 16 and 24px. At 768px and below the sidebar becomes 
 
 ## Elevation & Depth
 
-Flat. There are no shadows anywhere. Depth is tonal: a panel (white / slate) on a slightly darker floor, outlined by a 1px Rule Line, all framed by the dark chrome. Highlighted rows get a 10% amber wash; diff lines get 15% green or red washes; the active sidebar section a 9% gold wash.
+Flat. There are no shadows anywhere. Depth is tonal: a panel (white / slate) on a slightly darker floor, outlined by a 1px Rule Line, all framed by the dark chrome. Highlighted rows (a rule preview's matches) get a 10% blue wash; ongoing warning incidents a 9% amber wash; diff lines get 15% green or red washes; the active sidebar section a 9% gold wash.
 
 ### Named Rules
 **The Flat Panel Rule.** Surfaces never lift. If something needs to stand out, give it a state color or move it up the page, not a shadow.
@@ -294,13 +302,13 @@ The page's actions, the way the *arrs show them. A strip 60px tall on Panel with
 A Lucide SVG sprite (ISC), self-hosted, drawn with `<use>`: 18px (20px in the toolbar), 2px stroke, round caps, `currentColor`, no fill. Every icon sits next to a word and is hidden from screen readers. Helperr's own mark is a gold rounded square with a dark "H", 28px in the header.
 
 ### Badges
-A count on a sidebar section, from the database only. A 20px pill, 12px 600 tabular numbers; the label is in visually hidden text and the tooltip. Neutral slate fill (`--chrome-badge`, #3a434e) for work to do, Gold with dark text for warn, Alarm Fill with white text for bad.
+A count on a sidebar section, from the database only. A 20px pill, 12px 600 tabular numbers; the label is in visually hidden text and the tooltip. Signal Blue (`--info-fill`) with white text for work to do, Gold with dark text for warn, Alarm Fill with white text for bad.
 - **Status:** services with open health incidents, in the worst level's color.
-- **Activity:** removers plans to review plus runs failed in the last 24 hours; red when any failed, neutral otherwise.
+- **Activity:** removers plans to review plus runs failed in the last 24 hours; red when any failed, blue otherwise.
 
 ### Tags
 - **Style:** pill, 1px Rule Line border, 12px text, transparent fill.
-- **State:** the border and text take the state color: LIVE in Alarm Red, warnings in Projector Amber (text in Warning Ink), ok in Signal Green. Dry run uses the neutral tag.
+- **State:** the border and text take the state color: LIVE in Alarm Red, warnings in Projector Amber (text in Warning Ink), ok in Signal Green, plan for review in Signal Blue. Dry run and "not set up" use the neutral tag.
 - **Solid:** a state that needs reading now is a filled pill, 600 weight: Alarm Fill with white text (`down`, `error`, an ongoing error incident), Projector Amber with On Amber text (`warning`, an ongoing warning).
 
 ### Cards / Containers
@@ -315,7 +323,7 @@ The main way data is shown. Panel background, 1px outer border and row rules, 8p
 
 ### Inputs / Fields
 - **Style:** Panel fill, 1px Rule Line border, 6px radius, 6px × 10px padding, body font; number inputs max 160px.
-- **Chip lists:** list fields (one value per line in a textarea) become a row of pill chips with an inline input when JavaScript runs; the field gets a 2px amber outline while focused.
+- **Chip lists:** list fields (one value per line in a textarea) become a row of pill chips with an inline input when JavaScript runs; the field gets a 2px Signal Blue outline while focused.
 - **Errors:** listed in Alarm Red above the form; hints sit under the field in 13px Dim Ink.
 
 ### Navigation
@@ -326,6 +334,9 @@ The main way data is shown. Panel background, 1px outer border and row rules, 8p
 
 ### Jobs Table
 Runs lists its jobs the way the *arrs' System → Tasks does: a "Jobs" table with the job (name in 600, a 13px Dim Ink description under it), Mode (a tag: dry run, live, mixed, plan for review), Next (the scheduled time and schedule, or the follow-up empty trash), Last run (number, status word, time or "Review the plan"), and right-aligned Dry run and Run… secondary buttons. Below 700px it stacks one job per block.
+
+### Share Bars
+A number's share drawn after it: a native `<meter>` (the CSP allows no inline widths), 56px × 6px, a pill track of 12% Ink, hidden from screen readers since the number beside it says it. Signal Blue is data (finished requests); a rate you want low (transcoded plays, `low=25 high=50 optimum=0`) turns Projector Amber past half. Used in the Requests users table and Playback's transcode columns, never as decoration or alone without the number.
 
 ### Banners
 A full-width notice under the page heading: 1px border, 6px radius, 10px × 14px padding. A warning or error banner takes the state color on its whole border over a 7–8% wash of it; a success banner has a green border on Panel.

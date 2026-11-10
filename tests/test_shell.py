@@ -87,7 +87,7 @@ class TestBuildShell:
 
     def test_activity_counts_plans_and_failed_runs(self):
         badge = section(build_shell("/status", Needs(plans=1)), "activity").badge
-        assert (badge.count, badge.level, badge.label) == (1, "", "1 plan to review")
+        assert (badge.count, badge.level, badge.label) == (1, "info", "1 plan to review")
         badge = section(build_shell("/status", Needs(plans=1, failed=2)), "activity").badge
         assert (badge.count, badge.level) == (3, "bad")
         assert badge.label == "1 plan to review, 2 failed runs in the last day"

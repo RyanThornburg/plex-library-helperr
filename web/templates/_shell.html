@@ -40,3 +40,9 @@
 {% macro tool_post(icon_name, label, action, disabled=False) -%}
 <form method="post" action="{{ action }}" class="tool-form"><button type="submit" class="tool"{% if disabled %} disabled{% endif %}>{{ icon(icon_name) }}{{ label }}</button></form>
 {%- endmacro %}
+
+{# a share as a small bar after its number, hidden from screen readers (the number says
+   it). rate=True is something you want low (transcoded plays): past half it's amber #}
+{% macro share(percent, rate=False) -%}
+<meter class="share" min="0" max="100" value="{{ percent }}"{% if rate %} low="25" high="50" optimum="0"{% endif %} aria-hidden="true"></meter>
+{%- endmacro %}
