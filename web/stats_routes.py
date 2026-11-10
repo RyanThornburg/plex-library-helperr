@@ -14,7 +14,8 @@ from sqlalchemy.orm import Session
 from web.db import MediaRequest
 from web.jobs import utc_now
 from web.routes import missing_connections, templates
-from web.stats import StatsSync, sync_status
+from web.stats import STATUS_SETTING, StatsSync
+from web.sync import sync_status
 
 router = APIRouter()
 
@@ -275,7 +276,7 @@ def requests_page(request: Request) -> HTMLResponse:
         "requests.html",
         {
             "user": request.state.user,
-            "status": sync_status(request.app.state.engine),
+            "status": sync_status(request.app.state.engine, STATUS_SETTING),
             "syncing": stats_sync(request).running,
             "filters": filters,
             "requests": shown,
@@ -306,7 +307,7 @@ def sync_now(request: Request) -> RedirectResponse:
 def api_requests(request: Request) -> JSONResponse:
     filters = parse_filters(request)
     now = utc_now()
-    status = sync_status(request.app.state.engine)
+    status = sync_status(request.app.state.engine, STATUS_SETTING)
     return JSONResponse(
         {
             "synced_at": status.finished_at.isoformat() if status.finished_at else None,

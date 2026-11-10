@@ -18,7 +18,7 @@ from web.app import create_app
 from web.db import HealthIncident
 from web.health import KEEP, REOPEN_WITHIN, STATUS_SETTING, check, issues, record, span, summary
 from web.jobs import utc_now
-from web.stats import SyncStatus, save_status, sync_status
+from web.sync import SyncStatus, save_status, sync_status
 from web.status import Item, ServiceStatus
 
 

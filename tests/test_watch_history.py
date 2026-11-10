@@ -8,7 +8,8 @@ import requests
 
 import watch_history
 from config.models import PlexConfig, TautulliConfig
-from watch_history import WatchEvent, get_tautulli_watches, get_watch_history, history_rows
+from tautulli import history_rows
+from watch_history import WatchEvent, get_tautulli_watches, get_watch_history
 
 TAUTULLI = TautulliConfig(url="http://tautulli:8181/", apikey="key")
 SINCE = datetime(2026, 9, 1)
@@ -135,7 +136,7 @@ class TestTautulliWatches:
             assert get_tautulli_watches(TAUTULLI, SINCE) is None
 
     def test_paginates(self):
-        page = [history_row()] * watch_history.TAUTULLI_PAGE_SIZE
+        page = [history_row()] * watch_history.HISTORY_PAGE
         pages = iter([page, [history_row()]])
 
         def fake_get(url, params, timeout):
@@ -145,7 +146,7 @@ class TestTautulliWatches:
 
         with patch.object(watch_history.requests, "get", side_effect=fake_get):
             events = get_tautulli_watches(TAUTULLI, SINCE)
-        assert len(events) == watch_history.TAUTULLI_PAGE_SIZE + 1
+        assert len(events) == watch_history.HISTORY_PAGE + 1
 
 
 class TestGetWatchHistory:

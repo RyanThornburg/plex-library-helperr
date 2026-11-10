@@ -29,7 +29,7 @@ from web.playback import (
     sync,
     sync_playbacks,
 )
-from web.stats import SyncStatus, save_status, sync_status
+from web.sync import SyncStatus, save_status, sync_status
 
 NOW = DAY + timedelta(days=40)
 
@@ -147,7 +147,7 @@ class FakeTautulli:
     def get(self, url, params, timeout):
         if params["cmd"] == "get_history":
             self.history_calls.append(params)
-            return response(tautulli_body({"data": self.pages[params["start"] // stats.TAUTULLI_PAGE]}))
+            return response(tautulli_body({"data": self.pages[params["start"] // playback.HISTORY_PAGE]}))
         self.stream_calls.append(params["row_id"])
         return response(tautulli_body(self.streams.get(params["row_id"], stream_row())))
 
@@ -162,7 +162,7 @@ class TestSyncPlaybacks:
             return {p.id: p for p in session.scalars(select(Playback))}
 
     def test_adds_new_plays_with_their_stream(self, engine, monkeypatch):
-        monkeypatch.setattr(stats, "TAUTULLI_PAGE", 2)
+        monkeypatch.setattr(playback, "HISTORY_PAGE", 2)
         fake = FakeTautulli(
             [
                 [history_row(id=3), history_row(id=2)],
@@ -213,7 +213,7 @@ class TestSync:
         assert status.error == "Needs Tautulli on Settings → Connections"
         assert sync_status(engine, STATUS_SETTING).error == status.error
         # the requests page's status is separate
-        assert sync_status(engine).error is None
+        assert sync_status(engine, stats.STATUS_SETTING).error is None
 
     def test_errors_are_saved_without_secrets(self, engine):
         settings = ConfigSettings(plex=PLEX, radarr=None, sonarr=None, tautulli=TAUTULLI)

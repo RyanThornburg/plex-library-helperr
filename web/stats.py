@@ -1,15 +1,13 @@
 """stats.py - request stats: who requested what in Seerr, and whether they watched it.
 
-StatsSync copies Tautulli's plays into the database (all of them the first time, then
+StatsSync (a web.sync.BackgroundSync) copies Tautulli's plays into the database (all of them the first time, then
 what's new) and rewrites the Seerr requests with what Plex has of each and how much the
 requester played, every SYNC_INTERVAL and when asked. It runs beside the JobRunner, so a
 long first sync never holds up movers. It only reads from the services"""
 
-import json
 import logging
-import threading
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -21,23 +19,19 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from config.models import ConfigSettings, PlexConfig, SeerrConfig, TautulliConfig
-from logging_config import redacted
 from movie_remover import PlayLookup, RadarrMovie
-from tautulli import TautulliRefused, tautulli_get
-from watch_history import history_rows, tautulli_after
-from web.db import AppSetting, MediaRequest, Play
+from tautulli import HISTORY_PAGE, PLAYS_OVERLAP, TautulliRefused, from_timestamp, history_rows, tautulli_after, tautulli_get
+from web.db import MediaRequest, Play
 from web.jobs import utc_now
 from web.lookups import redact
 from web.seerr import SeerrRefused, seerr_get
+from web.sync import BackgroundSync, SyncError, SyncStatus, as_int, as_text, save_status
 
 logger = logging.getLogger(__name__)
 
 SYNC_INTERVAL = timedelta(hours=1)
 TIMEOUT = 60
-TAUTULLI_PAGE = 1000
 SEERR_PAGE = 100
-# plays in progress have no history id yet, so each sync reads the last day again
-PLAYS_OVERLAP = timedelta(days=1)
 # rows per insert, under sqlite's limit on variables
 BATCH = 500
 STATUS_SETTING = "stats_sync"
@@ -54,31 +48,9 @@ MEDIA_STATUS = {
 }
 
 
-class StatsError(Exception):
-    """a sync that can't run or failed, the message is shown on the requests page"""
-
-
 # ---------------------------------------------------------------------------
 # tautulli plays
 # ---------------------------------------------------------------------------
-
-
-def _utc(timestamp: object) -> datetime | None:
-    try:
-        return datetime.fromtimestamp(int(timestamp), timezone.utc).replace(tzinfo=None)  # type: ignore[arg-type]
-    except TypeError, ValueError, OverflowError:
-        return None
-
-
-def _int(value: object) -> int | None:
-    try:
-        return int(value)  # type: ignore[arg-type]
-    except TypeError, ValueError:
-        return None
-
-
-def _text(value: object, length: int) -> str | None:
-    return str(value)[:length] if value not in (None, "") else None
 
 
 def _tautulli(config: TautulliConfig, cmd: str, **params: object) -> Any:
@@ -97,31 +69,31 @@ def normalize_guid(guid: str) -> str:
 def play_from_row(row: Mapping[str, Any]) -> dict[str, Any] | None:
     """a Play's columns from a get_history row, None for a play still in progress (no id
     yet) or a row it can't read"""
-    history_id = _int(row.get("id"))
-    started_at = _utc(row.get("started") or row.get("date"))
-    user_id = _int(row.get("user_id"))
+    history_id = as_int(row.get("id"))
+    started_at = from_timestamp(row.get("started") or row.get("date"))
+    user_id = as_int(row.get("user_id"))
     if history_id is None or started_at is None or user_id is None:
         return None
     return {
         "id": history_id,
         "started_at": started_at,
-        "stopped_at": _utc(row.get("stopped")),
+        "stopped_at": from_timestamp(row.get("stopped")),
         "user_id": user_id,
         "username": str(row.get("user") or "")[:255],
         "media_type": str(row.get("media_type") or "")[:16],
-        "rating_key": _int(row.get("rating_key")),
-        "grandparent_rating_key": _int(row.get("grandparent_rating_key")),
-        "season": _int(row.get("parent_media_index")) if row.get("media_type") == "episode" else None,
-        "episode": _int(row.get("media_index")) if row.get("media_type") == "episode" else None,
+        "rating_key": as_int(row.get("rating_key")),
+        "grandparent_rating_key": as_int(row.get("grandparent_rating_key")),
+        "season": as_int(row.get("parent_media_index")) if row.get("media_type") == "episode" else None,
+        "episode": as_int(row.get("media_index")) if row.get("media_type") == "episode" else None,
         "guid": normalize_guid(str(row.get("guid") or ""))[:255],
         "title": str(row.get("full_title") or row.get("title") or "")[:500],
-        "percent_complete": _int(row.get("percent_complete")) or 0,
+        "percent_complete": as_int(row.get("percent_complete")) or 0,
         "watched": row.get("watched_status") == 1,
-        "play_duration": _int(row.get("play_duration")),
-        "transcode_decision": _text(row.get("transcode_decision"), 32),
-        "platform": _text(row.get("platform"), 64),
-        "product": _text(row.get("product"), 64),
-        "player": _text(row.get("player"), 255),
+        "play_duration": as_int(row.get("play_duration")),
+        "transcode_decision": as_text(row.get("transcode_decision"), 32),
+        "platform": as_text(row.get("platform"), 64),
+        "product": as_text(row.get("product"), 64),
+        "player": as_text(row.get("player"), 255),
     }
 
 
@@ -144,7 +116,7 @@ def sync_plays(engine: Engine, config: TautulliConfig) -> int:
         "grouping": 0,
         "order_column": "date",
         "order_dir": "asc",
-        "length": TAUTULLI_PAGE,
+        "length": HISTORY_PAGE,
     }
     if last is not None:
         params["after"] = tautulli_after(last - PLAYS_OVERLAP)
@@ -160,10 +132,10 @@ def sync_plays(engine: Engine, config: TautulliConfig) -> int:
                 _upsert_plays(session, plays)
                 session.commit()
         read += len(plays)
-        if len(page) < TAUTULLI_PAGE:
+        if len(page) < HISTORY_PAGE:
             break
-        start += TAUTULLI_PAGE
-        if start % (TAUTULLI_PAGE * 20) == 0:
+        start += HISTORY_PAGE
+        if start % (HISTORY_PAGE * 20) == 0:
             total = data.get("recordsFiltered") if isinstance(data, dict) else None
             logger.info("STATS\t %s of %s plays read", read, total or "?")
     return read
@@ -231,8 +203,8 @@ def parse_request(raw: Mapping[str, Any]) -> ParsedRequest | None:
     """a seerr request's fields, None when it lacks what stats need"""
     media = raw.get("media") if isinstance(raw.get("media"), dict) else {}
     user = raw.get("requestedBy") if isinstance(raw.get("requestedBy"), dict) else {}
-    request_id = _int(raw.get("id"))
-    user_id = _int(user.get("id"))
+    request_id = as_int(raw.get("id"))
+    user_id = as_int(user.get("id"))
     requested_at = _iso_time(raw.get("createdAt"))
     media_type = raw.get("type") or media.get("mediaType")
     if request_id is None or user_id is None or requested_at is None or media_type not in ("movie", "tv"):
@@ -242,7 +214,7 @@ def parse_request(raw: Mapping[str, Any]) -> ParsedRequest | None:
         sorted(
             n
             for s in raw.get("seasons") or []
-            if isinstance(s, dict) and (n := _int(s.get("seasonNumber"))) is not None
+            if isinstance(s, dict) and (n := as_int(s.get("seasonNumber"))) is not None
         )
     )
     name = (
@@ -255,11 +227,11 @@ def parse_request(raw: Mapping[str, Any]) -> ParsedRequest | None:
     return ParsedRequest(
         id=request_id,
         media_type=media_type,
-        tmdb_id=_int(media.get("tmdbId")),
-        tvdb_id=_int(media.get("tvdbId")),
-        status=REQUEST_STATUS.get(_int(raw.get("status")) or 0, str(raw.get("status"))),
+        tmdb_id=as_int(media.get("tmdbId")),
+        tvdb_id=as_int(media.get("tvdbId")),
+        status=REQUEST_STATUS.get(as_int(raw.get("status")) or 0, str(raw.get("status"))),
         media_status=MEDIA_STATUS.get(
-            _int(media.get("status4k" if is_4k else "status")) or 0, "unknown"
+            as_int(media.get("status4k" if is_4k else "status")) or 0, "unknown"
         ),
         is_4k=is_4k,
         seasons=seasons,
@@ -268,7 +240,7 @@ def parse_request(raw: Mapping[str, Any]) -> ParsedRequest | None:
         requester=Requester(
             seerr_id=user_id,
             name=str(name)[:255],
-            plex_id=_int(user.get("plexId")),
+            plex_id=as_int(user.get("plexId")),
             plex_username=user.get("plexUsername") or None,
             email=user.get("email") or None,
         ),
@@ -281,14 +253,14 @@ def match_user(requester: Requester, users: Iterable[Mapping[str, Any]]) -> int 
     users = list(users)
     if requester.plex_id is not None:
         for u in users:
-            if _int(u.get("user_id")) == requester.plex_id:
+            if as_int(u.get("user_id")) == requester.plex_id:
                 return requester.plex_id
     for field, value in (("username", requester.plex_username), ("email", requester.email)):
         if not value:
             continue
         for u in users:
             if str(u.get(field) or "").casefold() == value.casefold():
-                return _int(u.get("user_id"))
+                return as_int(u.get("user_id"))
     return None
 
 
@@ -464,13 +436,13 @@ def movie_play_lookup(engine: Engine, settings: ConfigSettings) -> PlayLookup:
     def lookup(movies: list[RadarrMovie]) -> dict[int, list[datetime]]:
         tautulli, plex = settings.tautulli, settings.plex
         if tautulli is None or plex is None:
-            raise StatsError("needs Tautulli and Plex on Settings → Connections")
+            raise SyncError("needs Tautulli and Plex on Settings → Connections")
         try:
             sync_plays(engine, tautulli)
             index = PlexIndex(PlexServer(plex.baseurl, plex.token, timeout=TIMEOUT), ("movie",))
         except Exception as e:
             # requests errors hold urls, and tautulli's key is a query param
-            raise StatsError(redact(f"{type(e).__name__}: {e}", tautulli.apikey, plex.token)) from None
+            raise SyncError(redact(f"{type(e).__name__}: {e}", tautulli.apikey, plex.token)) from None
         found: dict[int, list[datetime]] = {}
         with Session(engine) as session:
             for movie in movies:
@@ -583,7 +555,7 @@ def _seerr_title(config: SeerrConfig, request: ParsedRequest) -> tuple[str, int 
         return f"TMDB {request.tmdb_id}", None
     title = details.get("title") or details.get("name") or f"TMDB {request.tmdb_id}"
     date = details.get("releaseDate") or details.get("firstAirDate") or ""
-    return str(title)[:500], _int(date[:4]) if date else None
+    return str(title)[:500], as_int(date[:4]) if date else None
 
 
 def sync_requests(
@@ -662,58 +634,6 @@ def sync_requests(
 # ---------------------------------------------------------------------------
 
 
-@dataclass
-class SyncStatus:
-    """the last sync, kept in app_settings so a restart shows it"""
-
-    started_at: datetime | None = None
-    finished_at: datetime | None = None
-    error: str | None = None
-    plays_read: int = 0
-    requests: int = 0
-
-    def to_json(self) -> str:
-        return json.dumps(
-            {
-                "started_at": self.started_at.isoformat() if self.started_at else None,
-                "finished_at": self.finished_at.isoformat() if self.finished_at else None,
-                "error": self.error,
-                "plays_read": self.plays_read,
-                "requests": self.requests,
-            }
-        )
-
-
-def sync_status(engine: Engine, key: str = STATUS_SETTING) -> SyncStatus:
-    with Session(engine) as session:
-        setting = session.get(AppSetting, key)
-    if setting is None:
-        return SyncStatus()
-    try:
-        data = json.loads(setting.value)
-        return SyncStatus(
-            started_at=_iso_time(data.get("started_at")),
-            finished_at=_iso_time(data.get("finished_at")),
-            error=data.get("error"),
-            plays_read=data.get("plays_read") or 0,
-            requests=data.get("requests") or 0,
-        )
-    except ValueError, AttributeError:
-        return SyncStatus()
-
-
-def save_status(engine: Engine, status: SyncStatus, key: str = STATUS_SETTING) -> None:
-    """stores a sync's status, its error redacted: it's shown on pages and api answers"""
-    if status.error:
-        status.error = redacted(status.error)
-    with Session(engine) as session:
-        setting = session.get(AppSetting, key) or AppSetting(key=key)
-        setting.value = status.to_json()
-        setting.updated_at = utc_now()
-        session.add(setting)
-        session.commit()
-
-
 def missing_connections(settings: ConfigSettings) -> list[str]:
     return [
         name
@@ -735,14 +655,14 @@ def sync(engine: Engine, settings: ConfigSettings) -> SyncStatus:
         if settings.tautulli is not None:
             status.plays_read = sync_plays(engine, settings.tautulli)
         if missing := missing_connections(settings):
-            raise StatsError(f"Needs {', '.join(missing)} on Settings → Connections")
+            raise SyncError(f"Needs {', '.join(missing)} on Settings → Connections")
         status.requests = sync_requests(
             engine, settings.seerr, settings.tautulli, settings.plex  # type: ignore[arg-type]
         )
         logger.info(
             "STATS\t Synced %s plays and %s requests", status.plays_read, status.requests
         )
-    except (StatsError, TautulliRefused, SeerrRefused) as e:
+    except (SyncError, TautulliRefused, SeerrRefused) as e:
         status.error = str(e)
         logger.info("STATS\t Not synced: %s", e)
     except Exception as e:
@@ -750,67 +670,16 @@ def sync(engine: Engine, settings: ConfigSettings) -> SyncStatus:
         status.error = redact(f"{type(e).__name__}: {e}", *secrets)
         logger.error("STATS\t Sync failed: %s", status.error)
     status.finished_at = utc_now()
-    save_status(engine, status)
+    save_status(engine, status, STATUS_SETTING)
     return status
 
 
-class StatsSync:
-    """syncs at start, every interval, and when sync_now() is called. Subclasses set
-    their own sync, interval and status key"""
+class StatsSync(BackgroundSync):
+    """the requests sync: Tautulli's plays and Seerr's requests, every SYNC_INTERVAL"""
 
     interval = SYNC_INTERVAL
     status_key = STATUS_SETTING
     thread_name = "stats-sync"
 
-    def __init__(self, engine: Engine, load_config: Callable[[], ConfigSettings]):
-        self.engine = engine
-        self.load_config = load_config
-        self.running = False
-        self._wake = threading.Event()
-        self._stop = threading.Event()
-        self._thread = threading.Thread(target=self._loop, name=self.thread_name, daemon=True)
-
-    def start(self) -> None:
-        self._thread.start()
-
-    def stop(self, timeout: float = 5) -> None:
-        self._stop.set()
-        self._wake.set()
-        self._thread.join(timeout)
-
-    def sync_now(self) -> None:
-        self._wake.set()
-
-    def run_once(self) -> SyncStatus:
-        self.running = True
-        try:
-            try:
-                settings = self.load_config()
-            except Exception as e:
-                now = utc_now()
-                status = SyncStatus(now, now, f"The settings can't be loaded: {e}")
-                save_status(self.engine, status, self.status_key)
-                return status
-            return self.sync(settings)
-        finally:
-            self.running = False
-
     def sync(self, settings: ConfigSettings) -> SyncStatus:
         return sync(self.engine, settings)
-
-    def _loop(self) -> None:
-        while not self._stop.is_set():
-            try:
-                self.run_once()
-            except Exception as e:
-                # anything a sync doesn't handle (a locked database while saving its
-                # status) is logged and the thread goes on, rather than dying and leaving
-                # pages showing the last good sync as current
-                logger.exception("WEB\t %s failed", self.thread_name)
-                try:
-                    now = utc_now()
-                    save_status(self.engine, SyncStatus(now, now, f"{type(e).__name__}: {e}"), self.status_key)
-                except Exception:
-                    logger.exception("WEB\t %s couldn't save its status", self.thread_name)
-            self._wake.wait(self.interval.total_seconds())
-            self._wake.clear()

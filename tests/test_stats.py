@@ -25,7 +25,6 @@ from web.stats import (
     PlexIndex,
     StatsSync,
     PlayFact,
-    StatsError,
     movie_play_lookup,
     find_plays,
     Requester,
@@ -37,8 +36,8 @@ from web.stats import (
     sync,
     sync_plays,
     sync_requests,
-    sync_status,
 )
+from web.sync import SyncError, sync_status
 
 TAUTULLI = TautulliConfig(url="http://tautulli:8181/", apikey="tautulli-key")
 SEERR = SeerrConfig(url="http://seerr:5055", apikey="seerr-key")
@@ -121,13 +120,13 @@ class TestPlays:
 
         def fake_get(url, params, timeout):
             calls.append(params)
-            return response(tautulli_body({"data": pages[params["start"] // stats.TAUTULLI_PAGE]}))
+            return response(tautulli_body({"data": pages[params["start"] // stats.HISTORY_PAGE]}))
 
         with patch.object(stats.requests, "get", side_effect=fake_get):
             return sync_plays(engine, TAUTULLI), calls
 
     def test_copies_every_page_then_only_new_plays(self, engine, monkeypatch):
-        monkeypatch.setattr(stats, "TAUTULLI_PAGE", 2)
+        monkeypatch.setattr(stats, "HISTORY_PAGE", 2)
         first = [[history_row(id=1), history_row(id=2)], [history_row(id=3, started=DAY + timedelta(days=5))]]
         read, calls = self.run_sync(engine, first)
         assert read == 3
@@ -458,7 +457,7 @@ class TestSync:
     def test_needs_the_connections(self, engine):
         status = sync(engine, ConfigSettings(plex=None, radarr=None, sonarr=None))
         assert status.error == "Needs Seerr, Tautulli, Plex on Settings → Connections"
-        assert sync_status(engine).error == status.error
+        assert sync_status(engine, stats.STATUS_SETTING).error == status.error
 
     def test_copies_plays_before_seerr_is_connected(self, engine):
         settings = ConfigSettings(plex=PLEX, radarr=None, sonarr=None, tautulli=TAUTULLI)
@@ -472,7 +471,7 @@ class TestSync:
         with patch.object(stats.requests, "get", side_effect=error):
             status = sync(engine, settings)
         assert "tautulli-key" not in status.error and "***" in status.error
-        assert sync_status(engine).finished_at is not None
+        assert sync_status(engine, stats.STATUS_SETTING).finished_at is not None
 
 
 # ---------------------------------------------------------------------------
@@ -523,13 +522,13 @@ class TestMoviePlayLookup:
 
     def test_needs_tautulli_and_plex(self, engine):
         lookup = movie_play_lookup(engine, ConfigSettings(plex=PLEX, radarr=None, sonarr=None))
-        with pytest.raises(StatsError, match="Tautulli and Plex"):
+        with pytest.raises(SyncError, match="Tautulli and Plex"):
             lookup([radarr_movie(1, tmdb_id=101)])
 
     def test_errors_hide_secrets(self, engine):
         error = requests.exceptions.ConnectionError("http://tautulli:8181/api/v2?apikey=tautulli-key failed")
         with patch.object(stats, "sync_plays", side_effect=error):
-            with pytest.raises(StatsError) as e:
+            with pytest.raises(SyncError) as e:
                 movie_play_lookup(engine, self.SETTINGS)([radarr_movie(1, tmdb_id=101)])
         assert "tautulli-key" not in str(e.value)
 

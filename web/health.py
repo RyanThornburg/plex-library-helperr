@@ -23,7 +23,7 @@ from config.models import ConfigSettings
 from logging_config import redacted
 from web.db import HealthIncident
 from web.jobs import utc_now
-from web.stats import StatsSync, SyncStatus, save_status
+from web.sync import BackgroundSync, SyncStatus, save_status
 from web.status import LEVELS, Item, Problem, ServiceStatus, check_all
 
 logger = logging.getLogger(__name__)
@@ -161,7 +161,7 @@ def check(engine: Engine, settings: ConfigSettings) -> SyncStatus:
     return status
 
 
-class HealthMonitor(StatsSync):
+class HealthMonitor(BackgroundSync):
     """checks at start, every CHECK_INTERVAL, and when sync_now() is called"""
 
     interval = CHECK_INTERVAL

@@ -23,7 +23,7 @@ from web.playback import (
     window_plays,
 )
 from web.routes import missing_connections, templates
-from web.stats import sync_status
+from web.sync import sync_status
 
 router = APIRouter()
 

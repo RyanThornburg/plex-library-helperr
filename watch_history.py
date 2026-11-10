@@ -3,20 +3,16 @@
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-
-from typing import Any
+from datetime import datetime, timezone
 
 import requests
 from plexapi import exceptions as plexapi_exceptions
 
 from config.models import PlexConfig, TautulliConfig
 from plex import setup_plex_server
-from tautulli import TautulliRefused, tautulli_get
+from tautulli import HISTORY_PAGE, TautulliRefused, from_timestamp, history_rows, tautulli_after, tautulli_get
 
 logger = logging.getLogger(__name__)
-
-TAUTULLI_PAGE_SIZE = 1000
 
 # new plex agents use "tvdb://123", legacy agents use "com.plexapp.agents.thetvdb://123?lang=en"
 TVDB_GUID_RE = re.compile(r"(?:^tvdb|thetvdb)://(\d+)")
@@ -41,13 +37,6 @@ def _tvdb_from_guids(guids: list[str]) -> int | None:
     return None
 
 
-def _from_timestamp(ts: object) -> datetime | None:
-    try:
-        return datetime.fromtimestamp(int(ts), timezone.utc).replace(tzinfo=None)  # type: ignore[arg-type]
-    except TypeError, ValueError, OverflowError:
-        return None
-
-
 def _tautulli(config: TautulliConfig, cmd: str, **params: object) -> object:
     return tautulli_get(config.url, config.apikey, cmd, **params)
 
@@ -66,22 +55,6 @@ def _tautulli_show_tvdb_id(config: TautulliConfig, rating_key: object) -> int | 
     return _tvdb_from_guids([*data.get("guids", []), data.get("guid") or ""])
 
 
-def tautulli_after(since: datetime) -> str:
-    """get_history's `after` for plays since a naive utc time. Tautulli compares it (on or
-    after) with each play's date in its own time zone, up to a day behind utc, so the
-    day before is asked for and callers check the exact times"""
-    return (since - timedelta(days=1)).date().isoformat()
-
-
-def history_rows(data: object) -> list[dict[str, Any]]:
-    """the rows of a get_history page. Anything else raises: read as no plays, it would
-    let removers delete what was just watched"""
-    rows = data.get("data") if isinstance(data, dict) else None
-    if not isinstance(rows, list) or not all(isinstance(r, dict) for r in rows):
-        raise ValueError(f"unexpected get_history answer: {type(data).__name__}")
-    return rows
-
-
 def get_tautulli_watches(
     config: TautulliConfig, since: datetime
 ) -> list[WatchEvent] | None:
@@ -97,13 +70,13 @@ def get_tautulli_watches(
                 grouping=0,
                 after=tautulli_after(since),
                 start=start,
-                length=TAUTULLI_PAGE_SIZE,
+                length=HISTORY_PAGE,
             )
             page = history_rows(data)
             rows.extend(page)
-            if len(page) < TAUTULLI_PAGE_SIZE:
+            if len(page) < HISTORY_PAGE:
                 break
-            start += TAUTULLI_PAGE_SIZE
+            start += HISTORY_PAGE
 
         tvdb_by_key: dict[object, int | None] = {}
         events: list[WatchEvent] = []
@@ -112,8 +85,8 @@ def get_tautulli_watches(
                 (
                     t
                     for t in (
-                        _from_timestamp(row.get("stopped")),
-                        _from_timestamp(row.get("date")),
+                        from_timestamp(row.get("stopped")),
+                        from_timestamp(row.get("date")),
                     )
                     if t
                 ),

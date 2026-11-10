@@ -29,7 +29,7 @@ from web.health import (
 from web.jobs import utc_now
 from web.routes import form_lists, templates
 from web.secret_box import SecretError
-from web.stats import sync_status
+from web.sync import sync_status
 from web.status import (
     BLOCKLIST,
     MAX_PROBLEMS,

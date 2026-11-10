@@ -20,23 +20,11 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from config.models import ConfigSettings, TautulliConfig
-from watch_history import history_rows, tautulli_after
 from web.db import Playback
-from tautulli import TautulliRefused
+from tautulli import HISTORY_PAGE, PLAYS_OVERLAP, TautulliRefused, from_timestamp, history_rows, tautulli_after, tautulli_get
 from web.jobs import utc_now
 from web.lookups import redact
-from web.stats import (
-    PLAYS_OVERLAP,
-    TAUTULLI_PAGE,
-    StatsError,
-    StatsSync,
-    SyncStatus,
-    _int,
-    _tautulli,
-    _text,
-    _utc,
-    save_status,
-)
+from web.sync import BackgroundSync, SyncError, SyncStatus, as_int, as_text, save_status
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +118,7 @@ FILE_MIN_USERS = 2
 
 
 def _flag(value: object) -> bool | None:
-    number = _int(value)
+    number = as_int(value)
     return None if number is None else bool(number)
 
 
@@ -138,9 +126,9 @@ def playback_from(row: Mapping[str, Any], stream: Mapping[str, Any] | None) -> d
     """a Playback's columns from a get_history row and its get_stream_data (None when
     tautulli has none), None for a play in progress (no id yet), music, or a row it
     can't read"""
-    history_id = _int(row.get("id"))
-    started_at = _utc(row.get("started") or row.get("date"))
-    user_id = _int(row.get("user_id"))
+    history_id = as_int(row.get("id"))
+    started_at = from_timestamp(row.get("started") or row.get("date"))
+    user_id = as_int(row.get("user_id"))
     if history_id is None or started_at is None or user_id is None or row.get("media_type") not in MEDIA_TYPES:
         return None
     s = stream or {}
@@ -150,34 +138,34 @@ def playback_from(row: Mapping[str, Any], stream: Mapping[str, Any] | None) -> d
         "user_id": user_id,
         "user": str(row.get("friendly_name") or row.get("user") or "")[:255],
         "media_type": row["media_type"],
-        "rating_key": _int(row.get("rating_key")),
+        "rating_key": as_int(row.get("rating_key")),
         "title": str(row.get("full_title") or row.get("title") or "")[:500],
-        "platform": _text(row.get("platform"), 64),
-        "product": _text(row.get("product"), 64),
-        "player": _text(row.get("player"), 255),
-        "location": _text(row.get("location"), 16),
-        "transcode_decision": _text(row.get("transcode_decision"), 32),
+        "platform": as_text(row.get("platform"), 64),
+        "product": as_text(row.get("product"), 64),
+        "player": as_text(row.get("player"), 255),
+        "location": as_text(row.get("location"), 16),
+        "transcode_decision": as_text(row.get("transcode_decision"), 32),
         "details": stream is not None,
-        "quality_profile": _text(s.get("quality_profile"), 64),
-        "container": _text(s.get("container"), 32),
-        "stream_container": _text(s.get("stream_container"), 32),
-        "container_decision": _text(s.get("stream_container_decision"), 32),
-        "video_decision": _text(s.get("video_decision") or s.get("stream_video_decision"), 32),
-        "video_codec": _text(s.get("video_codec"), 32),
-        "stream_video_codec": _text(s.get("stream_video_codec"), 32),
-        "video_resolution": _text(s.get("video_full_resolution"), 16),
-        "stream_video_resolution": _text(s.get("stream_video_full_resolution"), 16),
-        "video_dynamic_range": _text(s.get("video_dynamic_range"), 32),
-        "stream_video_dynamic_range": _text(s.get("stream_video_dynamic_range"), 32),
-        "audio_decision": _text(s.get("audio_decision") or s.get("stream_audio_decision"), 32),
-        "audio_codec": _text(s.get("audio_codec"), 32),
-        "stream_audio_codec": _text(s.get("stream_audio_codec"), 32),
-        "audio_channels": _int(s.get("audio_channels")),
-        "stream_audio_channels": _int(s.get("stream_audio_channels")),
-        "subtitle_decision": _text(s.get("stream_subtitle_decision") or s.get("subtitle_decision"), 32),
-        "subtitle_codec": _text(s.get("subtitle_codec"), 32),
-        "bitrate": _int(s.get("bitrate")),
-        "stream_bitrate": _int(s.get("stream_bitrate")),
+        "quality_profile": as_text(s.get("quality_profile"), 64),
+        "container": as_text(s.get("container"), 32),
+        "stream_container": as_text(s.get("stream_container"), 32),
+        "container_decision": as_text(s.get("stream_container_decision"), 32),
+        "video_decision": as_text(s.get("video_decision") or s.get("stream_video_decision"), 32),
+        "video_codec": as_text(s.get("video_codec"), 32),
+        "stream_video_codec": as_text(s.get("stream_video_codec"), 32),
+        "video_resolution": as_text(s.get("video_full_resolution"), 16),
+        "stream_video_resolution": as_text(s.get("stream_video_full_resolution"), 16),
+        "video_dynamic_range": as_text(s.get("video_dynamic_range"), 32),
+        "stream_video_dynamic_range": as_text(s.get("stream_video_dynamic_range"), 32),
+        "audio_decision": as_text(s.get("audio_decision") or s.get("stream_audio_decision"), 32),
+        "audio_codec": as_text(s.get("audio_codec"), 32),
+        "stream_audio_codec": as_text(s.get("stream_audio_codec"), 32),
+        "audio_channels": as_int(s.get("audio_channels")),
+        "stream_audio_channels": as_int(s.get("stream_audio_channels")),
+        "subtitle_decision": as_text(s.get("stream_subtitle_decision") or s.get("subtitle_decision"), 32),
+        "subtitle_codec": as_text(s.get("subtitle_codec"), 32),
+        "bitrate": as_int(s.get("bitrate")),
+        "stream_bitrate": as_int(s.get("stream_bitrate")),
         "hw_decoding": _flag(s.get("transcode_hw_decoding")),
         "hw_encoding": _flag(s.get("transcode_hw_encoding")),
     }
@@ -186,7 +174,7 @@ def playback_from(row: Mapping[str, Any], stream: Mapping[str, Any] | None) -> d
 def stream_data(config: TautulliConfig, history_id: int) -> dict[str, Any] | None:
     """how plex streamed a play, None when tautulli has nothing for it (it answers 400)"""
     try:
-        data = _tautulli(config, "get_stream_data", row_id=history_id)
+        data = tautulli_get(config.url, config.apikey, "get_stream_data", row_id=history_id)
     except TautulliRefused:
         return None
     except requests.HTTPError as e:
@@ -221,25 +209,25 @@ def sync_playbacks(engine: Engine, config: TautulliConfig, now: datetime) -> int
         "grouping": 0,
         "order_column": "date",
         "order_dir": "desc",
-        "length": TAUTULLI_PAGE,
+        "length": HISTORY_PAGE,
         # the started_at check below is exact
         "after": tautulli_after(since),
     }
     rows: list[Mapping[str, Any]] = []
     start = 0
     while True:
-        data = _tautulli(config, "get_history", start=start, **params)
+        data = tautulli_get(config.url, config.apikey, "get_history", start=start, **params)
         page = history_rows(data)
         rows += page
-        if len(page) < TAUTULLI_PAGE:
+        if len(page) < HISTORY_PAGE:
             break
-        start += TAUTULLI_PAGE
+        start += HISTORY_PAGE
     added = 0
     pending: list[dict[str, Any]] = []
     # tautulli pages newest first, so a play that starts while paging can't be skipped
     for row in reversed(rows):
-        history_id = _int(row.get("id"))
-        started_at = _utc(row.get("started") or row.get("date"))
+        history_id = as_int(row.get("id"))
+        started_at = from_timestamp(row.get("started") or row.get("date"))
         if history_id is None or history_id in known or started_at is None or started_at < since:
             continue
         if row.get("media_type") not in MEDIA_TYPES:
@@ -263,11 +251,11 @@ def sync(engine: Engine, settings: ConfigSettings) -> SyncStatus:
     status = SyncStatus(started_at=utc_now())
     try:
         if settings.tautulli is None:
-            raise StatsError("Needs Tautulli on Settings → Connections")
+            raise SyncError("Needs Tautulli on Settings → Connections")
         status.plays_read = sync_playbacks(engine, settings.tautulli, status.started_at)  # type: ignore[arg-type]
         if status.plays_read:
             logger.info("PLAYBACK\t Added %s plays", status.plays_read)
-    except (StatsError, TautulliRefused) as e:
+    except (SyncError, TautulliRefused) as e:
         status.error = str(e)
         logger.info("PLAYBACK\t Not synced: %s", e)
     except Exception as e:
@@ -279,7 +267,7 @@ def sync(engine: Engine, settings: ConfigSettings) -> SyncStatus:
     return status
 
 
-class PlaybackSync(StatsSync):
+class PlaybackSync(BackgroundSync):
     """syncs at start, every INTERVAL, and when sync_now() is called"""
 
     interval = INTERVAL
