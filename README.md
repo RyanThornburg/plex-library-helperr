@@ -1,388 +1,265 @@
 # Plex Library Helperr
 
-Script to help automate/organize your Radarr/Sonarr movie library. Originally created for Radarr to move documentaries to their own library/folder and grew from there. It's configurable enough to handle a variety of sorting rules.
+This started as a script to move documentaries in Radarr to their own folder and library. It grew from there. Version 2 adds a web app, so I can keep an eye on my Plex setup and run jobs from one place instead of logging into Radarr, Sonarr, Seerr and SABnzbd one by one.
 
-I used **Movers** for moving files to different library. I use **Profilers** primarly as a hack to prevent certain movies from being downloaded. Sort of a silent fail to prevent certain requests from ever being added. The profile I use for that basically means the movie will never reach the desired score and it auto unmonitors it.
+It does four kinds of jobs against Radarr and Sonarr:
 
-**I suggest testing with `dry_run=true` until you're sure you like the results.**
+- **Movers** move movies or series to a different root folder based on genre, tag, studio, network or certification. I use these to split things like documentaries, kids shows and holiday movies into their own Plex libraries.
+- **Profilers** set the quality profile of matching movies or series. I mostly use this as a hack to quietly block certain requests: the profile they get can never be met, so they never download.
+- **Removers** clean up old stuff. For Sonarr they delete old seasons or episodes of tagged series and keep the latest ones (good for daily shows). For Radarr they delete old movies from a root folder.
+- **Empty trash** empties the Plex trash, for servers with "Empty trash automatically after every scan" turned off. It skips any library that's scanning or has a suspiciously full trash.
 
-## Features
+The web app adds a status page for all your services, request and watch stats, and playback quality stats. More on those below.
 
-- **Dry run mode**  -  preview what would change without touching anything
-- **Time filter**  -  only evaluate media added within a recent window
-- **Movers**  -  moves movies (radarr)/series (sonarr) to a different root folder based on genre, studio, network, certification, or a combination
-- **Profilers**  -  assigns a quality profile to movies/series matched by title or studio/network
-- **Removers**  -  unmonitors and deletes old seasons/episodes from tagged series, keeping the latest ones (Sonarr), and deletes old movies from a root folder (Radarr)
-- **Empty trash**  -  empties Plex library trash on demand, skipping libraries that are scanning or have a suspiciously full trash
+**Test with dry run on until you like the results.** A new install starts in dry run.
 
-**Removers delete files.** They only plan: nothing is deleted until you approve a plan in the web app, or turn on auto-approve for a rule there. Run from the command line, they log their plan and delete nothing.
+## Screenshots
 
-## Requirements
+All of the data in these is made up.
 
-- Python 3.14+ (nothing specific to 3.14 that I know, just what I tested on)
-- [uv](https://github.com/astral-sh/uv) (recommended) or pip
+**Status.** One line tells you if anything needs you. Services with problems get a card, healthy ones get one line.
 
-## Setup
+![Status page](docs/screenshots/status.png)
 
-```bash
-# Install dependencies
-uv sync
+**Runs.** Every job, when it runs next, and how its last run went.
 
-# Run movers and profilers
-uv run main.py
+![Runs page](docs/screenshots/runs.png)
 
-# Run removers only, they plan for review (movers and profilers are skipped)
-uv run main.py --remove
+**Removers plan.** Removers never delete on their own. Each run makes a plan and you pick what to remove.
 
-# Empty Plex library trash only
-uv run main.py --empty-trash
-```
+![A removers plan waiting for review](docs/screenshots/removers-plan.png)
 
-Each run ends with a summary of what it changed (or would change in a dry run) and exits with status 1 if anything failed.
+**Requests.** Who requested what, and whether they actually watched it.
 
-The command line uses the web app's settings: the database `helperr.db` in `DATA_DIR` (or the repo), with `HELPERR_SECRET_KEY` set to the same value as the web app, since it decrypts the API keys.
+![Requests page](docs/screenshots/requests.png)
 
-`--remove` is a separate run so you can schedule it on its own, less often than the movers. It ignores `filter_time`.
+**Playback.** Who is transcoding, on which device, and what to change to fix it.
 
-`--empty-trash` is for Plex servers with "Empty trash automatically after every scan" turned off. Removers and movers only trigger a scan, which moves deleted files to the trash. Schedule `--empty-trash` to run after those scans have finished (with Autoscan, the scan happens after its `minimum-age`).
+![Playback page](docs/screenshots/playback.png)
 
-Settings are made in the web app (see below).
+## What the web app does
 
-## Docker (Unraid)
+- **Status:** what Plex (through Tautulli), Radarr, Sonarr, SABnzbd, Bazarr and Seerr are doing right now. Health warnings, stuck downloads, failed downloads, low disk space, who's streaming. Stuck downloads can be removed from here, the same way you would in Radarr or Sonarr. Health checks run every 5 minutes in the background and keep a history of problems for a year.
+- **Runs and schedules:** run any job by hand (with a **Dry run** button or a **Run...** button that asks first), or on a cron schedule. Every run is kept with what it changed and its log.
+- **Removers:** each run plans what it would delete. You review the plan, tick what to remove, and confirm. Once you trust a rule you can turn on auto-approve for it.
+- **Webhooks:** point Radarr's and Sonarr's webhook at the app and movers run as soon as something is added, before it downloads. File upgrades queue a trash empty a little later.
+- **Requests:** every Seerr request, who made it, when it reached Plex and how much of it they watched. Uses Tautulli's history.
+- **Playback:** how each play was streamed and why it transcoded (quality setting, audio format, subtitles, HDR and so on), grouped by person and device with what to change.
+- **Settings:** everything is set up in the app, including connections (with a Test button) and rules (with a Preview button that shows what a rule would match before you save it). Every save is kept as a version you can compare and restore.
+- **Events and logs:** the app's log, viewable and downloadable from the app.
+- **JSON API:** most pages have a matching `/api/...` endpoint (runs, schedules, config, status, requests, playback).
 
-The image runs one job and exits. Settings and logs live in the `/config` volume (the web app's `helperr.db` and `logs/`), and the container runs as Unraid's `nobody:users` (99:100).
+## Upgrading from version 1
 
-Every push to `mainline` runs the tests and publishes `ghcr.io/ryanthornburg/plex-library-helperr:latest`, the script-only version; pushes to the `v2` branch, which adds the web app, publish `:v2`. Both also get a `sha-<commit>` tag to pin or roll back to.
+Version 1 read `config.toml`. Version 2 doesn't. Settings live in the app's database and are edited on the Settings pages, so set up the web app first and enter your connections and rules there. The command line jobs still work, but they read the same database (see [Running jobs without the web app](#running-jobs-without-the-web-app)).
 
-### Docker tab
+## Setup (Docker on Unraid)
 
-Add Container, one per job:
+The image is `ghcr.io/ryanthornburg/plex-library-helperr:latest`. Every push to `mainline` runs the tests and publishes it, along with a `sha-<commit>` tag you can pin or roll back to.
 
-| Field | Value |
-|---|---|
-| Repository | `ghcr.io/ryanthornburg/plex-library-helperr:latest` |
-| Network Type | The custom network your *arr containers are on, if the settings use container names (see below) |
-| Extra Parameters | `--read-only --cap-drop ALL --security-opt no-new-privileges` |
-| Post Arguments | Empty for movers/profilers, `--remove`, or `--empty-trash` |
-| Path | Container path `/config`, host path `/mnt/user/appdata/plex-library-helperr/config` (the web app's, it holds the settings) |
-| Variable | `HELPERR_SECRET_KEY` = the web app's |
-| Variable (optional) | `TZ` = your zone, e.g. `America/New_York`, for local log timestamps |
+The web app only accepts requests that come through [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/). It checks every request for a valid Access token and your email, and it won't start without those settings. It's reached through a Cloudflare Tunnel, so the container publishes no port and nothing on your router points at it.
 
-- **Apply starts the container right away**, and runs with the web app's settings.
-- **Turn Autostart off** on the Docker tab, or the job runs every time the array starts.
-- Run a job with **Start**; the container stops when the job finishes. Its log icon shows the output, and `logs/log.log` in the config folder keeps it.
-- Updates show on the Docker tab like any other container (or let the CA Auto Update plugin apply them).
-- If the run fails with `Permission denied: '/config/logs'`, the container user can't write the config folder: `chown 99:100 /mnt/user/appdata/plex-library-helperr/config`.
+### 1. Cloudflare
 
-Service URLs can't use `localhost`, which inside the container is the container itself. The server's IP works as it would from any other machine. Container names (e.g. `http://sonarr:8989`) work when this container is on the same custom network as those containers. Plex in host network mode has no container name to use, so give it the server's IP.
-
-### User Script (alternative)
-
-For running jobs from a schedule without the web app (with the web app, use its Schedules page instead):
-
-```bash
-#!/bin/bash
-IMAGE=ghcr.io/ryanthornburg/plex-library-helperr:latest
-# set only when the settings use container names
-NETWORK_ARGS=()  # e.g. NETWORK_ARGS=(--network my-docker-network)
-docker pull -q "$IMAGE"
-docker run --rm "${NETWORK_ARGS[@]}" \
-  --read-only --cap-drop ALL --security-opt no-new-privileges \
-  -v /mnt/user/appdata/plex-library-helperr/config:/config \
-  "$IMAGE"            # add --remove or --empty-trash for those jobs
-docker image prune -f --filter "label=org.opencontainers.image.title=plex-library-helperr"
-```
-
-### Other
-
-- To build locally: `docker build -t plex-library-helperr .` in a clone of this repo.
-- Outside Docker, set `DATA_DIR` to keep `helperr.db` and `logs/` somewhere other than the repo.
-
-## Web app (in progress)
-
-`--serve` runs a web app for running and reviewing jobs:
-
-- **Settings** are made in the app and stored in its database: connections to Radarr, Sonarr, Plex, Tautulli, Seerr, SABnzbd and Autoscan (with a Test button), dry run, movers and profilers per *arr, removers, empty trash, and the follow-up/plan defaults. Rule fields suggest values from Radarr/Sonarr/Plex (root folders, tags, genres, profiles, libraries…), and **Preview matches** shows what a mover or profiler would match in the whole library before you save it. Any change that turns a job's dry run off goes through a confirmation page.
-- **History:** every save is a version with who and when. A version's page shows what changed, and can restore it (as a new version).
-- **Status:** one page with what each service is doing now, so you don't have to open each one. Plex (from Tautulli): who's playing what, direct play or transcode, and bandwidth. Radarr and Sonarr: their health warnings, queue downloads that need attention (stuck imports, failed downloads, with the reason), missing and cutoff-unmet counts, and free space. SABnzbd: status, speed, what's left, free space, warnings, failed downloads in the last 7 days and the queue. Bazarr: health issues, throttled providers, whether it gets live updates from Sonarr and Radarr, and how many episode and movie subtitles are wanted. Seerr: requests waiting for approval (a note, not a warning), processing and available, and open issues. The page opens with one line saying whether anything needs you. A service with a warning, an error or that's down gets a card with its problems first and how long each has lasted (a down card links to its connection settings); healthy and unconnected services are one line each, opened for their details. A service that's down only marks its own card. Each service links to its own web UI: the public URL you set on its connection when there is one, or the local one; links to other tools (`[[links]]`, e.g. Tracearr) sit under the services; a switch under them makes this browser use the local addresses instead (remembered in the browser, so a desktop at home can use local ones and a phone the public ones). A warning or error can be muted in the browser until it clears; a service with everything muted goes quiet and leaves the summary line (muting doesn't change the health history). It refreshes every minute (`?refresh=0` pauses it) and only reads (`/api/status`). The one thing it changes is on request: **Remove stuck downloads…** under Radarr's or Sonarr's card lists the stuck downloads (a season pack is one row) with checkboxes and Select all, and removes the selected ones like Remove in the arr's queue: from the download client or only from the queue, and don't blocklist, blocklist and search for a replacement, or blocklist only. Each one is checked again first, and one that isn't stuck any more is left alone (`GET /api/status/{radarr,sonarr}/queue`, `POST /api/status/{radarr,sonarr}/queue/remove` with `{"downloads": [keys], "method": "client"|"ignore", "blocklist": "none"|"search"|"only"}`). Health checks run the same checks every 5 minutes in the background, so problems are recorded even when nobody has the page open: each problem (a service that's down, a health warning, low disk space under `[web] min_free_gb`, a stuck queue record, SABnzbd paused, a failed download or warning, Plex unreachable) is kept from when it was first seen to when it cleared. Status lists the last 7 days' problems, and Status history (`/status/history`, `/api/status/history` with `days=1|7|30|90|365` and `service`) shows them per service with how long each was down. Seerr's pending requests and open issues aren't recorded, they're work rather than faults. A service that can't be checked counts as down, and its other problems stay open until it can be checked again. Kept for a year.
-- **Secrets:** API keys, the Plex token and the Autoscan password are encrypted with `HELPERR_SECRET_KEY` before they're stored, kept out of the history, and never shown again: leave a key field empty to keep the saved one. If `HELPERR_SECRET_KEY` changes, the keys can't be decrypted and have to be entered again.
-- Each job has a **Dry run** button, which forces every dry run setting on, and a **Run…** button, which uses the settings as they are. Run… always goes to a confirmation page that says whether the run will make changes.
-- **Remover plans:** removers runs only plan. Every removers run saves its plan: the seasons/episodes it would remove from each series, and the movies Radarr removers would delete, with their file paths. On the run's page, select series/movies and review: the confirmation page shows how many files will be deleted, then an apply run removes them. The apply run plans each approved series or movie again from fresh Sonarr/Radarr data and removes only what was approved and is still eligible: anything watched, replaced, downloading or no longer outside the keep window since is skipped and reported. Each *arr's `max_deletes` still applies. A plan can be applied once, within 7 days (Settings → General). Applying is off unless the container has `REMOVERS_ALLOW_APPLY=true`.
-- **Auto-approve:** the Removers page lists the remover rules, each with an auto-approve switch (off by default, turning it on goes through a confirmation page). A removers run that isn't forced dry (Run…, or a schedule without "Force dry run") deletes an auto-approved rule's removals without review; other rules' removals are planned for review. Forced dry runs never delete, `max_deletes` applies, and it needs `REMOVERS_ALLOW_APPLY=true` like applying a plan. Editing or deleting a rule turns its auto-approve back off.
-- **Follow-up empty trash:** 15 minutes after a live movers or removers run moves or removes files, or Radarr/Sonarr upgrade a file (the webhook's *On File Upgrade*, under *On File Import*), the app queues an empty trash run with the settings' dry run, so trash doesn't wait for a schedule. Changes close together share one run, and a steady stream of upgrades waits at most four delays (an hour by default). One that's blocked (e.g. a scan still running) is tried again, up to 3 runs per batch of changes. The delay, attempts (0 turns it off) and look back are on Settings → General. The empty trash card shows when the next follow-up is due.
-- **Requests:** with Seerr, Tautulli and Plex connected, the Requests page shows every Seerr request, who made it, when it reached Plex, and how much of it the requester has watched (a movie finished, started or not; a show as episodes of the requested seasons), plus how many other people played it. A table per requester counts their requests and what became of them, including how many they haven't started after 30 days in Plex. Both cover requests made in a period, this calendar year by default (also last year, the last 30/90 days or 12 months, all time, or custom dates), with filters for requester, type, progress and days in Plex (`/api/requests`, `/api/requests/users`, `period=year|last_year|30d|90d|365d|all|custom` with `since`/`until`). It syncs every hour in the background (and with **Sync now**): the first sync copies Tautulli's whole history into the app's database, which takes a few minutes, later ones only what's new. Plays are matched by Plex's own ids, so media moved to another library keeps its history. It only reads; nothing is deleted.
-- **Playback:** with Tautulli connected, how Plex streamed each movie and episode played, and why it transcoded, to see where problems happen now. It starts tracking with the 30 days before its first sync (it never reads older history), then adds new plays every 10 minutes (and with **Sync now**), and keeps them for a year. Pick the last 24 hours, 7 days (default), 30, 90 or 180 days or 12 months, and one user or everyone. It shows the share of direct play, direct stream and transcode; the main cause of each transcode (the player's quality setting, burned-in subtitles, HDR to SDR, a video format or resolution the player can't play, audio only, or not recorded) with what to do about it; each user and player with their transcode rate, the quality limit they're set to, the file format that transcodes most for them and their latest play, so you can see a fix take effect; how often each file format (e.g. EAC3 5.1 audio, PGS subtitles) made plays transcode, of all its plays, and on which players, to tell a format worth avoiding from one player's problem; files that transcode for several people; and recent transcodes with what was converted (`/api/playback`, `window=24h|7d|30d|90d|180d|365d`, `user`). It only reads.
-- **Webhooks:** with Radarr's *On Movie Added* and Sonarr's *On Series Add* webhooks pointed at the app, movers run as soon as something is added, so it moves to its root folder before anything downloads (no file move, no Plex trash). Adds close together share one run. With *On File Import* and its *On File Upgrade* on as well (other imports are ignored), each upgrade queues a follow-up empty trash for the old file Plex keeps in its trash. Set it up from Settings → Webhook, which shows the app's API key (generated on first start, regenerate any time) and the webhook URL: `http://plex-library-helperr:<PORT>/webhooks/arr`, method POST, and a header `X-Api-Key` set to the API key (versions without webhook headers can send it as the password, with any username). Radarr/Sonarr reach it over the shared Docker network; the key is only accepted there, and only starts movers (and the follow-up empty trash). Keep a movers schedule as a safety net.
-- Jobs run one at a time in the order queued. A job that's already queued or running can't be queued again.
-- Every run is kept with who started it, what it changed (or would change), errors and its log. Runs interrupted by a restart are marked failed and never re-run automatically.
-- **Schedules** run a job on a cron expression (`minute hour day month weekday`, or `@hourly`/`@daily`/`@weekly`/`@monthly`) in the schedule's own time zone, which a new schedule takes from your browser. They're created and edited on the Schedules page. Like the buttons, a schedule either forces dry run (the default) or uses the settings. A schedule whose job is still queued or running skips that time, and times missed while the app was down are skipped rather than caught up.
-- The same actions are available as JSON: `POST /api/jobs/<movers|removers|empty_trash>` (body `{"dry_run": false}` for a config run, dry by default), `GET /api/runs`, `GET /api/runs/<id>`, and `GET`/`POST /api/schedules`, `GET`/`PUT`/`DELETE /api/schedules/<id>` (body `{"name", "job", "cron", "timezone": "UTC", "dry_run": true, "enabled": true}`), `POST /api/runs/<id>/apply` (body `{"items": ["sonarr:<series id>", "radarr:<movie id>"]}`) to apply a removers plan, `GET /api/removers`, `POST /api/removers/auto-approve` (body `{"rule": "<a Sonarr remover's tags, lowercased, sorted, comma joined, or radarr:<root folder>>", "enabled": true}`), and the settings: `GET /api/config` (the settings as sections like the ones under Configuration, without secrets, and its `version`), `PUT /api/config` (body `{"version", "config", "confirm_live": false}`: 409 when `version` isn't the current one, 422 when invalid or when it turns a job live without `confirm_live`; keys are only set on Settings → Connections), `GET /api/config/versions`, `GET /api/config/versions/<id>` and `POST /api/config/versions/<id>/restore` (body `{"version", "confirm_live": false}`).
-- Times on the pages are shown in your browser's time zone, so the container needs no `TZ`.
-
-The web app logs to `logs/web.log`, separate from the CLI's `logs/log.log`.
-
- It only accepts requests that come through [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/): every route except `/healthz` requires a valid Access token, checked against your team's signing keys, the application's audience tag and an email allowlist. It refuses to start without those settings.
-
-It is reached through a Cloudflare Tunnel, so the container publishes **no port**. Nothing on your network or router points at it.
-
-### Cloudflare setup
-
-1. **Tunnel:** Zero Trust → Networks → Tunnels → Create a tunnel (Cloudflared), named e.g. `helperr`. Choose Docker and copy the token from the command it shows.
-2. **cloudflared container** (Unraid Docker tab):
+1. **Tunnel:** Zero Trust > Networks > Tunnels > Create a tunnel (Cloudflared). Pick Docker and copy the token from the command it shows.
+2. **cloudflared container** on the Docker tab:
 
     | Field | Value |
     |---|---|
-    | Repository | `cloudflare/cloudflared:2026.10.1` (pin a version, update it deliberately) |
-    | Network Type | `rattproxy` (the same network as the web app) |
+    | Repository | `cloudflare/cloudflared:2026.10.1` (pin a version) |
+    | Network Type | A custom Docker network, the same one the web app will use |
     | Post Arguments | `tunnel --no-autoupdate run` |
     | Variable | `TUNNEL_TOKEN` = the token from step 1 |
 
-3. **Public hostname** on the tunnel: e.g. `helperr.<your domain>` → service `http://plex-library-helperr:8080`.
-4. **Access application:** Zero Trust → Access → Applications → Add → Self-hosted, for the same hostname. Add an Allow policy that includes only your email. Copy the application's **Audience (AUD) tag** from its overview.
+3. **Public hostname** on the tunnel, e.g. `helperr.example.com`, pointing at `http://plex-library-helperr:8080`.
+4. **Access application:** Zero Trust > Access > Applications > Add > Self-hosted, for the same hostname. Add an Allow policy with only your email. Copy the **Audience (AUD) tag** from its overview.
 
-### Web container
+### 2. Web container
 
 | Field | Value |
-|---|---|
-| Name | `plex-library-helperr` (the tunnel's public hostname points at this name) |
-| Repository | `ghcr.io/ryanthornburg/plex-library-helperr:v2` |
-| Network Type | `rattproxy` |
+| --- | --- |
+| Name | `plex-library-helperr` (the tunnel points at this name) |
+| Repository | `ghcr.io/ryanthornburg/plex-library-helperr:latest` |
+| Network Type | The same network as cloudflared |
 | Extra Parameters | `--read-only --cap-drop ALL --security-opt no-new-privileges` |
 | Post Arguments | `--serve` |
-| Path | `/config` → `/mnt/user/appdata/plex-library-helperr/config` |
+| Path | `/config` > `/mnt/user/appdata/plex-library-helperr/config` |
 | Ports | none |
 | Variable `CF_ACCESS_TEAM_DOMAIN` | `<team>.cloudflareaccess.com` |
-| Variable `CF_ACCESS_AUD` | the AUD tag from step 4 |
-| Variable `ALLOWED_EMAILS` | your Access email (comma separate more than one) |
-| Variable `REMOVERS_ALLOW_APPLY` | `true` to allow applying approved remover plans from the UI (default off). An environment variable so nothing in the app can turn it on |
-| Variable `HELPERR_SECRET_KEY` | 32+ random characters, e.g. from `openssl rand -hex 32`. Encrypts the API keys and tokens in the database; keep a copy, without it they have to be entered again. Mark it masked in the template |
+| Variable `CF_ACCESS_AUD` | The AUD tag from step 4 |
+| Variable `ALLOWED_EMAILS` | Your Access email (comma separated for more than one) |
+| Variable `HELPERR_SECRET_KEY` | 32 or more random characters, e.g. `openssl rand -hex 32`. Encrypts the API keys in the database. Keep a copy, without it you have to enter the keys again. Mark it masked. |
+| Variable `REMOVERS_ALLOW_APPLY` | `true` to allow removers to delete anything. Off by default. It's an environment variable so nothing in the app can turn it on. |
 
-The database is `helperr.db` in `/config`. Keep `/config` on a cache pool (not the array), since SQLite and Unraid's FUSE layer don't mix.
+The database (`helperr.db`) and logs go in `/config`. Keep it on a cache pool, not the array, since SQLite and Unraid's FUSE layer don't get along. If the container can't write there, `chown 99:100` the folder.
 
-## Configuration
+Service URLs can't use `localhost` (inside the container that's the container itself). Use the server's IP, or the container name (e.g. `http://sonarr:8989`) if Helperr is on the same Docker network.
 
-Settings are edited in the web app. These are the keys behind its forms, grouped in sections the way its error messages name them (e.g. `[[radarr.movers]] #2`); `GET`/`PUT /api/config` use the same shape, without the keys and tokens.
+### 3. In the app
 
-### `[settings]`
+1. **Settings > Connections:** add Radarr, Sonarr, Plex and whatever else you use (Tautulli, Seerr, SABnzbd, Bazarr, Autoscan) and hit Test on each.
+2. **Movers** and **Removers:** add your rules. Use Preview to see what a rule matches.
+3. **Activity > Schedules:** add schedules. New ones force dry run until you turn that off.
+4. **Settings > Webhook** (optional): shows the URL and API key to put in Radarr's and Sonarr's Connect > Webhook. Turn on *On Movie Added* / *On Series Add*, and *On File Upgrade* if you want trash emptied after upgrades. Put the key in an `X-Api-Key` header.
+5. When the dry runs look right, turn dry run off in Settings. The app asks you to confirm anything that makes a job live.
 
-| Key           | Description                                                                                                           |
-|-----          |-------------                                                                                                          |
-| `dry_run`     | `true` to preview changes without applying them (default: `true`)                                     |
-| `filter_time` | Only evaluate movies added within this window. Format: `7d`, `12h`, `30m`. Leave empty to evaluate all movies. An invalid or zero value is an error. |
+## Removers and deleting files
 
-### `[web]` (optional)
+Removers are the one part that deletes media, so they're careful:
 
-The web app's defaults, on Settings → General.
+- A removers run only makes a plan. Nothing is deleted until you approve the plan on the run's page, or turn on auto-approve for that rule.
+- Applying a plan checks everything again with fresh data. Anything watched, replaced, downloading or no longer old enough since the plan was made is skipped.
+- A plan can only be applied once, and only within 7 days.
+- `max_deletes` stops the whole run if it would delete more files than that.
+- Nothing is deleted unless the container has `REMOVERS_ALLOW_APPLY=true`.
 
-| Key                 | Description                                                                                  |
-|-----                |-------------                                                                                 |
-| `followup_delay`    | Empty trash this long after a live run moved/removed files or an upgrade (default: `15m`)   |
-| `followup_attempts` | Follow-ups tried when blocked, e.g. by a scan, `0` turns them off (default: `3`)             |
-| `followup_lookback` | Runs and upgrades older than this aren't followed up (default: `2d`)                         |
-| `plan_max_age`      | A removers plan older than this can't be applied (default: `7d`)                             |
-| `min_free_gb`       | Less free space (GB) on a Radarr/Sonarr root folder or SABnzbd folder is a problem, `0` turns it off (default: `100`) |
+How the rules work:
 
-### `[plex]`
+**Sonarr** (`[[sonarr.removers]]`, picked by series tag):
 
-| Key       | Description                                                   |
-|-----      |-------------                                                  |
-| `baseurl` | URL to your Plex instance (e.g. `http://192.168.1.1:32400/`)  |
-| `token`   | Plex token                                                    |
+- `seasons` mode removes whole seasons, and only when every file in the season is older than `min_age`. `episodes` mode works per file.
+- `keep` is how many of the latest seasons or episodes to always keep. Only ones with files count. Specials never count, and are only removed with `include_specials`.
+- Age counts from when Sonarr first imported the episode, so a file that was upgraded or lost and found again doesn't start over.
+- `skip_if_watched_within` keeps anything someone watched recently, plus everything after it. Watching the newest episodes never blocks removal of old ones.
+- A series is skipped if it was added recently, has something downloading, or Sonarr returns bad data.
+- Episodes are unmonitored first so Sonarr doesn't download them again.
 
-### `[plex.empty_trash]` (optional)
+Example: `type = seasons`, `keep = 2`, `min_age = 90d` on a show with seasons 1 to 5 removes seasons 1 to 3 once all their files are over 90 days old.
 
-Used by the empty trash job (`--empty-trash`, or the web app). Plex trashes each version of a movie or episode whose file is gone. Most trash is old versions left behind by upgrades: the item still has a version to play, and emptying only drops the old file's entry. An item with no version left is **fully deleted**: emptying removes it from the library, with its watch history. Each run lists the fully deleted items (on the run page and in the log) and only counts upgrade leftovers.
+**Radarr** (`[[radarr.removers]]`, picked by root folder):
 
-A library is skipped while it is scanning, when its trash holds more than `max_items` items, and when more than `max_deleted_items` items are fully deleted without the web app's removers having deleted them (matched by file name), since a missing mount or share makes Plex trash everything in it.
+- A movie is removed once it was both added to Radarr and released longer ago than `min_age`.
+- `skip_if_ever_watched` keeps anything anyone ever played. `skip_if_watched_within` keeps anything played recently. Plays come from Tautulli, so these need Tautulli connected.
+- The movie is deleted from Radarr with its files, without an import exclusion.
 
-| Key         | Description                                                                                    |
-|-----        |-------------                                                                                   |
-| `libraries` | Plex libraries to empty the trash of. Omit for every movie and TV library.                     |
-| `max_items` | Skip a library if its trash holds more items than this, upgrade leftovers included (default: `100`) |
-| `max_deleted_items` | Skip a library if more items than this are fully deleted and weren't removed by the web app's removers (default: `50`) |
-| `dry_run`   | `true` to log trash counts without emptying (default: `[settings]` `dry_run`)                  |
+## Empty trash
 
-### `[tautulli]` (optional)
+Movers and removers only trigger a Plex scan, which puts the old files in the trash. Emptying it is a separate job. With the web app it runs on its own about 15 minutes after a live run moves or removes something, or after an upgrade, so you don't have to schedule it often.
 
-Watch history for remover watch protection (`skip_if_watched_within`). Tautulli is preferred because it records partial plays from every user. Without it, Plex server history is used, which only records completed plays. If neither is configured or the history can't be read, removers that use `skip_if_watched_within` are skipped for that run. Radarr removers use the web app's copy of Tautulli's history instead (see `[[radarr.removers]]`). The web app also uses it for the Status, Requests and Playback pages.
+Before emptying it checks each library. It skips one that's scanning, one with more than `max_items` in the trash, or one where more than `max_deleted_items` items are fully gone without Helperr's removers having deleted them. A missing mount makes Plex trash a whole library, and this keeps that from wiping it.
 
-| Key      | Description                                                   |
-|-----     |-------------                                                  |
-| `url`    | URL to your Tautulli instance (e.g. `http://192.168.1.1:8181`) |
-| `public_url` | Optional. Where the web app's Status page links to away from home (e.g. `https://tautulli.example.com`); `url` is the local one |
-| `apikey` | Tautulli API key                                              |
+## Running jobs without the web app
 
-### `[seerr]` (optional)
+`main.py` can still run one job and exit. It uses the web app's database, so it needs the same `/config` folder and `HELPERR_SECRET_KEY`.
 
-Seerr (or Overseerr): the requests and who made them, for the web app's Requests page.
+```bash
+uv sync                         # install dependencies
+uv run main.py                  # movers and profilers
+uv run main.py --remove         # removers (plans only, never deletes from here)
+uv run main.py --empty-trash    # empty Plex trash
+uv run main.py --serve          # the web app
+```
 
-| Key      | Description                                                  |
-|-----     |-------------                                                 |
-| `url`    | URL to your Seerr instance (e.g. `http://192.168.1.1:5055`)   |
-| `public_url` | Optional. Where the web app's Status page links to away from home (e.g. `https://requests.example.com`); `url` is the local one |
-| `apikey` | Seerr API key (Settings → General)                           |
+In Docker, run the same image with `--remove` or `--empty-trash` as the Post Arguments, Autostart off, and start it when you want the job to run. Each run ends with a summary and exits with status 1 if anything failed.
 
-### `[sabnzbd]` (optional)
+Outside Docker, set `DATA_DIR` to keep `helperr.db` and `logs/` somewhere other than the repo.
 
-SABnzbd's queue, speed, warnings and failed downloads, for the web app's Status page.
+## Settings reference
 
-| Key      | Description                                                  |
-|-----     |-------------                                                 |
-| `url`    | URL to your SABnzbd instance (e.g. `http://192.168.1.1:8080`) |
-| `public_url` | Optional. Where the web app's Status page links to away from home (e.g. `https://sabnzbd.example.com`); `url` is the local one |
-| `apikey` | SABnzbd API key (Config → General, not the NZB key)          |
+Everything here is edited in the app. These are the names behind the forms, which also show up in error messages (like `[[radarr.movers]] #2`) and in `GET`/`PUT /api/config`.
 
-### `[bazarr]` (optional)
+### General
 
-Bazarr's health issues, throttled providers, whether it gets live updates from Sonarr/Radarr, and how many subtitles are wanted, for the web app's Status page.
+| Key | What it does |
+| --- | --- |
+| `dry_run` | Preview changes without making them (default: on). Radarr, Sonarr and empty trash can each override it. |
+| `filter_time` | Movers and profilers only look at media added within this window, e.g. `7d`, `12h`. Empty means the whole library. |
+| `followup_delay` | How long after a live move, removal or upgrade to empty the trash (default `15m`) |
+| `followup_attempts` | How many times to retry when that empty trash is blocked, `0` turns it off (default `3`) |
+| `plan_max_age` | A removers plan older than this can't be applied (default `7d`) |
+| `min_free_gb` | Warn on Status when a root folder or SABnzbd folder has less free space than this (default `100`, `0` is off) |
 
-| Key          | Description                                                  |
-|-----         |-------------                                                 |
-| `url`        | URL to your Bazarr instance, with its base URL if it has one (e.g. `http://192.168.1.1:6767/subs`) |
-| `public_url` | Optional. Where the web app's Status page links to away from home (e.g. `https://bazarr.example.com`); `url` is the local one |
-| `apikey`     | Bazarr API key (Settings → General)                          |
+### Movers
 
-### `[[links]]` (optional)
+Rules run in order and the first match wins. Each needs at least one of genres, tags, studios, networks or certifications.
 
-Other tools the web app's Status page links to, like Tracearr. Edited under Settings → Connections → Other links.
+| Key | What it does |
+| --- | --- |
+| `path` | Root folder to move matches into |
+| `genres` / `genre_match` | Genres to match, `any` or `all` |
+| `tags` / `tag_match` | Tags to match, `any` or `all` |
+| `certifications` | Ratings to match, e.g. `G`, `PG` |
+| `studios` | Studios to match (Radarr only) |
+| `networks` | Networks to match (Sonarr only) |
+| `exclude_genres`, `exclude_tags`, `exclude_certifications`, `exclude_paths` | Skip anything with these |
+| `plex_library` | Plex library to refresh after moving, when Autoscan isn't set up |
 
-| Key          | Description                                  |
-|-----         |-------------                                 |
-| `name`       | What the link says                           |
-| `url`        | Its local URL (optional if `public_url` is set) |
-| `public_url` | Its public URL (optional if `url` is set)    |
-| `service`    | Optional: `plex`, `radarr`, `sonarr`, `bazarr`, `sabnzbd` or `seerr` shows it next to that service's own link (e.g. Tracearr with Plex) instead of under the services |
+Each Radarr and Sonarr section can also add a `tag` to everything a mover moves.
 
-### `[autoscan]` (optional)
+### Profilers
 
-When `url` is set, each moved title's old and new folder is sent to [Autoscan](https://github.com/Cloudbox/autoscan)'s manual trigger instead of refreshing whole Plex libraries. Autoscan's `minimum-age` gives Radarr/Sonarr time to finish moving files, and scanning the old folder removes stale entries from the source library.
+| Key | What it does |
+| --- | --- |
+| `profile` | Quality profile to set |
+| `titles` | Titles to match |
+| `studios` / `networks` | Studios (Radarr) or networks (Sonarr) to match |
+| `monitored` | Also set monitored on or off. Leave empty to not change it. |
 
-| Key        | Description                                                  |
-|-----       |-------------                                                 |
-| `url`      | URL to your Autoscan instance (e.g. `http://192.168.1.1:3030`) |
-| `username` | Autoscan basic auth username (optional)                      |
-| `password` | Autoscan basic auth password (optional)                      |
+### Sonarr removers
 
-Paths are sent as Radarr/Sonarr see them, the same as Autoscan's own Sonarr/Radarr triggers. If Plex uses different paths, the rewrite on your Autoscan Plex target handles it (no manual trigger rewrite needed):
+| Key | What it does |
+| --- | --- |
+| `type` | `seasons` or `episodes` |
+| `keep` | How many of the latest seasons or episodes to keep |
+| `tags` | Series with any of these tags use this rule. A tag can only belong to one rule. |
+| `exclude_tags` | Skip series with these tags |
+| `min_age` | Required. Only remove what was first imported longer ago than this, e.g. `90d` |
+| `include_specials` | Also remove specials |
+| `skip_if_watched_within` | Keep anything watched within this window |
+| `plex_library` | Plex library to refresh after, when Autoscan isn't set up |
+
+### Radarr removers
+
+| Key | What it does |
+| --- | --- |
+| `path` | Required. The root folder this rule cleans up. One rule per folder. |
+| `min_age` | Required. Remove movies added and released longer ago than this, e.g. `730d` |
+| `exclude_tags` | Skip movies with these tags |
+| `skip_if_ever_watched` | Keep anything that's ever been played |
+| `skip_if_watched_within` | Keep anything played within this window |
+| `plex_library` | Plex library to refresh after, when Autoscan isn't set up |
+
+Each *arr also has `max_deletes`: if a run would delete more of its files than this, it deletes none of them.
+
+### Empty trash settings
+
+| Key | What it does |
+| --- | --- |
+| `libraries` | Which Plex libraries to empty. Empty means every movie and TV library. |
+| `max_items` | Skip a library with more than this many items in the trash (default `100`) |
+| `max_deleted_items` | Skip a library with more than this many fully deleted items that Helperr's removers didn't delete (default `50`) |
+| `dry_run` | Override the general dry run for this job |
+
+### Autoscan
+
+With Autoscan set up, movers and removers send the old and new folders to Autoscan instead of refreshing whole Plex libraries. Paths are sent the way Radarr and Sonarr see them. If Plex sees them differently, add a rewrite on your Autoscan Plex target:
 
 ```yaml
 targets:
   plex:
-    - url: http://192.168.1.1:32400
+    - url: http://192.168.1.10:32400
       token: xxxxx
       rewrite:
         - from: /data/media/
-          to: /mnt/nfs/
+          to: /mnt/media/
 ```
 
-### `[radarr]`/`[sonarr]`
+### Connections
 
-| Key       | Description                                                           |
-|-----      |-------------                                                          |
-| `baseurl` | URL to your Radarr/Sonarr instance (e.g. `http://192.168.1.1:7878/`)  |
-| `public_url` | Optional. Where the web app's Status page links to away from home (e.g. `https://radarr.example.com`); `baseurl` is the local one |
-| `apikey`  | Your API key                                                          |
-| `tag`     | Adds a tag identifing any files moved by this script                  |
+Radarr, Sonarr, Plex, Tautulli, Seerr, SABnzbd, Bazarr and Autoscan each take a URL and an API key (or token). Most also take a `public_url`, which is what the Status page links to when you're away from home. Bazarr's URL needs its base URL if it has one, e.g. `http://bazarr:6767/subs`.
 
-### `[[radarr.movers]]`/`[[sonarr.movers]]`
+Keys are encrypted with `HELPERR_SECRET_KEY` before they're saved, are never shown again, and are left out of the settings history. Leave a key field empty to keep the saved one.
 
-Moves movies matching the rule to the specified root folder. Multiple rules are supported and are checked in order. If media matches more than one rule, the first matching rule wins. At least one of `genres`, `tags`, `studios`, `networks`, or `certifications` is required.
+You can also add links to other tools (like Tracearr) under Settings > Connections > Other links, and they'll show up on the Status page.
 
-| Key                      | Description                                                              |
-|-----                     |-------------                                                             |
-| `plex_library`           | Plex library to refresh (if plex config setup and autoscan is not)       |
-| `path`                   | Root folder path to move matched movies into                             |
-| `genres`                 | List of genres to match                                                  |
-| `genre_match`            | `"any"` (at least one genre matches) or `"all"` (every genre must match) |
-| `exclude_genres`         | Skip movies that have any of these genres                                |
-| `tags`                   | List of tags to match                                                    |
-| `tag_match`              | `"any"` (at least one tag matches) or `"all"` (every tag must match)     |
-| `exclude_tags`           | Skip movies that have any of these tags                                  |
-| `certifications`         | Only match movies with these ratings (e.g. `["G", "PG"]`)                |
-| `exclude_certifications` | Skip movies with these ratings                                           |
-| `exclude_paths`          | Skip movies already under these paths                                    |
-| `studios`                | Only match movies from these studios **(Radarr only)**                   |
-| `networks`               | Only match tv series from these networks **(Sonarr only)**               |
+## Development
 
-### `[[radarr.profilers]]`/`[[sonarr.profilers]]`
-
-Assigns a quality profile to movies matched by title or studio/network.
-
-| Key           | Description                                                               |
-|-----          |-------------                                                              |
-| `profile`     | Name of the Sonarr/Radarr quality profile to assign                       |
-| `titles`      | List of movie/series titles to match                                      |
-| `studios`     | List of studios to match **(Radarr only)**                                |
-| `networks`    | List of networks to match **(Sonarr only)**                               |
-| `monitored`   | Set the monitored state (`true`/`false`), or omit to leave unchanged      |
-
-### `[sonarr.remover_settings]` / `[radarr.remover_settings]`
-
-Only used by removers. There's no `dry_run`: removers only delete what was approved. Each *arr has its own.
-
-| Key           | Description                                                                                                                |
-|-----          |-------------                                                                                                               |
-| `max_deletes` | If a run would delete more of this *arr's files than this, none of them are removed. Removals only planned for review don't count. Omit for no limit. |
-
-### `[[sonarr.removers]]`
-
-Unmonitors and then deletes the files of old seasons or episodes in series that have one of the remover's `tags`. Episodes are unmonitored first so Sonarr doesn't download them again. If unmonitoring fails, the files aren't deleted. Every series is planned before anything is removed. `max_deletes` applies to the whole run, so if the files it would delete are over the limit nothing is removed.
-
-| Key                      | Description                                                                                                  |
-|-----                     |-------------                                                                                                 |
-| `type`                   | `"seasons"` removes whole seasons, `"episodes"` removes individual episode files                             |
-| `keep`                   | Number of latest seasons/episodes to always keep (integer >= 1). Only numbered seasons/episodes with files count. |
-| `tags`                   | Series with any of these Sonarr tags use this remover. A tag can only belong to one remover.                 |
-| `exclude_tags`           | Skip series with any of these tags                                                                           |
-| `min_age`                | **Required.** Only remove episodes first imported by Sonarr longer ago than this (`180d`, `12h`, `30m`). An invalid value is a config error. |
-| `include_specials`       | `true` to also remove specials (season 0). Specials never count toward `keep` (default: `false`)             |
-| `skip_if_watched_within` | Protect content that was watched within this window (`30d`, ...). Needs `[tautulli]` or `[plex]`.            |
-| `plex_library`           | Plex library to refresh after removing (if Plex is configured and Autoscan is not)                           |
-
-How rules are applied:
-
-- Everything outside the `keep` window is a candidate. Seasons/episodes without files don't count toward `keep`.
-- `seasons` mode is all or nothing: a season is removed only if **every** file in it is older than `min_age`.
-- `episodes` mode works per file. A multi-episode file that holds a kept episode is kept.
-- An episode's age counts from its first import in Sonarr's history, so a file Sonarr lost and found again (a converter, a disk dropping out) or upgraded doesn't start over. Deleting the file on purpose resets it, and without an import in the history the file's own date added is used.
-- `skip_if_watched_within` only looks at plays of removal candidates, so watching the latest episodes never blocks removal. A recent play protects that season/episode and everything after it. It is checked before `min_age`, so someone watching a new season still protects the older seasons after it. A watched special protects only specials.
-- A whole series is skipped if it was added to Sonarr within `min_age`, has anything in the download queue, or Sonarr returns missing/invalid episode data.
-- A series tagged for two removers is logged as an error and skipped.
-- After removing, the folders are scanned by Autoscan, or `plex_library` is refreshed if Autoscan isn't configured.
-
-Example: `type = "seasons"`, `keep = 2`, `min_age = "90d"` on a series with seasons 1-5 removes seasons 1-3 once all their files are older than 90 days.
-
-### `[[radarr.removers]]`
-
-Deletes old movies, with their files, from a Radarr root folder (e.g. a Hallmark folder that only needs the last two years). The movie is removed from Radarr too, without an import exclusion. Like Sonarr removers, runs only plan: you approve on the run's page, or turn on auto-approve for the rule. Configured on the Removers page.
-
-| Key                      | Description                                                                                                  |
-|-----                     |-------------                                                                                                 |
-| `path`                   | **Required.** The Radarr root folder whose movies this remover checks. A root folder can only belong to one remover. |
-| `min_age`                | **Required.** A movie is removed once it was both added to Radarr and released longer ago than this (`730d`). An invalid value is a config error. |
-| `exclude_tags`           | Skip movies with any of these Radarr tags                                                                    |
-| `skip_if_ever_watched`   | `true` to keep movies anyone has ever played (default: `false`, watched movies are removed too)             |
-| `skip_if_watched_within` | Keep movies played within this window (`180d`, ...). Not with `skip_if_ever_watched`.                       |
-| `plex_library`           | Plex library to refresh after removing (if Plex is configured and Autoscan is not)                           |
-
-How rules are applied:
-
-- Radarr's added date is when the movie was added to Radarr: a re-download or upgrade doesn't reset it (Plex's date added does). Its release date is Radarr's `releaseDate`. A movie without a release date is skipped, and so are movies without a file and movies in the download queue.
-- Plays are any play by any user, partial ones too, from the Tautulli history the web app copies for the Requests page (new plays are copied first). Movies are matched to plays by Plex guid and by their TMDb/IMDb ids, so plays from before a move to another library or before Plex's new agents count. A movie Plex doesn't have is kept when the rule checks plays, and if the history can't be read the rule's movies are all kept for that run. Only the web app has the history: `main.py --remove` keeps every movie of a rule that checks plays.
-- After removing, each movie's folder is scanned by Autoscan, or `plex_library` is refreshed if Autoscan isn't configured.
-
-### Tests
-
-Used claude to generate test coverage in `/tests`.
+Needs Python 3.14 and [uv](https://github.com/astral-sh/uv).
 
 ```bash
+uv sync
 uv run pytest tests/ -v
+docker build -t plex-library-helperr .
 ```
 
-## TODO
-
-- [ ] could improve some of the looping / set checks
-
-## TBD
-
-- Batching? Currently using bulk endpoints and current use case isn't an issue
+I used Claude to help write the tests.
