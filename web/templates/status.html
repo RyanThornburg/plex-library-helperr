@@ -33,6 +33,21 @@
   {% if refresh %}{{ ui.tool("pause", "Pause auto-refresh", "/status?refresh=0") }}{% else %}{{ ui.tool("play", "Resume auto-refresh", "/status") }}{% endif %}
 </div>
 <div class="group">{{ ui.tool("activity", "Incident history", "/status/history") }}</div>
+{# where service links go, per browser: only when some link has both addresses, and
+   only with js (app.js remembers it), like the *arrs' Options menu #}
+{% if (links.values() | list + other_links) | selectattr("local") | selectattr("public") | list %}
+<div class="group end" data-link-choice hidden>
+  <details class="tool-menu">
+    <summary class="tool">{{ ui.icon("options") }}Options</summary>
+    <fieldset class="menu-panel">
+      <legend>Service links open</legend>
+      <label><input type="radio" name="link-choice" value="public"> Public addresses</label>
+      <label><input type="radio" name="link-choice" value="local"> Local addresses</label>
+      <p class="hint">In this browser.</p>
+    </fieldset>
+  </details>
+</div>
+{% endif %}
 {% endblock %}
 {% block content %}
 <h1>Status</h1>
@@ -134,14 +149,6 @@
 {% set loose = other_links | rejectattr("service") | list %}
 {% if loose %}
 <p class="other-links"><span class="muted">Also open</span>{% for l in loose %} {{ ext_link(l, l.name) }}{% endfor %}</p>
-{% endif %}
-{% if (links.values() | list + other_links) | selectattr("local") | selectattr("public") | list %}
-<p class="muted link-choice" data-link-choice hidden>
-  Service links open
-  <label class="choice-inline"><input type="radio" name="link-choice" value="public"> public addresses</label>
-  <label class="choice-inline"><input type="radio" name="link-choice" value="local"> local addresses</label>
-  in this browser.
-</p>
 {% endif %}
 
 <div class="heading section-heading">

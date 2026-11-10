@@ -147,6 +147,18 @@ const store = (key, value) => {
   } catch {}
 };
 
+// a toolbar menu closes on a click outside it or Escape, like a menu
+for (const menu of document.querySelectorAll("details.tool-menu")) {
+  document.addEventListener("click", (event) => {
+    if (menu.open && !menu.contains(event.target)) menu.open = false;
+  });
+  menu.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !menu.open) return;
+    menu.open = false;
+    menu.querySelector("summary").focus();
+  });
+}
+
 // status page: service links open the public address unless this browser chose local
 const linkChoice = document.querySelector("[data-link-choice]");
 if (linkChoice) {
