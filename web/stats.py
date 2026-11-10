@@ -758,7 +758,7 @@ class StatsSync:
                 logger.exception("WEB\t %s failed", self.thread_name)
                 try:
                     now = utc_now()
-                    save_status(self.engine, SyncStatus(now, now, redacted(f"{type(e).__name__}: {e}")), self.status_key)
+                    save_status(self.engine, SyncStatus(now, now, f"{type(e).__name__}: {e}"), self.status_key)
                 except Exception:
                     logger.exception("WEB\t %s couldn't save its status", self.thread_name)
             self._wake.wait(self.interval.total_seconds())

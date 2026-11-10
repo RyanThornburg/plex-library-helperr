@@ -54,7 +54,9 @@ class Issue:
 
 
 def problem_key(problem: Problem) -> str:
-    return (problem.key or problem.text)[:500]
+    """redacted like the text: a problem without a key is keyed by its text, which is
+    stored and put in the status page's mute attribute"""
+    return redacted(problem.key or problem.text)[:500]
 
 
 def item_key(item: Item) -> str:

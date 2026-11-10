@@ -34,26 +34,45 @@ def redacted(text: str) -> str:
     return text
 
 
-# a url in error text: scheme and host, the path, then the query (not the punctuation
-# after it)
-_URL = re.compile(r"\b([a-z][a-z0-9+.-]*://[^/\s'\"<>]+)(/[^?#\s'\"<>]*)?([?#][^\s'\"<>]*[^\s'\"<>.,;:)])?", re.I)
+# a url in text: its scheme and host, then the rest (path, query)
+_URL = re.compile(r"\b([a-z][a-z0-9+.-]*://[^/?#&\s'\"<>]+)([/?#&][^\s'\"<>]*)?", re.I)
+# query parameters, where keys go, after a url or a bare path (urllib3 says "with url:
+# /api/v3/series?apikey=..."), or after a path with no "?" (newznab's
+# /getnzb/x.nzb&i=1&r=<key>)
+_QUERY = re.compile(r"[?&][^\s'\"<>=&]*=[^\s'\"<>]*")
 
 
-def without_queries(text: str) -> str:
-    """text with every url's query string dropped, where keys go (an indexer's in a
-    SABnzbd fail message, which isn't one of the config's secrets)"""
-    return _URL.sub(lambda m: m.group(1) + (m.group(2) or ""), text)
+def _trailing(text: str) -> str:
+    """the sentence's punctuation after a url, which isn't part of it"""
+    return text[len(text.rstrip(".,;:)")):]
+
+
+def url_hosts(text: str) -> str:
+    """text from outside with every url cut to its scheme and host: a SABnzbd fail
+    message names the nzb's url, with an indexer's key (not one of ours, so redaction
+    can't catch it) in its query or its path"""
+    return _URL.sub(lambda m: m.group(1) + _trailing(m.group(2) or ""), text)
 
 
 def failure_text(e: BaseException) -> str:
     """why a request failed, safe to store in a result: libraries put the whole url in
-    their errors (arrapi with ?apikey=), so urls are cut to their path and the config's
-    secrets redacted. Results are shown on run pages and kept"""
+    their errors (arrapi with ?apikey=), so urls are cut to their path, query parameters
+    dropped and the config's secrets redacted. Results are shown on run pages and kept"""
     if isinstance(e, requests.exceptions.Timeout):
         return "no answer in time"
+    if isinstance(e, requests.exceptions.SSLError):
+        return "couldn't connect: TLS failed (check the certificate)"
+    if isinstance(e, requests.exceptions.ProxyError):
+        return "couldn't connect through the proxy"
     if isinstance(e, requests.exceptions.ConnectionError):
         return "couldn't connect"
-    text = _URL.sub(lambda m: m.group(2) or "", str(e) or type(e).__name__)
+
+    def path(m: re.Match[str]) -> str:
+        rest = m.group(2) or ""
+        return rest if rest.startswith("/") else "[url]" + _trailing(rest)
+
+    text = _URL.sub(path, str(e) or type(e).__name__)
+    text = _QUERY.sub(lambda m: _trailing(m.group(0)), text)
     return redacted(text)
 
 

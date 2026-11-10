@@ -13,7 +13,7 @@ from typing import Any
 import requests
 
 from config.models import ArrConfig, BazarrConfig, ConfigSettings, SabnzbdConfig, SeerrConfig, TautulliConfig
-from logging_config import without_queries
+from logging_config import failure_text, url_hosts
 from web.lookups import BAZARR_NOT_API, redact
 
 logger = logging.getLogger(__name__)
@@ -433,7 +433,7 @@ def sab_failures(status: ServiceStatus, slots: list[dict[str, Any]], now: dateti
     ]
     for slot in recent:
         # a failed fetch names the nzb's url, with the indexer's key in it
-        reason = without_queries(str(slot.get("fail_message") or ""))
+        reason = url_hosts(str(slot.get("fail_message") or ""))
         status.problem(
             "warn",
             f"Failed: {slot.get('name')}" + (f" ({reason})" if reason else ""),
@@ -657,7 +657,7 @@ def failure(e: Exception, label: str, *secrets: str | None) -> str:
         # the service answered, but not what this version of helperr expects
         logger.exception("WEB\t %s: unexpected answer", label)
         return "Unexpected answer: it may be a version Helperr doesn't know yet (see the web log)"
-    text = redact(f"{type(e).__name__}: {e}", *secrets)
+    text = redact(f"{type(e).__name__}: {failure_text(e)}", *secrets)
     logger.warning("WEB\t %s failed: %s", label, text)
     return text
 
