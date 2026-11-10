@@ -21,6 +21,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from config.models import ConfigSettings, PlexConfig, SeerrConfig, TautulliConfig
+from logging_config import redacted
 from movie_remover import PlayLookup, RadarrMovie
 from watch_history import history_rows, tautulli_after
 from web.db import AppSetting, MediaRequest, Play
@@ -745,6 +746,17 @@ class StatsSync:
 
     def _loop(self) -> None:
         while not self._stop.is_set():
-            self.run_once()
+            try:
+                self.run_once()
+            except Exception as e:
+                # anything a sync doesn't handle (a locked database while saving its
+                # status) is logged and the thread goes on, rather than dying and leaving
+                # pages showing the last good sync as current
+                logger.exception("WEB\t %s failed", self.thread_name)
+                try:
+                    now = utc_now()
+                    save_status(self.engine, SyncStatus(now, now, redacted(f"{type(e).__name__}: {e}")), self.status_key)
+                except Exception:
+                    logger.exception("WEB\t %s couldn't save its status", self.thread_name)
             self._wake.wait(self.interval.total_seconds())
             self._wake.clear()

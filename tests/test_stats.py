@@ -4,6 +4,8 @@ from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import threading
+
 import pytest
 import requests
 from fastapi.testclient import TestClient
@@ -18,6 +20,7 @@ from web.app import create_app
 from web.db import MediaRequest, Play, make_engine, migrate
 from web.jobs import utc_now
 from web.stats import (
+    StatsSync,
     PlayFact,
     StatsError,
     movie_play_lookup,
@@ -641,3 +644,29 @@ class TestRequestsPage:
     def test_needs_access(self, client):
         assert client.get("/requests").status_code == 403
         assert client.get("/api/requests").status_code == 403
+
+
+def test_a_sync_that_raises_keeps_its_thread(engine):
+    """a failure no sync handles (a locked database) is saved as the sync's error and
+    the thread goes on syncing, instead of dying with the pages showing stale data"""
+    calls = threading.Event()
+    seen = []
+
+    class Boom(StatsSync):
+        interval = timedelta(milliseconds=10)
+        status_key = "boom_sync"
+        thread_name = "boom-sync"
+
+        def sync(self, settings):
+            seen.append(1)
+            if len(seen) >= 3:
+                calls.set()
+            raise RuntimeError("database is locked")
+
+    syncer = Boom(engine, lambda: None)
+    syncer.start()
+    try:
+        assert calls.wait(5)
+    finally:
+        syncer.stop()
+    assert sync_status(engine, "boom_sync").error == "RuntimeError: database is locked"
