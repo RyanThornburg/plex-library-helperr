@@ -434,6 +434,12 @@ def run_removers(
         return
     if not arr_config.removers:
         logger.info("%s\t No removers configured", LOG_NAME)
+        # applying a plan whose rules were removed since: say so for each approved series
+        for series_id in approved or {}:
+            logger.warning("%s\t series %s: approved, but not removing (no Sonarr removers any more)", LOG_NAME, series_id)
+            result.changes.append(
+                Change(LOG_NAME, "remove", f"series {series_id}", [], "blocked", "no Sonarr removers any more")
+            )
         return
 
     settings = arr_config.remover_settings

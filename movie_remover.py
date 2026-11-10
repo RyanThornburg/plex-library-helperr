@@ -260,6 +260,12 @@ def run_movie_removers(
     removers = [r for r in arr_config.removers if isinstance(r, MovieRemoverRule)]
     if not removers:
         logger.info("%s\t No removers configured", LOG_NAME)
+        # applying a plan whose rules were removed since: say so for each approved movie
+        for movie_id in approved or {}:
+            logger.warning("%s\t movie %s: approved, but not removing (no Radarr removers any more)", LOG_NAME, movie_id)
+            result.changes.append(
+                Change(LOG_NAME, "remove", f"movie {movie_id}", [], "blocked", "no Radarr removers any more")
+            )
         return
 
     now = utc_now()

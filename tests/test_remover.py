@@ -722,3 +722,12 @@ class TestAutoApprove(SonarrFakes):
             patch.object(remover, "utc_now", return_value=NOW),
         ):
             run_removers(arr_config, None, None, self.result, auto_approve=auto)
+
+
+def test_applying_after_the_rules_were_removed_says_so():
+    # a reviewed plan applied after its rules were deleted reports every series
+    result = JobResult("removers")
+    run_removers(ArrConfig(baseurl="http://sonarr", apikey="key", tag=None, removers=[]), None, None, result, {5: {50}})
+    assert [(c.target, c.status, c.detail) for c in result.changes] == [
+        ("series 5", "blocked", "no Sonarr removers any more")
+    ]

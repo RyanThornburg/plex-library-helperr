@@ -242,6 +242,14 @@ class TestRunMovieRemovers(RadarrFakes):
         run_movie_removers(ArrConfig(baseurl=None, apikey=None, tag=None, removers=[rule()]), result)
         assert result.errors == ["RADARR not configured"]
 
+    def test_applying_after_the_rules_were_removed_says_so(self):
+        # a reviewed plan applied after its rules were deleted reports every movie
+        result = JobResult("removers")
+        run_movie_removers(ArrConfig(baseurl="http://radarr", apikey="key", tag=None, removers=[]), result, {7: {70}})
+        assert [(c.target, c.status, c.detail) for c in result.changes] == [
+            ("movie 7", "blocked", "no Radarr removers any more")
+        ]
+
 
 class TestWatchedMovies(RadarrFakes):
     def test_ever_watched_kept_and_unknown_kept(self):
