@@ -831,6 +831,20 @@ class TestQueuePages:
         assert "HTTPError" in page.text and "sonarr-key" not in page.text
         assert body.status_code == 502 and "sonarr-key" not in body.text
 
+    def test_a_failed_removal_never_holds_a_key(self, queue_client, fake_queue):
+        error = requests.exceptions.HTTPError("500 Error for url http://sonarr:8989/api/v3/queue/bulk?apikey=sonarr-key")
+        form = {**auth(), **ORIGIN, "Content-Type": "application/x-www-form-urlencoded"}
+        with patch.object(status.requests, "delete", side_effect=error):
+            page = queue_client.post("/status/sonarr/queue/remove", content="download=SABnzbd_nzo_1&method=client&blocklist=none", headers=form)
+            body = queue_client.post(
+                "/api/status/sonarr/queue/remove",
+                json={"downloads": ["SABnzbd_nzo_1"], "method": "client", "blocklist": "none"},
+                headers={**auth(), **ORIGIN},
+            )
+        assert page.status_code == 502 and "HTTPError" in page.text and "sonarr-key" not in page.text
+        assert body.status_code == 502 and "sonarr-key" not in body.text
+        queue_client.app.state.health.sync_now.assert_not_called()
+
     def test_api(self, queue_client, fake_queue):
         listed = queue_client.get("/api/status/sonarr/queue", headers=auth()).json()
         assert [d["key"] for d in listed["downloads"]] == ["SABnzbd_nzo_1", "SABnzbd_nzo_2"]

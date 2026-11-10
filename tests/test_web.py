@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from config.models import ArrConfig, ConfigSettings
 from results import Change, JobResult, PlannedFile, PlannedRemoval
 from web.app import create_app
+from web.jobs import AlreadyActive
 from web.db import TrashEvent, make_engine, migrate
 from web.settings import WebSettings, load_web_settings
 
@@ -647,6 +648,21 @@ class TestPlanReview:
         again = plan_client.post("/runs/1/apply?item=sonarr:1", headers={**auth(), **ORIGIN})
         assert again.status_code == 400
         assert "already applied by run 2" in again.text
+
+    def test_apply_of_an_unknown_run(self, plan_client):
+        assert plan_client.get("/runs/99/apply?item=sonarr:1", headers=auth()).status_code == 404
+        assert plan_client.post("/runs/99/apply?item=sonarr:1", headers={**auth(), **ORIGIN}).status_code == 404
+
+    def test_apply_while_removers_are_active(self, plan_client, monkeypatch):
+        def busy(*args):
+            raise AlreadyActive(5)
+
+        monkeypatch.setattr(plan_client.app.state.runner, "submit_apply", busy)
+        response = plan_client.post("/runs/1/apply?item=sonarr:1", headers={**auth(), **ORIGIN})
+        assert response.status_code == 409
+        assert "Removers run #5 is active, so the plan wasn&#39;t applied" in response.text
+        api = plan_client.post("/api/runs/1/apply", json={"items": ["sonarr:1"]}, headers={**auth(), **ORIGIN})
+        assert (api.status_code, api.json()) == (409, {"error": "already active", "id": 5})
 
     def test_apply_needs_same_origin(self, plan_client):
         assert plan_client.post("/runs/1/apply?item=sonarr:1", headers=auth()).status_code == 403

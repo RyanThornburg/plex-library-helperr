@@ -713,3 +713,12 @@ def test_a_sync_that_raises_keeps_its_thread(engine):
     finally:
         syncer.stop()
     assert sync_status(engine, "boom_sync").error == "RuntimeError: database is locked"
+
+
+def test_settings_that_cant_load_are_the_syncs_error(engine):
+    def broken():
+        raise ValueError("[radarr] bad")
+
+    status = StatsSync(engine, broken).run_once()
+    assert status.error == "The settings can't be loaded: [radarr] bad"
+    assert sync_status(engine, stats.STATUS_SETTING).error == status.error

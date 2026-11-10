@@ -382,6 +382,16 @@ class TestRules:
         assert deleted.status_code == 409
         assert [m["path"] for m in document(client)["radarr"]["movers"]] == ["/movies/a", "/movies/b"]
 
+    def test_deleting_a_rule_another_tab_moved_changes_nothing(self, client):
+        for path in ("/movies/a", "/movies/b"):
+            post(client, "/settings/radarr/movers/new", {"version": version(client), "action": "save", "path": path, "genres": "Family"})
+        opened = loaded(client, "/settings/radarr/movers/1")
+        # another tab moves /movies/b up: number 1 is a different rule now
+        post(client, "/settings/radarr/movers/2/move?direction=up", {"version": version(client)})
+        deleted = post(client, "/settings/radarr/movers/1/delete", {"version": version(client), "loaded": opened})
+        assert deleted.status_code == 409 and "changed since this form was opened" in deleted.text
+        assert [m["path"] for m in document(client)["radarr"]["movers"]] == ["/movies/b", "/movies/a"]
+
     def test_saving_by_number_needs_the_loaded_rule_and_version(self, client):
         post(client, "/settings/radarr/movers/new", {"version": 0, "action": "save", "path": "/movies/a", "genres": "Family"})
         rule = {"action": "save", "path": "/movies/x", "genres": "Family"}

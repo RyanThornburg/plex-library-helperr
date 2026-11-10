@@ -418,6 +418,31 @@ class TestApply:
         runner.stop()
 
 
+class TestApplyTurnedOffWhileQueued:
+    def test_the_run_checks_again_and_deletes_nothing(self, engine):
+        # REMOVERS_ALLOW_APPLY checked when the run starts too, not only when it's queued
+        plan_id = add_plan(engine, removal(1))
+        release = threading.Event()
+        calls = []
+
+        def run_job(job, settings, approved=None):
+            if job == "movers":
+                release.wait(5)
+            calls.append((job, approved))
+            return JobResult(job)
+
+        runner = make_runner(engine, run_job, allow_apply=True)
+        runner.submit("movers", True, "manual", None)
+        run_id = runner.submit_apply(plan_id, ["sonarr:1"], "manual", None)
+        runner.allow_apply = False
+        release.set()
+        runner.wait_idle()
+        run = get(engine, run_id)
+        assert run.status == "failed" and "REMOVERS_ALLOW_APPLY is off" in run.log
+        assert calls == [("movers", None)]
+        runner.stop()
+
+
 class TestApplyMovies:
     def setup_method(self):
         self.calls: list[tuple] = []

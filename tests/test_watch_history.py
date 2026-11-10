@@ -1,15 +1,17 @@
 """Tests for watch_history.py"""
 
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
+from plexapi import exceptions as plexapi_exceptions
 
 import watch_history
 from config.models import PlexConfig, TautulliConfig
 from tautulli import history_rows
-from watch_history import WatchEvent, get_tautulli_watches, get_watch_history
+from watch_history import WatchEvent, get_plex_watches, get_tautulli_watches, get_watch_history
 
 TAUTULLI = TautulliConfig(url="http://tautulli:8181/", apikey="key")
 SINCE = datetime(2026, 9, 1)
@@ -147,6 +149,72 @@ class TestTautulliWatches:
         with patch.object(watch_history.requests, "get", side_effect=fake_get):
             events = get_tautulli_watches(TAUTULLI, SINCE)
         assert len(events) == watch_history.HISTORY_PAGE + 1
+
+
+PLEX = PlexConfig("http://plex:32400", "plex-token")
+WATCHED = datetime(2026, 9, 10, 20, 30, tzinfo=timezone.utc)
+
+
+def plex_play(show_key=10, season=3, episode=4, viewed=WATCHED, kind="episode", title="Survivor"):
+    return SimpleNamespace(type=kind, grandparentRatingKey=show_key, grandparentTitle=title,
+                           parentIndex=season, index=episode, viewedAt=viewed)
+
+
+def fake_plex(history, shows=None):
+    plex = MagicMock()
+    plex.history.return_value = history
+    shows = {10: SimpleNamespace(guids=[SimpleNamespace(id="tvdb://555")], guid="plex://show/10")} if shows is None else shows
+
+    def fetch(key):
+        if key not in shows:
+            raise plexapi_exceptions.NotFound("gone")
+        return shows[key]
+
+    plex.fetchItem.side_effect = fetch
+    return plex
+
+
+class TestPlexWatches:
+    """the fallback without Tautulli: plex's own history, completed plays only"""
+
+    def _run(self, plex):
+        with patch.object(watch_history, "setup_plex_server", return_value=plex):
+            return get_plex_watches(PLEX, SINCE)
+
+    def test_episode_plays_with_their_shows_tvdb_id(self):
+        plex = fake_plex([plex_play(), plex_play(episode=5)])
+        assert self._run(plex) == [
+            WatchEvent(555, "Survivor", 3, 4, datetime(2026, 9, 10, 20, 30)),
+            WatchEvent(555, "Survivor", 3, 5, datetime(2026, 9, 10, 20, 30)),
+        ]
+        # a show is looked up once, however many of its episodes were played
+        plex.fetchItem.assert_called_once_with(10)
+
+    def test_asks_from_since_in_plexs_local_time(self):
+        plex = fake_plex([])
+        self._run(plex)
+        local = SINCE.replace(tzinfo=timezone.utc).astimezone().replace(tzinfo=None)
+        plex.history.assert_called_once_with(mindate=local)
+
+    def test_a_legacy_agent_guid(self):
+        shows = {10: SimpleNamespace(guids=[], guid="com.plexapp.agents.thetvdb://777?lang=en")}
+        assert self._run(fake_plex([plex_play()], shows))[0].tvdb_id == 777
+
+    def test_a_show_plex_no_longer_has_is_matched_by_title(self):
+        [event] = self._run(fake_plex([plex_play(show_key=99, title="Gone")], shows={}))
+        assert (event.tvdb_id, event.title) == (None, "Gone")
+
+    def test_movies_and_unnumbered_plays_are_skipped(self):
+        plays = [plex_play(kind="movie"), plex_play(season=None), plex_play(episode=None), plex_play(viewed=None)]
+        assert self._run(fake_plex(plays)) == []
+
+    def test_a_plex_failure_is_no_history(self):
+        plex = fake_plex([])
+        plex.history.side_effect = plexapi_exceptions.BadRequest("(500) error")
+        assert self._run(plex) is None
+
+    def test_no_server_is_no_history(self):
+        assert self._run(None) is None
 
 
 class TestGetWatchHistory:

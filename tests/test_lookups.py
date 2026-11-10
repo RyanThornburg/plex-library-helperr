@@ -8,13 +8,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
-from config.models import MoverRule, ProfileRule
+from config.models import ArrConfig, MoverRule, ProfileRule
 from arr_client import snapshot
 from tests.test_main import make_movie, make_quality_profile, make_root_folder
 from web.jobs import utc_now
 from web.lookups import (
+    CACHE_TTL,
     ArrLibrary,
     LookupFailed,
+    Lookups,
     check_connection,
     preview_mover,
     preview_profiler,
@@ -213,3 +215,51 @@ class TestCheckConnection:
         server = SimpleNamespace(friendlyName="rattplex", version="1.42")
         with patch("web.lookups.PlexServer", return_value=server):
             assert check_connection("plex", {"url": "http://plex:32400", "secret": "t"}) == "Plex rattplex 1.42"
+
+
+class TestLookupsCache:
+    """a rule form's choices are cached a while, per arr, refreshed on request"""
+
+    ARR = ArrConfig(baseurl="http://radarr:7878", apikey="radarr-secret-key", tag=None)
+
+    def api(self):
+        api = MagicMock()
+        api.all_tags.return_value = []
+        api.quality_profile.return_value = []
+        api.all_movies.return_value = []
+        api.root_folder.return_value = []
+        return api
+
+    def test_cached_until_refresh_clear_or_expiry(self, monkeypatch):
+        api = self.api()
+        lookups = Lookups()
+        now = [NOW]
+        monkeypatch.setattr("web.lookups.utc_now", lambda: now[0])
+        with patch("web.lookups.arr_api", return_value=api) as connect:
+            first = lookups.arr_library("radarr", self.ARR)
+            assert lookups.arr_library("radarr", self.ARR) is first
+            assert connect.call_count == 1
+            lookups.arr_library("radarr", self.ARR, refresh=True)
+            assert connect.call_count == 2
+            lookups.clear()
+            lookups.arr_library("radarr", self.ARR)
+            assert connect.call_count == 3
+            now[0] = NOW + CACHE_TTL + timedelta(seconds=1)
+            lookups.arr_library("radarr", self.ARR)
+            assert connect.call_count == 4
+
+    def test_a_failure_is_redacted_and_not_cached(self, caplog):
+        api = self.api()
+        api.all_movies.side_effect = [ConnectionError("http://radarr:7878/api/v3/movie?apikey=radarr-secret-key refused"), []]
+        lookups = Lookups()
+        with patch("web.lookups.arr_api", return_value=api):
+            with pytest.raises(LookupFailed) as e:
+                lookups.arr_library("radarr", self.ARR)
+            assert "radarr-secret-key" not in str(e.value) and "***" in str(e.value)
+            assert "radarr-secret-key" not in caplog.text
+            # the next look tries again
+            assert lookups.arr_library("radarr", self.ARR).media == []
+
+    def test_not_connected(self):
+        with pytest.raises(LookupFailed, match="Radarr isn't connected"):
+            Lookups().arr_library("radarr", None)

@@ -514,3 +514,19 @@ class TestFieldTypes:
         )
         assert settings.radarr.dry_run is False
         assert settings.radarr.removers[0].exclude_tags == ["keep"]
+
+
+def test_no_secret_shows_in_the_settings_repr():
+    # the whole config is logged at startup: every secret field, a new one included,
+    # needs a masked __repr__
+    from config.document import SECRET_FIELDS, with_secrets
+
+    sections = {section for section, _ in SECRET_FIELDS.values()}
+    document = {s: {"baseurl": f"http://{s}"} if s in ("radarr", "sonarr", "plex") else {"url": f"http://{s}"} for s in sections}
+    document["autoscan"]["username"] = "me"
+    secrets = {name: f"secret-{name.replace('.', '-')}-value" for name in SECRET_FIELDS}
+    settings = config.build_config(with_secrets(document, secrets))
+    for section in sections:
+        assert getattr(settings, section) is not None, f"[{section}] didn't load"
+    text = repr(settings)
+    assert not [value for value in secrets.values() if value in text]
