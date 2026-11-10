@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% import "settings/_fields.html" as f with context %}
+{% block title %}Movers · Helperr{% endblock %}
+{% macro rule_actions(arr, kind, number, count) %}
+<div class="actions row-actions">
+  <a class="button button-secondary" href="/settings/{{ arr }}/{{ kind }}/{{ number }}">Edit</a>
+  {% if kind == "movers" %}
+  <form method="post" action="/settings/{{ arr }}/{{ kind }}/{{ number }}/move?direction=up">{{ f.version_field() }}<button type="submit" class="button-secondary" aria-label="Move mover {{ number }} up"{% if number == 1 %} disabled{% endif %}>Up</button></form>
+  <form method="post" action="/settings/{{ arr }}/{{ kind }}/{{ number }}/move?direction=down">{{ f.version_field() }}<button type="submit" class="button-secondary" aria-label="Move mover {{ number }} down"{% if number == count %} disabled{% endif %}>Down</button></form>
+  {% endif %}
+</div>
+{% endmacro %}
+{% block toolbar %}
+{% for a in arrs %}
+<div class="group">{{ ui.tool("plus", "Add " ~ a.label ~ " mover", "/settings/" ~ a.arr ~ "/movers/new") }}{{ ui.tool("plus", "Add " ~ a.label ~ " profiler", "/settings/" ~ a.arr ~ "/profilers/new") }}</div>
+{% endfor %}
+{% endblock %}
+{% block content %}
+<h1>Movers</h1>
+<p class="muted">The Movers &amp; profilers job. Movers move matching media to another root folder, with its files; they run in order and the first match wins, so a later mover never sees what an earlier one matched. Profilers set the quality profile (and optionally monitoring) of matching media. It runs from <a href="/runs">Runs</a>, a schedule, or Radarr's and Sonarr's webhook when media is added.</p>
+{% if saved %}<p class="banner banner-ok">Saved.</p>{% endif %}
+
+{% for a in arrs %}
+{% set media = "movies" if a.arr == "radarr" else "series" %}
+<section class="arr-rules" id="{{ a.arr }}">
+<h2>{{ a.label }}</h2>
+{% if not a.connected %}
+<p class="banner banner-warn">{{ a.label }} isn't connected, its rules don't run. <a href="/settings/connections#{{ a.arr }}">Connect it</a>.</p>
+{% endif %}
+{% if a.errors %}
+<ul class="banner banner-bad errors-list">{% for error in a.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+{% endif %}
+
+<form method="post" action="/settings/{{ a.arr }}" class="form form-compact arr-options">
+  {{ f.version_field() }}
+  {{ f.dry_run(a.values.dry_run, global_dry, a.arr ~ "-dry-run") }}
+  <label for="{{ a.arr }}-tag">Tag moved {{ media }}</label>
+  <div>
+    <input id="{{ a.arr }}-tag" name="tag" value="{{ a.values.tag }}" spellcheck="false" placeholder="no tag">
+    <p class="hint">Added to everything a mover moves, e.g. <code>helperr</code>.</p>
+  </div>
+  <span></span>
+  <div class="actions"><button type="submit">Save {{ a.label }} options</button></div>
+</form>
+
+<h3>Movers</h3>
+{% set movers = a.section.get("movers", []) %}
+{% if movers %}
+<table class="stack">
+  <thead><tr><th>#</th><th>Move to</th><th>When</th><th>Plex library</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
+  <tbody>
+    {% for rule in movers %}
+    <tr>
+      <td class="first">{{ loop.index }}</td>
+      <td class="long lead"><code>{{ rule.path }}</code></td>
+      <td class="long row" data-label="When">{{ criteria("movers", rule) | join("; ") }}</td>
+      <td class="long row" data-label="Plex library">{{ rule.plex_library or "-" }}</td>
+      <td class="row">{{ rule_actions(a.arr, "movers", loop.index, movers | length) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">No {{ a.label }} movers yet.</p>
+{% endif %}
+
+<h3>Profilers</h3>
+{% set profilers = a.section.get("profilers", []) %}
+{% if profilers %}
+<table class="stack">
+  <thead><tr><th>#</th><th>Profile</th><th>When</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
+  <tbody>
+    {% for rule in profilers %}
+    <tr>
+      <td class="first">{{ loop.index }}</td>
+      <td class="long lead">{{ rule.profile }}</td>
+      <td class="long row" data-label="When">{{ criteria("profilers", rule) | join("; ") }}</td>
+      <td class="row">{{ rule_actions(a.arr, "profilers", loop.index, profilers | length) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">No {{ a.label }} profilers yet.</p>
+{% endif %}
+</section>
+{% endfor %}
+{% endblock %}

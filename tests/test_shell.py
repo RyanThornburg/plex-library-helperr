@@ -33,7 +33,9 @@ def section(shell, key):
         ("/removers/auto-approve", "removers"),
         # remover rules live under Settings but are edited from Removers
         ("/settings/sonarr/removers/new", "removers"),
-        ("/settings/radarr/movers/1", "settings"),
+        ("/settings/radarr/movers/1", "movers"),
+        ("/settings/sonarr/profilers/new", "movers"),
+        ("/movers", "movers"),
         ("/settings", "settings"),
         ("/requests", "requests"),
         ("/playback", "playback"),
@@ -47,7 +49,7 @@ def test_section_of(path, expected):
 def test_the_longest_sub_page_wins():
     settings_subs = next(s for s in SECTIONS if s[0] == "settings")[4]
     assert sub_of("/settings", settings_subs) == "general"
-    assert sub_of("/settings/radarr/movers/2", settings_subs) == "radarr"
+    assert sub_of("/settings/trash", settings_subs) == "trash"
     assert sub_of("/settings/history/4", settings_subs) == "history"
 
 
@@ -111,12 +113,12 @@ class TestPages:
         assert 'href="/schedules/new"><svg class="icon"' in page
 
     def test_settings_tabs_are_sidebar_sub_pages(self, client):
-        page = client.get("/settings/radarr", headers=auth()).text
+        page = client.get("/settings/trash", headers=auth()).text
         assert 'class="tabs"' not in page
-        assert '<a href="/settings/radarr" aria-current="page">Radarr</a>' in page
-        assert "<h1>Radarr settings</h1>" in page
-        # Save submits the settings form from the toolbar
-        assert 'form="arr-form"' in page and 'id="arr-form"' in page
+        assert '<a href="/settings/trash" aria-current="page">Empty trash</a>' in page
+        assert "<h1>Empty trash</h1>" in page
+        # radarr's and sonarr's options and rules are the Movers section now
+        assert 'href="/settings/radarr"' not in page and 'href="/movers"' in page
 
     def test_a_page_without_actions_has_no_toolbar(self, client):
         assert 'class="toolbar"' not in client.get("/settings/connections", headers=auth()).text

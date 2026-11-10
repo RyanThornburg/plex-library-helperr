@@ -39,10 +39,11 @@
 {% endmacro %}
 
 {# dry run of a section: inherit the general setting, or on/off #}
-{% macro dry_run(value, global_dry) %}
-<label for="dry_run">Dry run</label>
+{# id: unique on a page with more than one (Movers has an options form per arr) #}
+{% macro dry_run(value, global_dry, id="dry_run") %}
+<label for="{{ id }}">Dry run</label>
 <div>
-  <select id="dry_run" name="dry_run">
+  <select id="{{ id }}" name="dry_run">
     <option value="inherit"{% if value == "inherit" %} selected{% endif %}>Same as General ({{ "on" if global_dry else "off" }})</option>
     <option value="true"{% if value == "true" %} selected{% endif %}>On: log what would change, change nothing</option>
     <option value="false"{% if value == "false" %} selected{% endif %}>Off: make changes</option>

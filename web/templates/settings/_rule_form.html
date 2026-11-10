@@ -1,11 +1,12 @@
 {% extends "settings/_layout.html" %}
 {% import "settings/_fields.html" as f with context %}
-{% set tab = arr if kind != "removers" else "" %}
+{% set tab = "" %}
 {% set name = {"movers": "mover", "profilers": "profiler", "removers": "remover"}[kind] %}
 {% set action = "/settings/" ~ arr ~ "/" ~ kind ~ "/" ~ (number or "new") %}
+{% block title %}{{ "Edit" if number else "New" }} {{ label }} {{ name }} · Helperr{% endblock %}
 {% block settings_title %}{{ "Edit" if number else "New" }} {{ label }} {{ name }}{% if number %} {{ number }}{% endif %}{% endblock %}
 {% block toolbar %}
-<div class="group">{{ ui.tool("back", "Removers" if kind == "removers" else label ~ " settings", back) }}</div>
+<div class="group">{{ ui.tool("back", "Removers" if kind == "removers" else "Movers", back) }}</div>
 {% endblock %}
 {% block settings %}
 {{ f.choice_problems(choice_problems) }}

@@ -1,6 +1,6 @@
-"""rule_routes.py - Settings → Radarr/Sonarr and their mover, profiler and remover rule
-forms. Registered after the other settings routes: /settings/{arr} would catch
-/settings/trash"""
+"""rule_routes.py - the Movers page (each arr's options, movers and profilers) and the
+mover, profiler and remover rule forms. Registered after the other settings routes:
+/settings/{arr} would catch /settings/trash"""
 
 import hashlib
 import json
@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 import config
 from config.document import Rule, rule_class, rule_to_dict
@@ -24,6 +24,7 @@ from web.lookups import (
 )
 from web.routes import error_page, loaded_settings, templates
 from web.settings_common import (
+    ARRS,
     ARR_FIELD,
     RULE_NAMES,
     SERVICES,
@@ -83,36 +84,57 @@ def criteria(kind: str, rule: dict[str, Any]) -> list[str]:
 templates.env.globals["criteria"] = criteria
 
 
-@router.get("/settings/{arr}", response_class=HTMLResponse)
-def arr_page(request: Request, arr: str) -> HTMLResponse:
-    check_arr(arr)
-    return arr_settings(request, arr)
+@router.get("/movers", response_class=HTMLResponse)
+def movers_page(request: Request) -> HTMLResponse:
+    return movers(request)
 
 
-def arr_settings(
-    request: Request, arr: str, values: dict[str, str] | None = None, errors: list[str] | None = None
+def movers(
+    request: Request, arr: str | None = None, values: dict[str, str] | None = None, errors: list[str] | None = None
 ) -> HTMLResponse:
-    _, document = store(request).document()
-    section = document.get(arr, {})
-    values = values or {"dry_run": dry_run_choice(section), "tag": section.get("tag", "")}
-    global_dry = document.get("settings", {}).get("dry_run", True)
-    return page(
+    """the Movers section: each arr's options (dry run, tag), movers and profilers, from
+    the stored document so it shows even when a secret can't be decrypted. values and
+    errors belong to `arr`'s options form"""
+    version, document = store(request).document()
+    arrs = []
+    for name in ARRS:
+        section = document.get(name, {})
+        arrs.append(
+            {
+                "arr": name,
+                "label": SERVICES[name][0],
+                "section": section,
+                "connected": bool(section.get("baseurl")),
+                "values": values if name == arr and values is not None
+                else {"dry_run": dry_run_choice(section), "tag": section.get("tag", "")},
+                "errors": errors if name == arr else [],
+            }
+        )
+    return templates.TemplateResponse(
         request,
-        "arr",
+        "movers.html",
         {
-            "arr": arr,
-            "label": SERVICES[arr][0],
-            "section": section,
-            "values": values,
-            "global_dry": global_dry,
-            "connected": bool(section.get("baseurl")),
+            "user": request.state.user,
+            "version": version,
+            "document": document,
+            "arrs": arrs,
+            "global_dry": document.get("settings", {}).get("dry_run", True),
+            "saved": request.query_params.get("saved") == "1",
         },
-        errors,
+        status_code=400 if errors else 200,
     )
+
+
+@router.get("/settings/{arr}")
+def arr_page(arr: str) -> RedirectResponse:
+    """where an arr's movers and options used to be"""
+    check_arr(arr)
+    return RedirectResponse(f"/movers#{arr}", status_code=303)
 
 
 @router.post("/settings/{arr}")
 def save_arr(request: Request, arr: str, fields: FormLists) -> Response:
+    """an arr's options on the Movers page: its dry run and the tag movers add"""
     check_arr(arr)
     values = {"dry_run": first(fields, "dry_run"), "tag": first(fields, "tag")}
     _, document = store(request).document()
@@ -120,19 +142,19 @@ def save_arr(request: Request, arr: str, fields: FormLists) -> Response:
     try:
         set_dry_run_choice(section, values["dry_run"])
     except ValueError as e:
-        return arr_settings(request, arr, values, [str(e)])
+        return movers(request, arr, values, [str(e)])
     if values["tag"]:
         section["tag"] = values["tag"]
     else:
         section.pop("tag", None)
     return commit(
         request, fields, document, f"{SERVICES[arr][0]} options",
-        lambda e: arr_settings(request, arr, values, [e]), f"/settings/{arr}",
+        lambda e: movers(request, arr, values, [e]), "/movers",
     )
 
 
 def back_url(arr: str, kind: str) -> str:
-    return "/removers" if kind == "removers" else f"/settings/{arr}"
+    return "/removers" if kind == "removers" else "/movers"
 
 
 def rule_number(document: dict[str, Any], arr: str, kind: str, number: int) -> dict[str, Any]:
@@ -424,13 +446,13 @@ def delete_rule(request: Request, arr: str, kind: str, number: int, fields: Form
     if changed_since_loaded(document, arr, kind, number, fields):
         return error_page(
             request, 409, RULE_CHANGED.format(f"{SERVICES[arr][0]} {RULE_NAMES[kind]} {number}"),
-            ("Removers", "/removers") if kind == "removers" else (SERVICES[arr][0], f"/settings/{arr}"),
+            ("Removers", "/removers") if kind == "removers" else ("Movers", "/movers"),
         )
     del document[arr][kind][number - 1]
     return commit(
         request, fields, document,
         f"{SERVICES[arr][0]} {RULE_NAMES[kind]} {number} deleted",
-        lambda e: arr_settings(request, arr, errors=[e]) if kind != "removers" else error_page(request, 400, e, ("Removers", "/removers")),
+        lambda e: movers(request, arr, errors=[e]) if kind != "removers" else error_page(request, 400, e, ("Removers", "/removers")),
         back_url(arr, kind), check_live=False,
     )
 
@@ -449,7 +471,7 @@ def move_rule(request: Request, arr: str, kind: str, number: int, direction: str
     return commit(
         request, fields, document,
         f"{SERVICES[arr][0]} {RULE_NAMES[kind]} {number} moved {direction}",
-        lambda e: arr_settings(request, arr, errors=[e]),
+        lambda e: movers(request, arr, errors=[e]),
         back_url(arr, kind), check_live=False,
     )
 

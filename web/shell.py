@@ -68,14 +68,13 @@ SECTIONS = [
         ("events", "Events", "/events", ("/events",)),
         ("logs", "Log files", "/logs", ("/logs",)),
     ]),
+    ("movers", "Movers", "/movers", "movers", []),
     ("removers", "Removers", "/removers", "trash", []),
     ("requests", "Requests", "/requests", "inbox", []),
     ("playback", "Playback", "/playback", "playback", []),
     ("settings", "Settings", "/settings", "settings", [
         ("general", "General", "/settings", ("/settings",)),
         ("connections", "Connections", "/settings/connections", ("/settings/connections",)),
-        ("radarr", "Radarr", "/settings/radarr", ("/settings/radarr",)),
-        ("sonarr", "Sonarr", "/settings/sonarr", ("/settings/sonarr",)),
         ("trash", "Empty trash", "/settings/trash", ("/settings/trash",)),
         ("webhook", "Webhook", "/settings/webhook", ("/settings/webhook", "/settings/api-key")),
         ("history", "History", "/settings/history", ("/settings/history",)),
@@ -92,9 +91,13 @@ def covers(path: str, prefix: str) -> bool:
 
 def section_of(path: str) -> str | None:
     """the sidebar section a page belongs to"""
-    # remover rules are edited from Removers, though their forms live under Settings
+    # rules are edited from Movers and Removers, though their forms live under /settings
     if path.startswith("/removers") or ("/removers/" in path and path.startswith("/settings/")):
         return "removers"
+    if covers(path, "/movers") or (
+        path.startswith("/settings/") and ("/movers/" in path or "/profilers/" in path)
+    ):
+        return "movers"
     if path.startswith("/settings"):
         return "settings"
     if covers(path, "/status"):
@@ -108,7 +111,7 @@ def section_of(path: str) -> str | None:
 
 
 def sub_of(path: str, subs: list[tuple[str, str, str, tuple[str, ...]]]) -> str | None:
-    """the sub page a path belongs to, the longest match winning (/settings/radarr over
+    """the sub page a path belongs to, the longest match winning (/settings/trash over
     /settings)"""
     best, length = None, -1
     for key, _label, _href, prefixes in subs:

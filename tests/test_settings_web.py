@@ -353,13 +353,13 @@ class TestRules:
             {"version": version(client), "action": "save", "path": "/movies/kids", "plex_library": "Kids Movies",
              "genres": "Family\nAnimation\nfamily", "genre_match": "all", "tag_match": "any"},
         )
-        assert (response.status_code, response.headers["location"]) == (303, "/settings/radarr?saved=1")
+        assert (response.status_code, response.headers["location"]) == (303, "/movers?saved=1")
         post(client, "/settings/radarr/movers/new", {"version": version(client), "action": "save", "path": "/movies/main", "certifications": "R"})
         assert document(client)["radarr"]["movers"] == [
             {"path": "/movies/kids", "plex_library": "Kids Movies", "genres": ["Family", "Animation"], "genre_match": "all"},
             {"path": "/movies/main", "certifications": ["R"]},
         ]
-        page = client.get("/settings/radarr", headers=auth()).text
+        page = client.get("/movers", headers=auth()).text
         assert "genres all of Family, Animation" in page
 
         post(client, "/settings/radarr/movers/2/move?direction=up", {"version": version(client)})
@@ -465,6 +465,34 @@ class TestRules:
         response = post(client, "/settings/sonarr", {"version": version(client), "dry_run": "inherit", "tag": ""})
         assert response.status_code == 303
         assert document(client)["sonarr"] == {}
+
+
+class TestMoversPage:
+    def test_each_arrs_options_movers_and_profilers(self, client):
+        post(client, "/settings/radarr/movers/new", {"version": 0, "action": "save", "path": "/movies/kids", "genres": "Family"})
+        post(client, "/settings/sonarr/profilers/new", {"version": version(client), "action": "save", "profile": "NoDownload", "networks": "HBO"})
+        page = client.get("/movers", headers=auth()).text
+        assert '<section class="arr-rules" id="radarr">' in page and '<section class="arr-rules" id="sonarr">' in page
+        assert "<code>/movies/kids</code>" in page and "NoDownload" in page
+        # an options form per arr, its fields' ids unique on the page
+        assert page.count('id="radarr-dry-run"') == 1 and page.count('id="sonarr-dry-run"') == 1
+        assert 'href="/settings/sonarr/profilers/new"' in page and 'aria-current="page">' in page
+
+    def test_the_old_arr_pages_lead_here(self, client):
+        response = client.get("/settings/radarr", headers=auth(), follow_redirects=False)
+        assert (response.status_code, response.headers["location"]) == (303, "/movers#radarr")
+        assert client.get("/settings/lidarr", headers=auth(), follow_redirects=False).status_code == 404
+
+    def test_an_options_error_shows_on_its_arr(self, client):
+        response = post(client, "/settings/sonarr", {"version": 0, "dry_run": "maybe", "tag": "x"})
+        assert response.status_code == 400
+        sonarr = response.text[response.text.index('id="sonarr"'):]
+        radarr = response.text[response.text.index('id="radarr"'):response.text.index('id="sonarr"')]
+        assert "errors-list" in sonarr and "errors-list" not in radarr
+
+    def test_a_rule_form_goes_back_to_movers(self, client):
+        page = client.get("/settings/radarr/movers/new", headers=auth()).text
+        assert 'href="/movers"' in page and "<title>New Radarr mover · Helperr</title>" in page
 
 
 class TestRemovers:

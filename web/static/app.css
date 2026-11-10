@@ -747,6 +747,11 @@ summary.line:focus-visible { outline: 2px solid var(--text); outline-offset: -2p
 
 /* health history */
 .section-heading { margin-top: 24px; }
+/* Movers: an arr per section, its options form, then its movers and profilers under
+   13px Dim Ink subheadings */
+.arr-rules + .arr-rules { margin-top: 32px; padding-top: 8px; border-top: 1px solid var(--border); }
+.arr-rules h3 { font-size: 13px; color: var(--muted); margin: 20px 0 8px; }
+.arr-options { max-width: 640px; }
 .section-heading h2 { margin: 0; }
 .incidents tr.incident-ongoing.incident-bad { background: color-mix(in srgb, var(--bad) 7%, transparent); }
 .incidents tr.incident-ongoing.incident-warn { background: color-mix(in srgb, var(--accent) 9%, transparent); }
