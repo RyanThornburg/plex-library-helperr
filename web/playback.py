@@ -10,7 +10,7 @@ often, files that transcode for several people, recent transcodes"""
 
 import logging
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -395,8 +395,12 @@ def _percent(part: int, whole: int) -> int | None:
     return round(100 * part / whole) if whole else None
 
 
-def _latest(p: Playback) -> dict[str, Any]:
-    main = (causes(p) or [None])[0]
+# what report() passes its helpers: each play's causes(), worked out once
+CauseOf = Callable[[Playback], list[str]]
+
+
+def _latest(p: Playback, cause_of: CauseOf = causes) -> dict[str, Any]:
+    main = (cause_of(p) or [None])[0]
     return {
         "started_at": p.started_at,
         "decision": p.transcode_decision,
@@ -405,15 +409,15 @@ def _latest(p: Playback) -> dict[str, Any]:
     }
 
 
-def _group(plays: list[Playback]) -> dict[str, Any]:
+def _group(plays: list[Playback], cause_of: CauseOf = causes) -> dict[str, Any]:
     """counts for plays of one user or player, newest first"""
     decisions = Counter(p.transcode_decision for p in plays)
-    main_causes = Counter(c[0] for p in plays if (c := causes(p)))
+    main_causes = Counter(c[0] for p in plays if (c := cause_of(p)))
     # the quality limit it transcoded at most, what to change on the player
-    limits = Counter(p.quality_profile for p in plays if causes(p)[:1] == ["quality"])
+    limits = Counter(p.quality_profile for p in plays if cause_of(p)[:1] == ["quality"])
     # and the file format that made it transcode most, e.g. EAC3 5.1
     formats = Counter(
-        file_format(p, c[0]) for p in plays if (c := causes(p)) and c[0] in FILE_CAUSES
+        file_format(p, c[0]) for p in plays if (c := cause_of(p)) and c[0] in FILE_CAUSES
     )
     transcodes = decisions["transcode"]
     return {
@@ -425,11 +429,11 @@ def _group(plays: list[Playback]) -> dict[str, Any]:
         "main_cause": CAUSES[main_causes.most_common(1)[0][0]][0] if main_causes else None,
         "quality_limit": limits.most_common(1)[0][0] if limits else None,
         "file_format": formats.most_common(1)[0][0] if formats else None,
-        "latest": _latest(plays[0]),
+        "latest": _latest(plays[0], cause_of),
     }
 
 
-def fixes(plays: list[Playback]) -> dict[str, Any]:
+def fixes(plays: list[Playback], cause_of: CauseOf = causes) -> dict[str, Any]:
     """the people's devices that cause most transcodes, worst first, and what to change on
     each: a setting lives on one app on one device, so by user and player together"""
     by_device: dict[tuple[int, str], list[Playback]] = defaultdict(list)
@@ -440,8 +444,8 @@ def fixes(plays: list[Playback]) -> dict[str, Any]:
         transcodes = [p for p in group if p.transcode_decision == "transcode"]
         if not transcodes:
             continue
-        main = Counter(causes(p)[0] for p in transcodes).most_common(1)[0][0]
-        of_main = [p for p in transcodes if causes(p)[0] == main]
+        main = Counter(cause_of(p)[0] for p in transcodes).most_common(1)[0][0]
+        of_main = [p for p in transcodes if cause_of(p)[0] == main]
         now = None
         if main == "quality":
             now = Counter(p.quality_profile for p in of_main).most_common(1)[0][0]
@@ -480,12 +484,18 @@ def fixes(plays: list[Playback]) -> dict[str, Any]:
 def report(plays: Iterable[Playback]) -> dict[str, Any]:
     """what the page shows, from plays newest first"""
     plays = list(plays)
+    # each play's causes once: the sections below ask for them again and again
+    found = {id(p): causes(p) for p in plays}
+
+    def cause_of(p: Playback) -> list[str]:
+        return found[id(p)]
+
     transcodes = [p for p in plays if p.transcode_decision == "transcode"]
     decisions = Counter(p.transcode_decision for p in plays)
 
     by_cause: dict[str, list[Playback]] = defaultdict(list)
     for p in transcodes:
-        by_cause[causes(p)[0]].append(p)
+        by_cause[cause_of(p)[0]].append(p)
     cause_rows = [
         {
             "cause": cause,
@@ -507,7 +517,7 @@ def report(plays: Iterable[Playback]) -> dict[str, Any]:
         {
             "user_id": user_id,
             "user": group[0].user,
-            **_group(group),
+            **_group(group, cause_of),
             "players": sorted({player_name(p) for p in group}),
             "remote": sum(p.location == "wan" for p in group),
         }
@@ -517,7 +527,7 @@ def report(plays: Iterable[Playback]) -> dict[str, Any]:
         {
             "player": name,
             "platforms": sorted({p.platform for p in group if p.platform and p.platform != name}),
-            **_group(group),
+            **_group(group, cause_of),
             "users": len({p.user_id for p in group}),
         }
         for name, group in by_player.items()
@@ -535,7 +545,7 @@ def report(plays: Iterable[Playback]) -> dict[str, Any]:
                 by_format[cause, fmt].append(p)
     formats = []
     for (cause, fmt), group in by_format.items():
-        issues = [p for p in group if causes(p)[:1] == [cause]]
+        issues = [p for p in group if cause_of(p)[:1] == [cause]]
         if not issues:
             continue
         formats.append(
@@ -555,13 +565,13 @@ def report(plays: Iterable[Playback]) -> dict[str, Any]:
     # the same file (rating key) transcoding for a file cause, for several people
     by_file: dict[int | str, list[Playback]] = defaultdict(list)
     for p in transcodes:
-        if causes(p)[0] in FILE_CAUSES:
+        if cause_of(p)[0] in FILE_CAUSES:
             by_file[p.rating_key if p.rating_key is not None else p.title].append(p)
     files = [
         {
             "title": group[0].title,
             "media_type": group[0].media_type,
-            "causes": [CAUSES[c][0] for c in dict.fromkeys(causes(p)[0] for p in group)],
+            "causes": [CAUSES[c][0] for c in dict.fromkeys(cause_of(p)[0] for p in group)],
             "detail": detail(group[0]),
             "users": len({p.user_id for p in group}),
             "plays": len(group),
@@ -582,7 +592,7 @@ def report(plays: Iterable[Playback]) -> dict[str, Any]:
         "transcode_percent": _percent(len(transcodes), len(plays)),
         "remote": sum(p.location == "wan" for p in plays),
         "remote_percent": _percent(sum(p.location == "wan" for p in plays), len(plays)),
-        "fixes": fixes(plays),
+        "fixes": fixes(plays, cause_of),
         # video transcodes the cpu encoded, plex's hardware transcoding wasn't used
         "software": sum(p.video_decision == "transcode" and p.hw_encoding is False for p in transcodes),
         "causes": cause_rows,
@@ -598,7 +608,7 @@ def report(plays: Iterable[Playback]) -> dict[str, Any]:
                 "player": player_name(p),
                 "platform": p.platform,
                 "remote": p.location == "wan",
-                "causes": [CAUSES[c][0] for c in causes(p)],
+                "causes": [CAUSES[c][0] for c in cause_of(p)],
                 "detail": detail(p),
             }
             for p in transcodes[:RECENT]

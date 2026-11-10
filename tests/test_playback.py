@@ -13,7 +13,7 @@ from config.models import ConfigSettings
 from tests.test_stats import DAY, PLEX, TAUTULLI, engine, response, tautulli_body, ts  # noqa: F401 (fixture)
 from tests.test_web import ORIGIN, FakeKeys, auth, live_config
 from tests.test_web import settings  # noqa: F401 (fixture)
-from web import stats
+from web import playback, stats
 from web.app import create_app
 from web.db import Playback
 from web.jobs import utc_now
@@ -294,6 +294,12 @@ class TestReport:
             play(7, user_id=13, **AUDIO),
             play(8, user_id=12, quality_profile="Original", stream_subtitle_decision="burn", subtitle_codec="pgs"),
         ]
+
+    def test_works_out_each_plays_causes_once(self):
+        plays = self.plays()
+        with patch("web.playback.causes", wraps=playback.causes) as found:
+            report(plays)
+        assert found.call_count == len(plays)
 
     def test_totals(self):
         r = report(self.plays())
