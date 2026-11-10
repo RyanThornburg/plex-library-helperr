@@ -9,7 +9,7 @@ from typing import Any
 import requests
 from arrapi import Series, SonarrAPI
 
-from arr_client import TIMEOUT, arr_api
+from arr_client import TIMEOUT, arr_api, read_media
 from config.models import ArrConfig, PlexConfig, RemoverRule, TautulliConfig
 from logging_config import failure_text
 from results import Change, JobResult, PlannedFile, PlannedRemoval, Status
@@ -453,7 +453,8 @@ def run_removers(
         result.changes.append(Change(LOG_NAME, "remove", title, labels or [], "blocked", reason))
 
     logger.info("%s\t Reading all media...", LOG_NAME)
-    all_series: list[Series] = arr.all_series()
+    # snapshots: reading each series' tags through arrapi is a request per tag
+    all_series: list[Series] = read_media(arr, "all_series")
     tagged = [(s, r) for s in all_series if (r := match_remover(s, arr_config.removers))]
     if approved is not None:
         logger.info("%s\t Applying an approved plan for %s series", LOG_NAME, len(approved))

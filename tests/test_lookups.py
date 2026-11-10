@@ -9,6 +9,7 @@ import pytest
 import requests
 
 from config.models import MoverRule, ProfileRule
+from arr_client import snapshot
 from tests.test_main import make_movie, make_quality_profile, make_root_folder
 from web.jobs import utc_now
 from web.lookups import (
@@ -19,7 +20,6 @@ from web.lookups import (
     preview_profiler,
     quiet,
     redact,
-    snapshot,
 )
 
 NOW = utc_now()

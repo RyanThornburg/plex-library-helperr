@@ -568,26 +568,31 @@ class TestProfileRulesSonarrExtended:
 def make_arr(media, root_paths):
     arr = MagicMock()
     arr.all_movies.return_value = media
+    arr.all_tags.return_value = []
     arr.root_folder.return_value = [make_root_folder(p) for p in root_paths]
     arr.quality_profile.return_value = []
-    arr.edit_multiple_movies.return_value = ([], [])
     return arr
 
 
 class TestRunArr:
     def setup_method(self):
         self.result = JobResult("movers")
+        self.edit = MagicMock(return_value=[])
 
     def _run(self, arr, arr_config):
-        main.run_arr(
-            arr_config,
-            MagicMock(return_value=arr),
-            "all_movies",
-            "edit_multiple_movies",
-            "RADARR",
-            None,
-            self.result,
-        )
+        # the mocks are read as they are: snapshots are tested in test_lookups
+        with (
+            patch.object(main, "read_media", side_effect=lambda api, fn, *_: getattr(api, fn)()),
+            patch.object(main, "edit_media", self.edit),
+        ):
+            main.run_arr(
+                arr_config,
+                MagicMock(return_value=arr),
+                "all_movies",
+                "RADARR",
+                None,
+                self.result,
+            )
 
     def test_first_matching_mover_wins(self):
         movie = make_movie(genres=["Documentary", "Family"])
@@ -602,8 +607,8 @@ class TestRunArr:
             ],
         )
         self._run(arr, arr_config)
-        arr.edit_multiple_movies.assert_called_once_with(
-            ids=[movie], root_folder="/movies/docs", move_files=True
+        self.edit.assert_called_once_with(
+            "http://radarr", "key", "RADARR", [movie.id], {"rootFolderPath": "/movies/docs", "moveFiles": True}
         )
 
     def test_unclaimed_media_still_matches_later_mover(self):
@@ -620,8 +625,8 @@ class TestRunArr:
             ],
         )
         self._run(arr, arr_config)
-        assert arr.edit_multiple_movies.call_count == 2
-        assert arr.edit_multiple_movies.call_args.kwargs["ids"] == [kids]
+        assert self.edit.call_count == 2
+        assert self.edit.call_args.args[3] == [kids.id]
 
     def test_moved_folders_added_to_scan_dirs(self):
         movie = make_movie(
@@ -630,8 +635,7 @@ class TestRunArr:
             path="/data/media/movies/movies/Free Solo (2018)",
         )
         arr = make_arr([movie], ["/data/media/movies/docs"])
-        updated = make_movie(id=1, path="/data/media/movies/docs/Free Solo (2018)")
-        arr.edit_multiple_movies.return_value = ([updated], [])
+        self.edit.return_value = [{"id": 1, "path": "/data/media/movies/docs/Free Solo (2018)"}]
         arr_config = ArrConfig(
             baseurl="http://radarr",
             apikey="key",
@@ -658,7 +662,7 @@ class TestRunArr:
             movers=[MoverRule(path="/movies/docs", genres=["documentary"])],
         )
         self._run(arr, arr_config)
-        arr.edit_multiple_movies.assert_not_called()
+        self.edit.assert_not_called()
         assert self.result.scan_dirs == set()
         assert [c.status for c in self.result.changes] == ["dry_run"]
 
@@ -676,6 +680,49 @@ class TestRunArr:
         assert self.result.changes == [
             Change("RADARR", "profile", "Kids", ["Jurassic Park"], "done")
         ]
+        profile_id = arr.quality_profile.return_value[0].id
+        self.edit.assert_called_once_with("http://radarr", "key", "RADARR", [movie.id], {"qualityProfileId": profile_id})
+
+    def test_profiler_sets_monitored(self):
+        movie = make_movie(studio="Pixar")
+        arr = make_arr([movie], [])
+        kids = make_quality_profile("Kids")
+        kids.id = 7
+        arr.quality_profile.return_value = [kids]
+        arr_config = ArrConfig(
+            baseurl="http://radarr", apikey="key", tag=None,
+            profilers=[ProfileRule(profile="Kids", studios=["pixar"], monitored=False)],
+        )
+        self._run(arr, arr_config)
+        assert self.edit.call_args.args[4] == {"qualityProfileId": 7, "monitored": False}
+
+    def test_moved_media_is_tagged(self):
+        movie = make_movie(genres=["Documentary"])
+        arr = make_arr([movie], ["/movies/docs"])
+        existing = make_tag("Moved")
+        existing.id = 4
+        arr.all_tags.return_value = [existing]
+        arr_config = ArrConfig(
+            baseurl="http://radarr", apikey="key", tag="moved",
+            movers=[MoverRule(path="/movies/docs", genres=["documentary"])],
+        )
+        self._run(arr, arr_config)
+        assert self.edit.call_args.args[4] == {
+            "rootFolderPath": "/movies/docs", "moveFiles": True, "tags": [4], "applyTags": "add",
+        }
+        arr.create_tag.assert_not_called()
+
+    def test_a_missing_tag_is_created(self):
+        movie = make_movie(genres=["Documentary"])
+        arr = make_arr([movie], ["/movies/docs"])
+        arr.create_tag.return_value.id = 9
+        arr_config = ArrConfig(
+            baseurl="http://radarr", apikey="key", tag="moved",
+            movers=[MoverRule(path="/movies/docs", genres=["documentary"])],
+        )
+        self._run(arr, arr_config)
+        arr.create_tag.assert_called_once_with("moved")
+        assert self.edit.call_args.args[4]["tags"] == [9]
 
 
 class TestMainErrorHandling:
@@ -737,7 +784,7 @@ class TestMainErrorHandling:
 class TestGetMovedDirs:
     def test_uses_updated_path_from_arr(self):
         old = make_series(id=5, path="/data/media/tv/tv/Bluey (2018)")
-        new = make_series(id=5, path="/data/media/tv/tv-kids/Bluey")
+        new = {"id": 5, "path": "/data/media/tv/tv-kids/Bluey"}
         assert get_moved_dirs([old], [new], "/data/media/tv/tv-kids") == {
             "/data/media/tv/tv/Bluey (2018)",
             "/data/media/tv/tv-kids/Bluey",

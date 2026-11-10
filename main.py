@@ -20,9 +20,10 @@ from arrapi import (
     RootFolder,
     Series,
     SonarrAPI,
+    Tag,
 )
 
-from arr_client import arr_api
+from arr_client import arr_api, edit_media, read_media
 from autoscan import trigger_autoscan
 from config.models import ArrConfig, ConfigSettings, MoverRule, ProfileRule
 from logging_config import failure_text, logging_config
@@ -69,11 +70,12 @@ def filter_media(media: list[Movie | Series], mover: MoverRule) -> list[Movie | 
 
 def get_moved_dirs(
     matches: list[Movie | Series],
-    updated: list[Movie | Series],
+    updated: list[dict],
     target: str,
 ) -> set[str]:
-    """old and new folders for moved media, to scan both source and target libraries"""
-    new_paths = {u.id: u.path for u in updated}
+    """old and new folders for moved media, to scan both source and target libraries.
+    updated is the arr editor's answer"""
+    new_paths = {u.get("id"): u.get("path") for u in updated}
     dirs: set[str] = set()
     for m in matches:
         dirs.add(m.path)
@@ -227,11 +229,18 @@ def get_media_matching_profile_rules(
     return matches
 
 
+def tag_id(arr: RadarrAPI | SonarrAPI, tags: list[Tag], label: str) -> int:
+    """the id of the tag moved media gets, created when the arr doesn't have it yet"""
+    for tag in tags:
+        if tag.label.casefold() == label.casefold():
+            return tag.id
+    return arr.create_tag(label).id
+
+
 def run_arr(
     arr_config: ArrConfig,
     api_cls: type[RadarrAPI | SonarrAPI],
     all_fn: str,
-    edit_fn: str,
     log_name: str,
     filter_time: timedelta | None,
     result: JobResult,
@@ -243,8 +252,16 @@ def run_arr(
 
     arr = arr_api(api_cls, arr_config.baseurl, arr_config.apikey)
     logger.info("%s\t Reading all media...", log_name)
-    media: list[Movie | Series] = getattr(arr, all_fn)()
+    tags: list[Tag] = arr.all_tags()
+    quality_profiles: list[QualityProfile] = arr.quality_profile()
+    # snapshots: rules read them without a request per movie/series
+    media: list[Movie | Series] = read_media(arr, all_fn, tags, quality_profiles)
     logger.info("%s\t Total Files: %s", log_name, len(media))
+
+    def edit(matches: list[Movie | Series], changes: dict[str, object]) -> list[dict]:
+        return edit_media(
+            arr_config.baseurl, arr_config.apikey, log_name, [m.id for m in matches], changes
+        )
 
     if filter_time is not None:
         logger.info("%s\t Filtering media...", log_name)
@@ -253,7 +270,6 @@ def run_arr(
         logger.info("%s\t Total Files: %s", log_name, len(media))
 
     root_folders: list[RootFolder] = arr.root_folder()
-    quality_profiles: list[QualityProfile] = arr.quality_profile()
 
     if arr_config.movers:
         logger.info("%s\t Mover checks starting", log_name)
@@ -274,16 +290,13 @@ def run_arr(
                 )
                 titles = [m.title for m in matches]
                 if not arr_config.dry_run:
-                    updated, _ = getattr(arr, edit_fn)(
-                        ids=matches,
-                        root_folder=mover.path,
-                        move_files=True,
-                        **(
-                            {"tags": arr_config.tag, "apply_tags": "add"}
-                            if arr_config.tag
-                            else {}
-                        ),
-                    )
+                    changes: dict[str, object] = {"rootFolderPath": mover.path, "moveFiles": True}
+                    if arr_config.tag:
+                        changes |= {
+                            "tags": [tag_id(arr, tags, arr_config.tag)],
+                            "applyTags": "add",
+                        }
+                    updated = edit(matches, changes)
                     result.changes.append(
                         Change(log_name, "move", mover.path, titles, "done")
                     )
@@ -316,11 +329,11 @@ def run_arr(
                 )
                 titles = [m.title for m in matches]
                 if not arr_config.dry_run:
-                    getattr(arr, edit_fn)(
-                        ids=matches,
-                        quality_profile=p.profile,
-                        monitored=p.monitored,
-                    )
+                    profile_id = next(q.id for q in quality_profiles if q.name == p.profile)
+                    changes = {"qualityProfileId": profile_id}
+                    if p.monitored is not None:
+                        changes["monitored"] = p.monitored
+                    edit(matches, changes)
                     result.changes.append(
                         Change(log_name, "profile", p.profile, titles, "done")
                     )
@@ -473,14 +486,13 @@ def run_job(
         scan_changed(settings, result)
         return result
 
-    arr_dispatch: list[
-        tuple[ArrConfig | None, type[RadarrAPI | SonarrAPI], str, str, str]
-    ] = [
-        (settings.radarr, RadarrAPI, "all_movies", "edit_multiple_movies", "RADARR"),
-        (settings.sonarr, SonarrAPI, "all_series", "edit_multiple_series", "SONARR"),
+    # bulk edits go to arr_client.EDITORS[log_name]
+    arr_dispatch: list[tuple[ArrConfig | None, type[RadarrAPI | SonarrAPI], str, str]] = [
+        (settings.radarr, RadarrAPI, "all_movies", "RADARR"),
+        (settings.sonarr, SonarrAPI, "all_series", "SONARR"),
     ]
 
-    for arr_config, api_cls, all_fn, edit_fn, log_name in arr_dispatch:
+    for arr_config, api_cls, all_fn, log_name in arr_dispatch:
         logger.info("-" * 90)
         logger.info("STARTING %s", log_name)
         if arr_config is None:
@@ -491,7 +503,6 @@ def run_job(
                 arr_config,
                 api_cls,
                 all_fn,
-                edit_fn,
                 log_name,
                 settings.filter_time,
                 result,

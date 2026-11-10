@@ -423,6 +423,8 @@ class SonarrFakes:
         )
         with (
             patch.object(remover, "SonarrAPI", return_value=arr),
+            # the mocks are read as they are: snapshots are tested in test_arr_client
+            patch.object(remover, "read_media", side_effect=lambda api, fn: getattr(api, fn)()),
             patch.object(remover, "SonarrEpisodes", return_value=self.client),
             patch.object(remover, "get_watch_history", return_value=watches) as wh,
             patch.object(remover, "utc_now", return_value=NOW),
@@ -574,6 +576,8 @@ class TestApplyPlan(SonarrFakes):
         )
         with (
             patch.object(remover, "SonarrAPI", return_value=arr),
+            # the mocks are read as they are: snapshots are tested in test_arr_client
+            patch.object(remover, "read_media", side_effect=lambda api, fn: getattr(api, fn)()),
             patch.object(remover, "SonarrEpisodes", return_value=self.client),
             patch.object(remover, "get_watch_history", return_value=kwargs.get("watches")),
             patch.object(remover, "utc_now", return_value=NOW),
@@ -726,6 +730,8 @@ class TestAutoApprove(SonarrFakes):
         )
         with (
             patch.object(remover, "SonarrAPI", return_value=arr),
+            # the mocks are read as they are: snapshots are tested in test_arr_client
+            patch.object(remover, "read_media", side_effect=lambda api, fn: getattr(api, fn)()),
             patch.object(remover, "SonarrEpisodes", return_value=self.client),
             patch.object(remover, "utc_now", return_value=NOW),
         ):

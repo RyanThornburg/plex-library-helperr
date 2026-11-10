@@ -8,7 +8,6 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 from typing import Any
 from urllib.parse import quote, quote_plus
 
@@ -16,7 +15,7 @@ import requests
 from arrapi import Movie, QualityProfile, RadarrAPI, RootFolder, Series, SonarrAPI
 from plexapi.server import PlexServer
 
-from arr_client import arr_api
+from arr_client import arr_api, read_media
 from config.models import ArrConfig, MoverRule, PlexConfig, ProfileRule
 from web.jobs import utc_now
 
@@ -64,34 +63,6 @@ def quiet(logger_name: str) -> Iterator[None]:
 
 def _sorted(values: Any) -> list[str]:
     return sorted({v for v in values if v}, key=str.casefold)
-
-
-# what matching rules read from a movie/series, tags and quality profile come from ids
-MEDIA_FIELDS = ("id", "title", "path", "added", "genres", "certification", "studio", "network")
-
-
-def _loaded(media: Movie | Series, name: str) -> Any:
-    try:
-        return object.__getattribute__(media, name)
-    except AttributeError:  # movies have no network, series no studio
-        return None
-
-
-def snapshot(
-    media: Movie | Series, tags: dict[int, str], profiles: dict[int, str]
-) -> SimpleNamespace:
-    """the fields rules match on, read as loaded. arrapi reloads a movie/series from the
-    api when a field it read is empty (e.g. no certification), and its tags/profile only
-    hold an id until read, one request each. Those come from the arr's lists instead"""
-    return SimpleNamespace(
-        **{name: _loaded(media, name) for name in MEDIA_FIELDS},
-        tags=[
-            SimpleNamespace(label=tags.get(i, str(i))) for i in _loaded(media, "tagsIds") or []
-        ],
-        qualityProfile=SimpleNamespace(
-            name=profiles.get(_loaded(media, "qualityProfileId"), "")
-        ),
-    )
 
 
 @dataclass
@@ -253,17 +224,12 @@ class Lookups:
         def fetch() -> ArrLibrary:
             try:
                 api = arr_api(ARR_APIS[arr_name], baseurl, apikey)
-                tags = {t.id: t.label for t in api.all_tags()}
-                profiles = api.quality_profile()
-                names = {p.id: p.name for p in profiles}
+                tags, profiles = api.all_tags(), api.quality_profile()
                 return ArrLibrary(
-                    media=[
-                        snapshot(m, tags, names)
-                        for m in getattr(api, ARR_MEDIA[arr_name])()
-                    ],
+                    media=read_media(api, ARR_MEDIA[arr_name], tags, profiles),
                     root_folders=api.root_folder(),
                     profiles=profiles,
-                    tags=_sorted(tags.values()),
+                    tags=_sorted(t.label for t in tags),
                     fetched_at=utc_now(),
                 )
             except Exception as e:
