@@ -652,6 +652,9 @@ def sync_status(engine: Engine, key: str = STATUS_SETTING) -> SyncStatus:
 
 
 def save_status(engine: Engine, status: SyncStatus, key: str = STATUS_SETTING) -> None:
+    """stores a sync's status, its error redacted: it's shown on pages and api answers"""
+    if status.error:
+        status.error = redacted(status.error)
     with Session(engine) as session:
         setting = session.get(AppSetting, key) or AppSetting(key=key)
         setting.value = status.to_json()

@@ -25,7 +25,7 @@ from arrapi import (
 from arr_client import arr_api
 from autoscan import trigger_autoscan
 from config.models import ArrConfig, ConfigSettings, MoverRule, ProfileRule
-from logging_config import logging_config, redacted
+from logging_config import failure_text, logging_config
 from plex import empty_plex_trash, refresh_plex_libraries
 from movie_remover import PlayLookup, run_movie_removers
 from remover import Approved, run_removers
@@ -435,7 +435,7 @@ def run_all_removers(
         except Exception as e:
             # one arr failing doesn't stop the other, and what was removed stays recorded
             failed(e, f"{log_name}\t Removers failed")
-            result.errors.append(f"{log_name} removers failed: {redacted(str(e))}")
+            result.errors.append(f"{log_name} removers failed: {failure_text(e)}")
 
 
 def run_job(
@@ -465,7 +465,7 @@ def run_job(
             empty_plex_trash(settings.plex, settings.empty_trash, result, removed_files)
         except Exception as e:
             failed(e, "PLEX\t Emptying the trash failed")
-            result.errors.append(f"Emptying the trash failed: {redacted(str(e))}")
+            result.errors.append(f"Emptying the trash failed: {failure_text(e)}")
         return result
 
     if job == "removers":
@@ -498,7 +498,7 @@ def run_job(
             )
         except Exception as e:
             failed(e, f"{log_name}\t Failed, skipping remaining rules")
-            result.errors.append(f"{log_name} failed, skipped remaining rules: {redacted(str(e))}")
+            result.errors.append(f"{log_name} failed, skipped remaining rules: {failure_text(e)}")
 
     scan_changed(settings, result)
     return result
@@ -534,7 +534,7 @@ def scan_changed(settings: ConfigSettings, result: JobResult) -> None:
     except Exception as e:
         # the changes already made stay in the result
         failed(e, "SCAN\t Scanning the changed folders failed")
-        result.errors.append(f"Scanning the changed folders failed: {redacted(str(e))}")
+        result.errors.append(f"Scanning the changed folders failed: {failure_text(e)}")
 
 
 def _scan_changed(settings: ConfigSettings, result: JobResult) -> None:

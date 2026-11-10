@@ -727,7 +727,11 @@ class TestMainErrorHandling:
         error = ValueError("failed for http://arr/api/v3/movie?apikey=SUPERSECRETAPIKEY1234")
         with patch.object(main, "run_arr", side_effect=error):
             result = main.run_job("movers", settings)
-        assert "SUPERSECRETAPIKEY1234" not in result.errors[0] and "apikey=***" in result.errors[0]
+        # the url is cut to its path, and a secret anywhere else is redacted
+        assert result.errors == ["RADARR failed, skipped remaining rules: failed for /api/v3/movie"]
+        with patch.object(main, "run_arr", side_effect=ValueError("SUPERSECRETAPIKEY1234 refused")):
+            result = main.run_job("movers", settings)
+        assert result.errors == ["RADARR failed, skipped remaining rules: *** refused"]
 
 
 class TestGetMovedDirs:

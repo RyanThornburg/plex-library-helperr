@@ -3,8 +3,11 @@
 import logging
 import os
 import pathlib
+import re
 from typing import Any
 from urllib.parse import quote, quote_plus
+
+import requests
 
 # DATA_DIR keeps logs out of the app dir, e.g. a docker volume
 LOG_DIR = pathlib.Path(os.environ.get("DATA_DIR") or pathlib.Path(__file__).parent) / "logs"
@@ -29,6 +32,29 @@ def redacted(text: str) -> str:
     for secret in sorted(_secrets, key=len, reverse=True):
         text = text.replace(secret, "***")
     return text
+
+
+# a url in error text: scheme and host, the path, then the query (not the punctuation
+# after it)
+_URL = re.compile(r"\b([a-z][a-z0-9+.-]*://[^/\s'\"<>]+)(/[^?#\s'\"<>]*)?([?#][^\s'\"<>]*[^\s'\"<>.,;:)])?", re.I)
+
+
+def without_queries(text: str) -> str:
+    """text with every url's query string dropped, where keys go (an indexer's in a
+    SABnzbd fail message, which isn't one of the config's secrets)"""
+    return _URL.sub(lambda m: m.group(1) + (m.group(2) or ""), text)
+
+
+def failure_text(e: BaseException) -> str:
+    """why a request failed, safe to store in a result: libraries put the whole url in
+    their errors (arrapi with ?apikey=), so urls are cut to their path and the config's
+    secrets redacted. Results are shown on run pages and kept"""
+    if isinstance(e, requests.exceptions.Timeout):
+        return "no answer in time"
+    if isinstance(e, requests.exceptions.ConnectionError):
+        return "couldn't connect"
+    text = _URL.sub(lambda m: m.group(2) or "", str(e) or type(e).__name__)
+    return redacted(text)
 
 
 class SecretFilter(logging.Filter):

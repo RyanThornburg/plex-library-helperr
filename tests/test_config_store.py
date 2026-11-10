@@ -89,6 +89,12 @@ class TestStore:
         with pytest.raises(ValueError, match="unknown secrets"):
             store.save({}, None, "x", 0, {"radarr.password": "x"})
 
+    def test_secret_in_the_document_refused(self, store):
+        # every version is kept in plain text, a secret only goes in encrypted
+        with pytest.raises(ValueError, match=r"part of the document: \['radarr.apikey'\]"):
+            store.save({"radarr": {**RADARR["radarr"], "apikey": "k"}}, None, "x", 0)
+        assert store.current() is None
+
     def test_undecryptable_secret_is_reported(self, store, engine):
         store.save(RADARR, None, "a", 0, {"radarr.apikey": "radarr-key"})
         other = ConfigStore(engine, SecretBox("o" * 40))

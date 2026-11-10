@@ -63,6 +63,16 @@ def strip_secrets(document: dict[str, Any]) -> tuple[dict[str, Any], dict[str, s
     return document, secrets
 
 
+def secrets_in(document: dict[str, Any]) -> list[str]:
+    """the SECRET_FIELDS names a document holds, which it never should: they're kept
+    encrypted, and every version of the document is kept and shown in plain text"""
+    return [
+        name
+        for name, (section, key) in SECRET_FIELDS.items()
+        if isinstance(document.get(section), dict) and key in document[section]
+    ]
+
+
 def with_secrets(document: dict[str, Any], secrets: dict[str, str]) -> dict[str, Any]:
     """the document with its secrets put back, for build_config. A secret's section is
     only added when the document has it, a key alone configures nothing"""

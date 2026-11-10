@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from config.models import ConfigSettings
+from logging_config import hide_secrets
 from tests.test_stats import engine  # noqa: F401 (fixture)
 from tests.test_status import EVERYTHING, NOW, fake_check_all
 from tests.test_web import FakeKeys, auth, fake_run_job
@@ -49,6 +50,13 @@ class TestIssues:
     def test_down(self):
         s = service(error="Couldn't connect", problems=[("warn", "ignored")])
         assert [(i.key, i.level, i.text) for i in issues(s)] == [("down", "bad", "Radarr can't be checked: Couldn't connect")]
+
+    def test_recorded_text_is_redacted(self):
+        hide_secrets("health-test-secret")
+        s = service(problems=[("warn", "Bad key health-test-secret", "k")], items=[Item("Heat", "via health-test-secret", level="warn")])
+        assert all("health-test-secret" not in i.text for i in issues(s))
+        down = service(error="refused health-test-secret")
+        assert issues(down)[0].text == "Radarr can't be checked: refused ***"
 
     def test_seerrs_waiting_work_isnt_recorded(self):
         s = service("seerr", problems=[("warn", "3 requests waiting for approval", "pending"), ("warn", "2 open issues", "issues"), ("warn", "Seerr needs a restart")])
@@ -118,6 +126,12 @@ class TestCheck:
         status = check(engine, ConfigSettings(plex=None, radarr=None, sonarr=None))
         assert status.error is None and sync_status(engine, STATUS_SETTING).finished_at is not None
         assert sorted((i.service, i.key) for i in stored(engine)) == [("radarr", "queue:Heat (1995) <script>"), ("sonarr", "down")]
+
+
+def test_a_saved_status_is_redacted(engine):  # noqa: F811
+    hide_secrets("status-test-secret")
+    save_status(engine, SyncStatus(NOW, NOW, "Tautulli refused status-test-secret"), STATUS_SETTING)
+    assert sync_status(engine, STATUS_SETTING).error == "Tautulli refused ***"
 
 
 @pytest.mark.parametrize(

@@ -13,6 +13,7 @@ from plexapi.library import LibrarySection
 from plexapi.server import PlexServer
 
 from config.models import EmptyTrashSettings, PlexConfig
+from logging_config import failure_text
 from results import Change, JobResult, Status, TrashedItem
 
 logger = logging.getLogger(__name__)
@@ -71,7 +72,7 @@ def empty_plex_trash(
         sections = get_trash_sections(plex, settings.libraries, result)
     except (plexapi_exceptions.PlexApiException, requests.exceptions.RequestException) as e:
         logger.error("PLEX Failed to load libraries (%s)", e)
-        result.errors.append(f"Failed to load Plex libraries: {e}")
+        result.errors.append(f"Failed to load Plex libraries: {failure_text(e)}")
         return
 
     for section in sections:
@@ -82,7 +83,7 @@ def empty_plex_trash(
             requests.exceptions.RequestException,
         ) as e:
             logger.error("PLEX %s: failed to empty trash (%s)", section.title, e)
-            change = Change("PLEX", "empty_trash", section.title, [], "failed", str(e))
+            change = Change("PLEX", "empty_trash", section.title, [], "failed", failure_text(e))
         if change:
             result.changes.append(change)
 

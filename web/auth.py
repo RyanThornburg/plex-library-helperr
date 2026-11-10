@@ -7,6 +7,7 @@ import anyio.to_thread
 import jwt
 from starlette.responses import PlainTextResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.websockets import WebSocketClose
 
 from web.settings import WebSettings
 
@@ -71,8 +72,16 @@ class AccessMiddleware:
         self.verifier = verifier
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http" or scope["path"] in PUBLIC_PATHS | API_KEY_PATHS:
+        if scope["type"] == "lifespan" or (
+            scope["type"] == "http" and scope["path"] in PUBLIC_PATHS | API_KEY_PATHS
+        ):
             await self.app(scope, receive, send)
+            return
+        if scope["type"] != "http":
+            # the app has no websockets: refuse one rather than pass it by unchecked
+            logger.warning("WEB\t Denied a %s connection to %r", scope["type"], scope.get("path"))
+            if scope["type"] == "websocket":
+                await WebSocketClose(code=1008)(scope, receive, send)
             return
 
         token = dict(scope["headers"]).get(TOKEN_HEADER, b"").decode("latin-1")
@@ -82,7 +91,8 @@ class AccessMiddleware:
             # fetching the team's keys is blocking network io, keep it off the event loop
             email = await anyio.to_thread.run_sync(self.verifier.verify, token)
         except AccessDenied as e:
-            logger.warning("WEB\t Denied %s %s: %s", scope["method"], scope["path"], e)
+            # the path is decoded and anyone's to choose: %r, so a %0A can't forge a log line
+            logger.warning("WEB\t Denied %s %r: %s", scope["method"], scope["path"], e)
             await PlainTextResponse("Forbidden", status_code=403)(scope, receive, send)
             return
 

@@ -12,6 +12,7 @@ import requests
 from arr_client import TIMEOUT
 from config import format_duration
 from config.models import ArrConfig, MovieRemoverRule
+from logging_config import failure_text
 from results import Change, JobResult, PlannedFile, PlannedRemoval, Status
 
 logger = logging.getLogger(__name__)
@@ -338,7 +339,7 @@ def run_movie_removers(
                 e,
             )
             result.errors.append(
-                f"No play history, skipped movies of removers that check plays: {e}"
+                f"No play history, skipped movies of removers that check plays: {failure_text(e)}"
             )
 
     removals: list[MovieRemoval] = []
@@ -402,7 +403,7 @@ def run_movie_removers(
             client.delete_movie(removal.movie.id)
         except requests.exceptions.RequestException as e:
             logger.error("%s\t %s: failed to delete (%s)", LOG_NAME, removal.movie.label, e)
-            record(removal, "failed", f"delete failed: {e}")
+            record(removal, "failed", f"delete failed: {failure_text(e)}")
             continue
         record(removal, "done", "auto-approved" if auto else "")
         result.scan_dirs.add(removal.movie.path)

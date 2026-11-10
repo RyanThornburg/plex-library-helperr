@@ -378,4 +378,4 @@ class TestRunAllRemovers:
             patch.object(main, "run_movie_removers", side_effect=requests.exceptions.ConnectionError("down")),
         ):
             result = main.run_job("removers", settings_with())
-        assert result.errors == ["RADARR removers failed: down"]
+        assert result.errors == ["RADARR removers failed: couldn't connect"]

@@ -20,6 +20,7 @@ from sqlalchemy import Engine, delete, select
 from sqlalchemy.orm import Session
 
 from config.models import ConfigSettings
+from logging_config import redacted
 from web.db import HealthIncident
 from web.jobs import utc_now
 from web.stats import StatsSync, SyncStatus, save_status
@@ -65,15 +66,15 @@ def item_key(item: Item) -> str:
 def issues(status: ServiceStatus) -> list[Issue]:
     """what's wrong with a service now, as the history records it"""
     if status.error:
-        return [Issue("down", "bad", f"{status.label} can't be checked: {status.error}")]
+        return [Issue("down", "bad", redacted(f"{status.label} can't be checked: {status.error}"))]
     found = [
-        Issue(problem_key(p), p.level, p.text[:1000])
+        Issue(problem_key(p), p.level, redacted(p.text)[:1000])
         for p in status.problems
         if p.level in ("warn", "bad") and (status.service, p.key) not in NOT_RECORDED
     ]
     if status.service in QUEUE_SERVICES:
         found += [
-            Issue(item_key(item), item.level, f"Stuck in the queue: {item.title}: {item.detail}"[:1000])
+            Issue(item_key(item), item.level, redacted(f"Stuck in the queue: {item.title}: {item.detail}")[:1000])
             for item in status.items
             if item.level in ("warn", "bad")
         ]

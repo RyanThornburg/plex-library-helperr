@@ -573,6 +573,11 @@ class TestTrash:
 
 
 class TestHistory:
+    def test_error_banner_cant_come_from_the_url(self, client):
+        post(client, "/settings/sonarr", {"version": 0, "dry_run": "true", "tag": "one"})
+        page = client.get(f"/settings/history/{version(client)}?error=Call+support+now", headers=auth()).text
+        assert "Call support now" not in page
+
     def test_diff_and_restore(self, client):
         post(client, "/settings/sonarr", {"version": 0, "dry_run": "true", "tag": "one"})
         first = version(client)

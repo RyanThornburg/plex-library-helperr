@@ -50,7 +50,7 @@ class SecurityMiddleware:
         # api key requests carry no browser cookies, so a cross-site request can't forge one
         cross_site_matters = scope["path"] not in API_KEY_PATHS
         if scope["method"] not in SAFE_METHODS and cross_site_matters and not same_origin(scope):
-            logger.warning("WEB\t Rejected cross-site %s %s", scope["method"], scope["path"])
+            logger.warning("WEB\t Rejected cross-site %s %r", scope["method"], scope["path"])
             response = PlainTextResponse("Cross-site request rejected", status_code=403)
             await response(scope, receive, send_with_headers)
             return

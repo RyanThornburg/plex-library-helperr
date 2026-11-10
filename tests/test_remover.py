@@ -447,7 +447,7 @@ class TestRunRemovers(SonarrFakes):
         assert self.result.scan_dirs == {"/tv/Show/Season 01"}
         assert self.result.plex_libraries == {"Reality"}
         assert self.result.changes == [
-            Change("SONARR", "remove", "Survivor", ["S01"], "done", "1 files, auto-approved")
+            Change("SONARR", "remove", "Survivor", ["S01"], "done", "1 file, auto-approved")
         ]
 
     def test_unapproved_changes_nothing(self):
@@ -502,6 +502,14 @@ class TestRunRemovers(SonarrFakes):
         assert self.result.scan_dirs == set()
         assert self.result.changes[0].status == "failed"
         assert "unmonitored, but delete failed" in self.result.changes[0].detail
+
+    def test_failure_detail_has_no_url(self):
+        # results are stored and shown: the arr's address and any query stay out
+        self.client.delete_episode_files.side_effect = requests.exceptions.HTTPError(
+            "500 Server Error: x for url: http://sonarr:8989/api/v3/episodefile/bulk?apikey=k"
+        )
+        self._run([make_series()])
+        assert self.result.changes[0].detail == "1 file, unmonitored, but delete failed: 500 Server Error: x for url: /api/v3/episodefile/bulk"
 
     def test_watch_rule_skipped_when_history_unavailable(self):
         rule = seasons_rule(skip_if_watched_within=timedelta(days=14))
@@ -655,7 +663,7 @@ class TestPlanRecorded(SonarrFakes):
         self._run([make_series()], auto_approve=False)
         [removal] = self.result.removals
         assert removal.status == "dry_run"
-        assert removal.detail == "1 files"
+        assert removal.detail == "1 file"
         assert self.result.to_dict()["removals"][0]["files"] == [
             {"id": 1, "path": "/tv/Show/Season 01/S01E01.mkv"}
         ]
@@ -667,7 +675,7 @@ class TestAutoApprove(SonarrFakes):
         self._apply_auto([make_series()], rule, frozenset({rule.key}))
         self.client.delete_episode_files.assert_called_once_with([1])
         [change] = self.result.changes
-        assert (change.status, change.detail) == ("done", "1 files, auto-approved")
+        assert (change.status, change.detail) == ("done", "1 file, auto-approved")
 
     def test_other_rules_wait_for_review(self):
         auto = seasons_rule()

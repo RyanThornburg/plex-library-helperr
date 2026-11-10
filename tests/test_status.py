@@ -276,6 +276,11 @@ class TestSabnzbd:
         assert dict(result.facts)["Failed, 7 days"] == "1"
         assert fake.calls[1][2]["failed_only"] == 1
 
+    def test_failure_reason_drops_the_indexers_key(self):
+        failed = [{"name": "Grab", "completed": ts(NOW), "fail_message": "URL Fetching failed; https://idx.example/api?t=get&apikey=idx-key"}]
+        result, _ = run(lambda: status.sabnzbd_status(SAB, NOW), sab_answers(failed=failed))
+        assert [p.text for p in result.problems] == ["Failed: Grab (URL Fetching failed; https://idx.example/api)"]
+
     def test_warnings_old_and_new_format(self):
         warnings = ["Server a is down", {"text": "Disk almost full", "type": "WARNING", "time": 1}]
         result, _ = run(lambda: status.sabnzbd_status(SAB, NOW), sab_answers(warnings=warnings))

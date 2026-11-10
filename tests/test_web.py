@@ -11,6 +11,7 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 from sqlalchemy import inspect, select
 from sqlalchemy.orm import Session
 
@@ -108,6 +109,18 @@ class TestAccessAuth:
 
     def test_no_token_is_denied(self, client):
         assert client.get("/runs").status_code == 403
+
+    def test_a_websocket_is_refused_even_with_a_token(self, client):
+        # the app has none: one never gets past the middleware unchecked
+        with pytest.raises(WebSocketDisconnect) as e:
+            with client.websocket_connect("/ws", headers=auth()):
+                pass
+        assert e.value.code == 1008
+
+    def test_a_denied_path_cant_forge_a_log_line(self, client, caplog):
+        client.get("/runs%0AINFO%20forged")
+        denied = [r.getMessage() for r in caplog.records if "Denied" in r.getMessage()]
+        assert denied == ["WEB\t Denied GET '/runs\\nINFO forged': no access token"]
 
     @pytest.mark.parametrize(
         "token",

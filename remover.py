@@ -11,6 +11,7 @@ from arrapi import Series, SonarrAPI
 
 from arr_client import TIMEOUT, arr_api
 from config.models import ArrConfig, PlexConfig, RemoverRule, TautulliConfig
+from logging_config import failure_text
 from results import Change, JobResult, PlannedFile, PlannedRemoval, Status
 from watch_history import WatchEvent, get_watch_history
 
@@ -540,7 +541,8 @@ def run_removers(
         return
 
     def record(plan: RemovalPlan, status: Status, detail: str = "") -> None:
-        files = f"{len(plan.file_ids)} files"
+        n = len(plan.file_ids)
+        files = f"{n} file{'s' if n != 1 else ''}"
         detail = f"{files}, {detail}" if detail else files
         result.changes.append(
             Change(LOG_NAME, "remove", plan.series.title, plan.labels, status, detail)
@@ -585,13 +587,13 @@ def run_removers(
             client.unmonitor_episodes(plan.episode_ids)
         except requests.exceptions.RequestException as e:
             logger.error("%s\t %s: failed to unmonitor (%s)", LOG_NAME, plan.series.title, e)
-            record(plan, "failed", f"unmonitor failed: {e}")
+            record(plan, "failed", f"unmonitor failed: {failure_text(e)}")
             continue
         try:
             client.delete_episode_files(plan.file_ids)
         except requests.exceptions.RequestException as e:
             logger.error("%s\t %s: failed to delete (%s)", LOG_NAME, plan.series.title, e)
-            record(plan, "failed", f"unmonitored, but delete failed: {e}")
+            record(plan, "failed", f"unmonitored, but delete failed: {failure_text(e)}")
             continue
         record(plan, "done", "auto-approved" if auto else "")
         result.scan_dirs.update(plan.dirs)

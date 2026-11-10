@@ -17,6 +17,7 @@ from config.document import (
     DEFAULT_DOCUMENT,
     SECRET_FIELDS,
     canonical,
+    secrets_in,
     with_secrets,
 )
 from config.models import ConfigSettings, WebDefaults
@@ -151,6 +152,9 @@ class ConfigStore:
         unknown = secrets.keys() - SECRET_FIELDS.keys()
         if unknown:
             raise ValueError(f"unknown secrets {sorted(unknown)}")
+        if in_document := secrets_in(document):
+            # every version is kept in plain text: a secret goes in `secrets`, encrypted
+            raise ValueError(f"secrets can't be part of the document: {in_document}")
         document = canonical(document)
         with self._lock, Session(self.engine) as session:
             latest = session.scalar(select(ConfigVersion).order_by(ConfigVersion.id.desc()))

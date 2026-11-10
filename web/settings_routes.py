@@ -17,7 +17,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
 import config
-from config.document import RULE_TYPES, SECRET_FIELDS, Rule, rule_class, rule_to_dict
+from config.document import RULE_TYPES, SECRET_FIELDS, Rule, rule_class, rule_to_dict, secrets_in
 from config.models import LINK_SERVICES, REMOVER_TYPES, ConfigSettings, WebDefaults
 from web.config_store import ConfigConflict, ConfigStore
 from web.db import ConfigVersion
@@ -651,7 +651,13 @@ def history_page(request: Request) -> HTMLResponse:
 
 
 @router.get("/settings/history/{version_id}", response_class=HTMLResponse)
+def version_route(request: Request, version_id: int) -> HTMLResponse:
+    return version_page(request, version_id)
+
+
 def version_page(request: Request, version_id: int, error: str | None = None) -> HTMLResponse:
+    """a version and its diff, with a failed restore's error: never from the url, where
+    anyone could put text in the page's error banner"""
     version = store(request).version(version_id)
     if version is None:
         raise HTTPException(status_code=404)
@@ -1136,9 +1142,7 @@ def api_commit(request: Request, body: ConfigRequest, note: str) -> JSONResponse
 @router.put("/api/config")
 def api_save_config(request: Request, body: ConfigRequest) -> JSONResponse:
     """replace the config, secrets aren't part of it and stay as they are"""
-    if secrets := [
-        n for n, (s, k) in SECRET_FIELDS.items() if isinstance(body.config.get(s), dict) and k in body.config[s]
-    ]:
+    if secrets := secrets_in(body.config):
         return JSONResponse(
             {"error": f"secrets can only be set on Settings → Connections: {secrets}"},
             status_code=422,

@@ -13,6 +13,7 @@ from typing import Any
 import requests
 
 from config.models import ArrConfig, BazarrConfig, ConfigSettings, SabnzbdConfig, SeerrConfig, TautulliConfig
+from logging_config import without_queries
 from web.lookups import BAZARR_NOT_API, redact
 
 logger = logging.getLogger(__name__)
@@ -431,7 +432,8 @@ def sab_failures(status: ServiceStatus, slots: list[dict[str, Any]], now: dateti
         >= cutoff
     ]
     for slot in recent:
-        reason = slot.get("fail_message")
+        # a failed fetch names the nzb's url, with the indexer's key in it
+        reason = without_queries(str(slot.get("fail_message") or ""))
         status.problem(
             "warn",
             f"Failed: {slot.get('name')}" + (f" ({reason})" if reason else ""),
