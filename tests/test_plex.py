@@ -67,6 +67,12 @@ def make_server(
     server.library.section.side_effect = section
 
     def query(path: str) -> ElementTree.Element:
+        if path == "/library/sections":
+            container = ElementTree.Element("MediaContainer")
+            for s in sections:
+                attrs = {"key": str(s.key), "title": s.title}
+                container.append(ElementTree.Element("Directory", attrs | ({"refreshing": "1"} if s.refreshing else {})))
+            return container
         key = int(path.split("/")[3])
         size = trash[key]
         if "X-Plex-Container-Size=0" not in path:
@@ -95,6 +101,11 @@ def run(server: MagicMock, removed_files=None, **kwargs) -> JobResult:
     return result
 
 
+def trash_queries(server: MagicMock) -> list[str]:
+    """the queries that count or list a library's trash"""
+    return [c.args[0] for c in server.query.call_args_list if "/all" in c.args[0]]
+
+
 def statuses(result: JobResult) -> dict[str, str]:
     return {c.target: c.status for c in result.changes}
 
@@ -118,7 +129,7 @@ class TestEmptyPlexTrash:
         tv = make_section("TV Shows", key=1)
         server = make_server([tv], {1: 5})
         run(server)
-        path = server.query.call_args_list[0].args[0]
+        path = trash_queries(server)[0]
         assert path.startswith("/library/sections/1/all?")
         assert "type=4" in path
         assert "trash=1" in path
@@ -127,7 +138,7 @@ class TestEmptyPlexTrash:
         movies = make_section("Movies", type="movie", key=2)
         server = make_server([movies], {2: 5})
         run(server)
-        assert "type=1" in server.query.call_args_list[0].args[0]
+        assert "type=1" in trash_queries(server)[0]
 
     def test_empty_trash_is_not_emptied(self):
         tv = make_section("TV Shows", key=1)
@@ -148,7 +159,7 @@ class TestEmptyPlexTrash:
         server = make_server([tv], {1: 5})
         result = run(server)
         tv.emptyTrash.assert_not_called()
-        server.query.assert_not_called()
+        assert trash_queries(server) == []
         assert statuses(result) == {"TV Shows": "blocked"}
 
     def test_missing_count_is_skipped(self):
@@ -156,6 +167,40 @@ class TestEmptyPlexTrash:
         result = run(make_server([tv], {1: None}))
         tv.emptyTrash.assert_not_called()
         assert statuses(result) == {"TV Shows": "failed"}
+
+    def test_trash_that_changed_while_checked_is_left_for_the_next_run(self):
+        # items trashed (a mount dropping) after the count would be emptied unchecked
+        tv = make_section("TV Shows", key=1)
+        counts = iter([5, 9])
+        server = make_server([tv], {1: 5})
+        query = server.query.side_effect
+
+        def changing(path):
+            if "X-Plex-Container-Size=0" in path:
+                return ElementTree.Element("MediaContainer", {"totalSize": str(next(counts))})
+            return query(path)
+
+        server.query.side_effect = changing
+        result = run(server)
+        tv.emptyTrash.assert_not_called()
+        assert statuses(result) == {"TV Shows": "blocked"}
+
+    def test_a_scan_that_starts_while_checked_is_waited_for(self):
+        tv = make_section("TV Shows", key=1)
+        server = make_server([tv], {1: 5})
+        query = server.query.side_effect
+        calls = []
+
+        def scan_starts(path):
+            if path == "/library/sections":
+                calls.append(path)
+                tv.refreshing = len(calls) > 1
+            return query(path)
+
+        server.query.side_effect = scan_starts
+        result = run(server)
+        tv.emptyTrash.assert_not_called()
+        assert statuses(result) == {"TV Shows": "blocked"}
 
     def test_dry_run_does_not_empty(self):
         tv = make_section("TV Shows", key=1)
@@ -283,4 +328,4 @@ class TestTrashListing:
         server = make_server([tv], {1: 11})
         run(server, max_items=10)
         # only the count, a missing mount's whole library isn't fetched
-        assert server.query.call_count == 1
+        assert len(trash_queries(server)) == 1

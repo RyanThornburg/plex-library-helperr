@@ -104,6 +104,16 @@ def get_trash_sections(
     return sections
 
 
+def refreshing(plex: PlexServer, section: LibrarySection) -> bool:
+    """whether plex is scanning the library now. Read fresh: the sections were listed
+    when the run started, and a scan can start while earlier libraries are checked. A
+    library plex no longer lists counts as scanning, so it's left alone"""
+    for directory in plex.query("/library/sections"):
+        if directory.attrib.get("key") == str(section.key):
+            return directory.attrib.get("refreshing") == "1"
+    return True
+
+
 def count_trash(plex: PlexServer, section: LibrarySection) -> int | None:
     """number of items with deleted media, including old versions left by upgrades"""
     args = {
@@ -189,7 +199,7 @@ def empty_section_trash(
         )
         return None
     # a scan in progress may not have trashed everything yet, the next run gets it
-    if section.refreshing:
+    if refreshing(plex, section):
         logger.warning("PLEX %s: scan in progress, skipping", section.title)
         return change("blocked", "scan in progress")
 
@@ -241,6 +251,11 @@ def empty_section_trash(
     if settings.dry_run:
         logger.info("PLEX DRY RUN - not actually emptying trash")
         return change("dry_run", trash.summary(), titles)
+    # emptying takes whatever is in the trash then: a scan that started, or items
+    # trashed, since it was checked would be emptied unchecked, so check once more
+    if refreshing(plex, section) or count_trash(plex, section) != count:
+        logger.warning("PLEX %s: trash changed while it was checked, skipping until the next run", section.title)
+        return change("blocked", "trash changed while it was checked; the next run checks it again", titles)
     section.emptyTrash()
     return change("done", trash.summary(), titles)
 
