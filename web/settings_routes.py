@@ -469,7 +469,7 @@ def save_connection(request: Request, service: str, fields: FormLists) -> Respon
 
     if action == "test":
         try:
-            secret = new_secret or stored.secrets().get(secret_name, "")
+            secret = new_secret or stored.secret(secret_name)
             result = check_connection(service, {**values, "secret": secret})
         except (LookupFailed, SecretError) as e:
             return connections(request, service, values, [f"Test failed: {e}"])
@@ -553,7 +553,7 @@ def trash(request: Request, values: dict[str, Any] | None = None, errors: list[s
             "values": values,
             "plex_libraries": plex_libraries,
             "choice_problems": problems,
-            "global_dry": document.get("settings", {}).get("dry_run", False),
+            "global_dry": document.get("settings", {}).get("dry_run", True),
         },
         errors,
     )
@@ -731,7 +731,7 @@ def arr_settings(
     _, document = store(request).document()
     section = document.get(arr, {})
     values = values or {"dry_run": dry_run_choice(section), "tag": section.get("tag", "")}
-    global_dry = document.get("settings", {}).get("dry_run", False)
+    global_dry = document.get("settings", {}).get("dry_run", True)
     return page(
         request,
         "arr",

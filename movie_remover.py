@@ -9,6 +9,7 @@ from typing import Any
 
 import requests
 
+from arr_client import TIMEOUT
 from config import format_duration
 from config.models import ArrConfig, MovieRemoverRule
 from results import Change, JobResult, PlannedFile, PlannedRemoval, Status
@@ -30,7 +31,7 @@ class RadarrMovies:
         self.session.headers["X-Api-Key"] = apikey
 
     def _request(self, method: str, path: str, **kwargs: Any) -> Any:
-        response = self.session.request(method, f"{self.url}/{path}", timeout=60, **kwargs)
+        response = self.session.request(method, f"{self.url}/{path}", timeout=TIMEOUT, **kwargs)
         response.raise_for_status()
         return response.json() if response.content else None
 

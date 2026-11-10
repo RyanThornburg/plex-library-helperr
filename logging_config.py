@@ -37,7 +37,13 @@ class SecretFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         if not _secrets:
             return True
-        record.msg, record.args = redacted(record.getMessage()), None
+        try:
+            message = record.getMessage()
+        except Exception:
+            # a bad format string (a library's) would otherwise raise in the code that
+            # logged it, since filters run inside logger.handle: keep it unformatted
+            message = f"{record.msg!r} {record.args!r}"
+        record.msg, record.args = redacted(message), None
         if record.exc_info and not record.exc_text:
             record.exc_text = logging.Formatter().formatException(record.exc_info)
         if record.exc_text:

@@ -105,6 +105,20 @@ class ConfigStore:
                 ) from None
         return secrets
 
+    def secret(self, name: str) -> str:
+        """one secret decrypted ("" when none is saved), so testing one connection doesn't
+        depend on every other saved secret decrypting"""
+        with Session(self.engine) as session:
+            stored = session.get(ConfigSecret, name)
+        if stored is None:
+            return ""
+        try:
+            value = self.box.decrypt(stored.value)
+        except SecretError as e:
+            raise SecretError(f"The saved {name} {e}. Enter it again on Settings → Connections.") from None
+        hide_secrets(value)
+        return value
+
     def load_settings(self) -> ConfigSettings:
         """the config jobs run with"""
         _, document = self.document()

@@ -16,7 +16,7 @@ from tests.test_main import make_movie, make_quality_profile, make_root_folder
 from tests.test_web import FORM, ORIGIN, FakeKeys, auth
 from tests.test_web import settings  # noqa: F401 (fixture)
 from web.app import create_app
-from web.db import RemoverRuleSetting
+from web.db import ConfigSecret, RemoverRuleSetting
 from web.jobs import utc_now
 from web.lookups import ArrLibrary, LookupFailed
 from web.settings_routes import turns_live
@@ -215,6 +215,16 @@ class TestConnections:
         assert "Connected to Radarr 6.4.4" in response.text
         assert seen == [("radarr", {"url": "http://radarr:7878", "public_url": "", "username": "", "secret": "radarr-key"})]
         assert "radarr-key" not in response.text
+
+    def test_test_needs_only_its_own_key_to_decrypt(self, client, monkeypatch):
+        # another connection's key saved under an old HELPERR_SECRET_KEY doesn't stop it
+        connect_radarr(client)
+        with Session(client.app.state.engine) as session:
+            session.add(ConfigSecret(name="tautulli.apikey", value="saved-under-another-key", updated_at=utc_now()))
+            session.commit()
+        monkeypatch.setattr("web.settings_routes.check_connection", lambda service, values: "Radarr 6.4.4")
+        response = post(client, "/settings/connections/radarr", {"version": version(client), "action": "test", "url": "http://radarr:7878"})
+        assert "Connected to Radarr 6.4.4" in response.text
 
     def test_a_slow_test_doesnt_block_other_requests(self, client, monkeypatch):
         """a connection test runs in a worker thread: the app keeps answering while an

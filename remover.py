@@ -9,7 +9,7 @@ from typing import Any
 import requests
 from arrapi import Series, SonarrAPI
 
-from arr_client import arr_api
+from arr_client import TIMEOUT, arr_api
 from config.models import ArrConfig, PlexConfig, RemoverRule, TautulliConfig
 from results import Change, JobResult, PlannedFile, PlannedRemoval, Status
 from watch_history import WatchEvent, get_watch_history
@@ -31,7 +31,7 @@ class SonarrEpisodes:
         self.session.headers["X-Api-Key"] = apikey
 
     def _request(self, method: str, path: str, **kwargs: Any) -> Any:
-        response = self.session.request(method, f"{self.url}/{path}", timeout=60, **kwargs)
+        response = self.session.request(method, f"{self.url}/{path}", timeout=TIMEOUT, **kwargs)
         response.raise_for_status()
         return response.json() if response.content else None
 
