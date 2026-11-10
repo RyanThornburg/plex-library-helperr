@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Events · Helperr{% endblock %}
+{% block toolbar %}
+<div class="group">{{ ui.tool("refresh", "Refresh", "/events?" ~ (filters.query() | urlencode)) }}</div>
+<div class="group">{{ ui.tool("download", "Log files", "/logs") }}</div>
+{% endblock %}
+{% block content %}
+<h1>Events</h1>
+<p class="muted">What the app logged outside job runs too: webhooks, syncs, health checks, startup and errors, newest first. A run's own log is on its page.{% if page.oldest %} The log goes back to {{ page.oldest | localtime }}.{% endif %}</p>
+
+<form method="get" action="/events" class="filters">
+  <label>Level
+    <select name="level">
+      {% for key, label in [("info", "All"), ("warning", "Warnings and errors"), ("error", "Errors")] %}<option value="{{ key }}"{% if filters.level == key %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="check filter-check"><input type="checkbox" name="requests" value="1"{% if filters.requests %} checked{% endif %}> HTTP requests</label>
+  <div class="actions"><button type="submit">Filter</button></div>
+</form>
+
+{% if page.events %}
+<table class="stack events">
+  <thead><tr><th>Level</th><th>Time</th><th>Component</th><th>Message</th></tr></thead>
+  <tbody>
+    {% for e in page.events %}
+    {% set state = {"WARNING": "warn", "ERROR": "bad", "CRITICAL": "bad"}.get(e.level, "") %}
+    <tr{% if state %} class="event-{{ state }}"{% endif %}>
+      <td class="end"><span class="event-level{% if state %} state-word state-{{ state }}{% endif %}">{{ e.level | lower }}</span></td>
+      <td class="date">{{ e.time | localtime }}</td>
+      <td class="muted" data-label="Component">{{ e.component or e.source.split(":")[0] }}</td>
+      <td class="long first lead event-message">
+        {{ e.message }}
+        {% if e.details %}<details><summary>{{ e.details | length }} more line{{ "s" if e.details | length != 1 }}</summary><pre class="log">{{ e.details | join("\n") }}</pre></details>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% if page.pages > 1 %}
+<p class="table-actions pager">
+  {% if filters.page > 1 %}<a href="/events?{{ filters.query(page=filters.page - 1) | urlencode }}">Newer</a>{% endif %}
+  <span class="muted">Page {{ filters.page }} of {{ page.pages }} ({{ "{:,}".format(page.total) }} events)</span>
+  {% if filters.page < page.pages %}<a href="/events?{{ filters.query(page=filters.page + 1) | urlencode }}">Older</a>{% endif %}
+</p>
+{% endif %}
+{% else %}
+<p class="empty">{% if page.oldest %}No {{ "errors" if filters.level == "error" else "warnings or errors" }} in the log.{% else %}Nothing logged yet.{% endif %}</p>
+{% endif %}
+{% endblock %}

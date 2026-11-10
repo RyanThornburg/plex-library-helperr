@@ -842,3 +842,19 @@ meter.share:-moz-meter-sub-sub-optimum::-moz-meter-bar { background: var(--accen
   .dialog-foot form { display: flex; flex-direction: column; }
   .dialog-foot .button { text-align: center; }
 }
+
+/* events: the app's log. A level is a word: warnings and errors in their state color,
+   info dim, so a page of routine lines stays quiet */
+.events td { vertical-align: top; }
+.events td.date { white-space: nowrap; }
+.event-level:not(.state-word) { color: var(--muted); font-size: 13px; }
+.event-message { overflow-wrap: anywhere; }
+.event-message details { margin-top: 4px; }
+.event-message .log { max-height: 40vh; margin: 6px 0 0; }
+.filters .filter-check { flex-direction: row; align-items: center; height: 36px; color: var(--text); font-size: 15px; }
+.pager { display: flex; gap: 16px; align-items: baseline; }
+td.row-actions { text-align: right; }
+@media (max-width: 700px) {
+  /* a log is mostly routine lines: messages at regular weight, the level says what matters */
+  table.stack.events td.lead { font-weight: 400; }
+}

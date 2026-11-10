@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Log files · Helperr{% endblock %}
+{% block toolbar %}
+<div class="group">{{ ui.tool("back", "Events", "/events") }}{{ ui.tool("refresh", "Refresh", "/logs") }}</div>
+{% endblock %}
+{% block content %}
+<h1>Log files</h1>
+<p class="muted">The web app writes <code>web.log</code>, keeping two older files as it fills (500 KB each). Secrets are left out of every line.</p>
+{% if files %}
+<table class="stack">
+  <thead><tr><th>File</th><th>Size</th><th>Last written</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
+  <tbody>
+    {% for f in files %}
+    <tr>
+      <td class="first lead"><code>{{ f.name }}</code></td>
+      <td data-label="Size">{{ "{:,}".format((f.size / 1024) | round | int) }} KB</td>
+      <td data-label="Last written">{{ f.modified | localtime }}</td>
+      <td class="row-actions"><a class="button button-secondary" href="/logs/files/{{ f.name }}" download>Download</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">No log files yet.</p>
+{% endif %}
+{% endblock %}

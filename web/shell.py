@@ -65,6 +65,8 @@ SECTIONS = [
     ("activity", "Activity", "/runs", "activity", [
         ("runs", "Runs", "/runs", ("/runs", "/jobs/")),
         ("schedules", "Schedules", "/schedules", ("/schedules",)),
+        ("events", "Events", "/events", ("/events",)),
+        ("logs", "Log files", "/logs", ("/logs",)),
     ]),
     ("removers", "Removers", "/removers", "trash", []),
     ("requests", "Requests", "/requests", "inbox", []),
@@ -97,7 +99,7 @@ def section_of(path: str) -> str | None:
         return "settings"
     if covers(path, "/status"):
         return "status"
-    if covers(path, "/runs") or path.startswith("/jobs/") or covers(path, "/schedules"):
+    if any(covers(path, p) for p in ("/runs", "/schedules", "/events", "/logs")) or path.startswith("/jobs/"):
         return "activity"
     for key in ("requests", "playback"):
         if covers(path, f"/{key}"):

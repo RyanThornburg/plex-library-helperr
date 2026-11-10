@@ -19,6 +19,7 @@ from web.config_store import ConfigStore
 from web.db import make_engine, migrate
 from web.jobs import JobRunner, LoadConfig, RunJob
 from web.health import HealthMonitor
+from web.logs_routes import router as logs_router
 from web.lookups import Lookups
 from web.playback import PlaybackSync
 from web.playback_routes import router as playback_router
@@ -140,6 +141,7 @@ def create_app(
     app.include_router(stats_router)
     app.include_router(status_router)
     app.include_router(playback_router)
+    app.include_router(logs_router)
     add_error_pages(app)
     # added last runs first: security headers wrap the access check, so 403s get them too
     app.add_middleware(AccessMiddleware, verifier=AccessVerifier(settings, keys))
