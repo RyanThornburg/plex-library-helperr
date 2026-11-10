@@ -9,32 +9,19 @@ from typing import Any
 import requests
 from arrapi import Series, SonarrAPI
 
-from arr_client import TIMEOUT, arr_api, read_media
+from arr_client import ArrV3, arr_api, read_media
 from config.models import ArrConfig, PlexConfig, RemoverRule, TautulliConfig
 from logging_config import failure_text
-from results import Change, JobResult, PlannedFile, PlannedRemoval, Status
+from removals import Approved, InvalidArrData, act, required_int
+from results import Change, JobResult, PlannedFile, PlannedRemoval, Status, utc_now
 from watch_history import WatchEvent, get_watch_history
 
 logger = logging.getLogger(__name__)
 
 LOG_NAME = "SONARR"
 
-# an applied plan: series id -> the episode file ids approved for removal
-Approved = dict[int, set[int]]
-
-
-class SonarrEpisodes:
+class SonarrEpisodes(ArrV3):
     """episode endpoints arrapi does not cover"""
-
-    def __init__(self, baseurl: str, apikey: str):
-        self.url = f"{baseurl.rstrip('/')}/api/v3"
-        self.session = requests.Session()
-        self.session.headers["X-Api-Key"] = apikey
-
-    def _request(self, method: str, path: str, **kwargs: Any) -> Any:
-        response = self.session.request(method, f"{self.url}/{path}", timeout=TIMEOUT, **kwargs)
-        response.raise_for_status()
-        return response.json() if response.content else None
 
     def episodes(self, series_id: int) -> list[dict[str, Any]]:
         return self._request("GET", "episode", params={"seriesId": series_id})
@@ -61,7 +48,7 @@ class SonarrEpisodes:
         self._request("DELETE", "episodefile/bulk", json={"episodeFileIds": file_ids})
 
 
-class InvalidSeriesData(Exception):
+class InvalidSeriesData(InvalidArrData):
     """sonarr returned missing/invalid data for a series, it is skipped"""
 
 
@@ -81,11 +68,6 @@ class Episode:
     file_id: int | None
 
 
-def utc_now() -> datetime:
-    """naive utc, matching arrapi's series.added"""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
 def _utc_naive(value: object) -> datetime:
     if not isinstance(value, str):
         raise InvalidSeriesData(f"invalid date '{value}'")
@@ -99,10 +81,7 @@ def _utc_naive(value: object) -> datetime:
 
 
 def _int(raw: dict[str, Any], key: str) -> int:
-    value = raw.get(key)
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise InvalidSeriesData(f"missing/invalid '{key}': {value!r}")
-    return value
+    return required_int(raw, key, InvalidSeriesData)
 
 
 def parse_series_data(
@@ -541,7 +520,7 @@ def run_removers(
     if not plans:
         return
 
-    def record(plan: RemovalPlan, status: Status, detail: str = "") -> None:
+    def record(plan: RemovalPlan, status: Status, detail: str) -> None:
         n = len(plan.file_ids)
         files = f"{n} file{'s' if n != 1 else ''}"
         detail = f"{files}, {detail}" if detail else files
@@ -550,53 +529,27 @@ def run_removers(
         )
         result.removals.append(plan.planned(status, detail))
 
-    # approved and auto-approved removals delete, the rest wait for review
-    auto = approved is None
-    live = [p for p in plans if not auto or p.rule.key in auto_approve]
-    review = [p for p in plans if p not in live]
-    if review:
-        logger.info(
-            "%s\t DRY RUN - planning %s series for review, not removing",
-            LOG_NAME,
-            len(review),
-        )
-        for p in review:
-            record(p, "dry_run")
-    if not live:
-        return
-    if auto:
-        logger.info("%s\t Auto-approved: removing %s series", LOG_NAME, len(live))
-
-    live_total = sum(len(p.file_ids) for p in live)
-    if settings.max_deletes is not None and live_total > settings.max_deletes:
-        logger.error(
-            "%s\t %s files exceeds max_deletes (%s), not removing anything",
-            LOG_NAME,
-            live_total,
-            settings.max_deletes,
-        )
-        detail = (
-            f"run total of {live_total} files exceeds max_deletes ({settings.max_deletes})"
-        )
-        for p in live:
-            record(p, "blocked", detail)
-        return
-
-    for plan in live:
+    def delete(plan: RemovalPlan) -> str | None:
         try:
             # unmonitor first so sonarr does not grab the deleted files again
             client.unmonitor_episodes(plan.episode_ids)
         except requests.exceptions.RequestException as e:
             logger.error("%s\t %s: failed to unmonitor (%s)", LOG_NAME, plan.series.title, e)
-            record(plan, "failed", f"unmonitor failed: {failure_text(e)}")
-            continue
+            return f"unmonitor failed: {failure_text(e)}"
         try:
             client.delete_episode_files(plan.file_ids)
         except requests.exceptions.RequestException as e:
             logger.error("%s\t %s: failed to delete (%s)", LOG_NAME, plan.series.title, e)
-            record(plan, "failed", f"unmonitored, but delete failed: {failure_text(e)}")
-            continue
-        record(plan, "done", "auto-approved" if auto else "")
+            return f"unmonitored, but delete failed: {failure_text(e)}"
+        return None
+
+    def removed(plan: RemovalPlan) -> None:
         result.scan_dirs.update(plan.dirs)
         if plan.rule.plex_library:
             result.plex_libraries.add(plan.rule.plex_library)
+
+    act(
+        LOG_NAME, "series", plans,
+        applying=approved is not None, auto_approve=auto_approve, max_deletes=settings.max_deletes,
+        files=lambda p: len(p.file_ids), record=record, delete=delete, removed=removed,
+    )

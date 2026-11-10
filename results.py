@@ -2,6 +2,7 @@
 
 import logging
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
@@ -10,6 +11,11 @@ logger = logging.getLogger(__name__)
 Status = Literal["done", "dry_run", "blocked", "failed"]
 
 JOBS = ("movers", "removers", "empty_trash")
+
+
+def utc_now() -> datetime:
+    """naive utc: how every time is stored and compared (arrapi's dates, the database)"""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 @dataclass

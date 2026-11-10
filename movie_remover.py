@@ -9,32 +9,20 @@ from typing import Any
 
 import requests
 
-from arr_client import TIMEOUT
+from arr_client import ArrV3
 from config import format_duration
 from config.models import ArrConfig, MovieRemoverRule
 from logging_config import failure_text
-from results import Change, JobResult, PlannedFile, PlannedRemoval, Status
+from removals import Approved, InvalidArrData, act, required_int
+from results import Change, JobResult, PlannedFile, PlannedRemoval, Status, utc_now
 
 logger = logging.getLogger(__name__)
 
 LOG_NAME = "RADARR"
 
-# an applied plan: movie id -> the movie file ids approved for removal
-Approved = dict[int, set[int]]
 
-
-class RadarrMovies:
+class RadarrMovies(ArrV3):
     """the radarr endpoints removers use, arrapi's Movie has no releaseDate or file"""
-
-    def __init__(self, baseurl: str, apikey: str):
-        self.url = f"{baseurl.rstrip('/')}/api/v3"
-        self.session = requests.Session()
-        self.session.headers["X-Api-Key"] = apikey
-
-    def _request(self, method: str, path: str, **kwargs: Any) -> Any:
-        response = self.session.request(method, f"{self.url}/{path}", timeout=TIMEOUT, **kwargs)
-        response.raise_for_status()
-        return response.json() if response.content else None
 
     def movies(self) -> list[dict[str, Any]]:
         return self._request("GET", "movie")
@@ -58,7 +46,7 @@ class RadarrMovies:
         )
 
 
-class InvalidMovieData(Exception):
+class InvalidMovieData(InvalidArrData):
     """radarr returned missing/invalid data for a movie, it is skipped"""
 
 
@@ -93,11 +81,6 @@ class RadarrMovie:
 PlayLookup = Callable[[list[RadarrMovie]], dict[int, list[datetime]]]
 
 
-def utc_now() -> datetime:
-    """naive utc, like the parsed radarr dates"""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
 def _date(value: object) -> datetime | None:
     """a radarr date as naive utc. Radarr writes 0001-01-01 for a date it doesn't
     have, which must never read as very old"""
@@ -113,10 +96,7 @@ def _date(value: object) -> datetime | None:
 
 
 def _int(raw: dict[str, Any], key: str) -> int:
-    value = raw.get(key)
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise InvalidMovieData(f"missing/invalid '{key}': {value!r}")
-    return value
+    return required_int(raw, key, InvalidMovieData)
 
 
 def parse_movie(raw: dict[str, Any], tag_labels: dict[int, str]) -> RadarrMovie:
@@ -362,50 +342,29 @@ def run_movie_removers(
     if not removals:
         return
 
-    def record(removal: MovieRemoval, status: Status, detail: str = "") -> None:
+    def record(removal: MovieRemoval, status: Status, detail: str) -> None:
         result.changes.append(
             Change(LOG_NAME, "remove", removal.movie.label, removal.labels, status, detail)
         )
         result.removals.append(removal.planned(status, detail))
 
-    # approved and auto-approved removals delete, the rest wait for review
-    auto = approved is None
-    live = [r for r in removals if not auto or r.rule.key in auto_approve]
-    review = [r for r in removals if r not in live]
-    if review:
-        logger.info(
-            "%s\t DRY RUN - planning %s movies for review, not removing",
-            LOG_NAME,
-            len(review),
-        )
-        for r in review:
-            record(r, "dry_run")
-    if not live:
-        return
-    if auto:
-        logger.info("%s\t Auto-approved: removing %s movies", LOG_NAME, len(live))
-
-    max_deletes = arr_config.remover_settings.max_deletes
-    if max_deletes is not None and len(live) > max_deletes:
-        logger.error(
-            "%s\t %s files exceeds max_deletes (%s), not removing anything",
-            LOG_NAME,
-            len(live),
-            max_deletes,
-        )
-        detail = f"run total of {len(live)} files exceeds max_deletes ({max_deletes})"
-        for r in live:
-            record(r, "blocked", detail)
-        return
-
-    for removal in live:
+    def delete(removal: MovieRemoval) -> str | None:
         try:
             client.delete_movie(removal.movie.id)
         except requests.exceptions.RequestException as e:
             logger.error("%s\t %s: failed to delete (%s)", LOG_NAME, removal.movie.label, e)
-            record(removal, "failed", f"delete failed: {failure_text(e)}")
-            continue
-        record(removal, "done", "auto-approved" if auto else "")
+            return f"delete failed: {failure_text(e)}"
+        return None
+
+    def removed(removal: MovieRemoval) -> None:
         result.scan_dirs.add(removal.movie.path)
         if removal.rule.plex_library:
             result.plex_libraries.add(removal.rule.plex_library)
+
+    # a movie is one file
+    act(
+        LOG_NAME, "movies", removals,
+        applying=approved is not None, auto_approve=auto_approve,
+        max_deletes=arr_config.remover_settings.max_deletes,
+        files=lambda r: 1, record=record, delete=delete, removed=removed,
+    )

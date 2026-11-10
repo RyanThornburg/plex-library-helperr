@@ -22,6 +22,20 @@ def arr_api[T: (RadarrAPI, SonarrAPI)](cls: type[T], url: str, apikey: str) -> T
     return cls(url, apikey, session=TimeoutSession())
 
 
+class ArrV3:
+    """an arr's /api/v3, for the endpoints arrapi doesn't cover (removers)"""
+
+    def __init__(self, baseurl: str, apikey: str):
+        self.url = f"{baseurl.rstrip('/')}/api/v3"
+        self.session = requests.Session()
+        self.session.headers["X-Api-Key"] = apikey
+
+    def _request(self, method: str, path: str, **kwargs: Any) -> Any:
+        response = self.session.request(method, f"{self.url}/{path}", timeout=TIMEOUT, **kwargs)
+        response.raise_for_status()
+        return response.json() if response.content else None
+
+
 # what rules read from a movie/series; tags and quality profile come from their ids
 MEDIA_FIELDS = (
     "id", "title", "path", "added", "genres", "certification", "studio", "network", "tvdbId",

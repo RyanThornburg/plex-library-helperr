@@ -4,7 +4,7 @@ import logging
 import queue
 import threading
 from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -15,7 +15,7 @@ import config
 from config.models import ConfigSettings, WebDefaults
 from logging_config import SecretFilter, redacted
 from movie_remover import PlayLookup
-from results import JOBS, JobResult
+from results import JOBS, JobResult, utc_now  # noqa: F401 (utc_now: web modules import it from here)
 from web.db import JobRun, RemoverRuleSetting
 
 logger = logging.getLogger(__name__)
@@ -34,10 +34,6 @@ REMOVED_FILES_MAX_AGE = timedelta(days=90)
 RunJob = Callable[..., JobResult]
 LoadConfig = Callable[[], ConfigSettings]
 LoadDefaults = Callable[[], WebDefaults]
-
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class AlreadyActive(Exception):
