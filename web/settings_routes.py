@@ -9,10 +9,10 @@ import logging
 import os
 import re
 from collections.abc import Callable
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import parse_qs
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
@@ -100,6 +100,12 @@ async def form_lists(request: Request) -> dict[str, list[str]]:
         if len(body) > MAX_SETTINGS_FORM_BYTES:
             raise HTTPException(status_code=413, detail="The form was too large to save.")
     return parse_qs(body.decode("utf-8", "replace"), keep_blank_values=True)
+
+
+# handlers that save a form take it as a dependency: it's read on the event loop, and
+# the handler itself is sync, so fastapi runs it (Test, Preview, sqlite writes) in a
+# worker thread instead of freezing every other request while it waits
+FormLists = Annotated[dict[str, list[str]], Depends(form_lists)]
 
 
 def first(fields: dict[str, list[str]], name: str) -> str:
@@ -313,8 +319,7 @@ def general(request: Request, values: dict[str, Any] | None = None, errors: list
 
 
 @router.post("/settings")
-async def save_general(request: Request) -> Response:
-    fields = await form_lists(request)
+def save_general(request: Request, fields: FormLists) -> Response:
     errors: list[str] = []
     values = {
         "dry_run": "dry_run" in fields,
@@ -419,10 +424,9 @@ def checked_url(url: str, errors: list[str]) -> str:
 
 
 @router.post("/settings/connections/{service}")
-async def save_connection(request: Request, service: str) -> Response:
+def save_connection(request: Request, service: str, fields: FormLists) -> Response:
     if service not in SERVICES:
         raise HTTPException(status_code=404)
-    fields = await form_lists(request)
     action = first(fields, "action")
     label, secret_label, url_key = SERVICES[service]
     secret_name = SERVICE_SECRETS[service]
@@ -491,9 +495,8 @@ async def save_connection(request: Request, service: str) -> Response:
 
 
 @router.post("/settings/links")
-async def save_links(request: Request) -> Response:
+def save_links(request: Request, fields: FormLists) -> Response:
     """other tools the status page links to: add one, or remove one by its number"""
-    fields = await form_lists(request)
     action = first(fields, "action")
     values = {key: first(fields, key).strip().rstrip("/") for key in ("name", "url", "public_url", "service")}
     _, document = store(request).document()
@@ -562,8 +565,7 @@ def trash_page(request: Request) -> HTMLResponse:
 
 
 @router.post("/settings/trash")
-async def save_trash(request: Request) -> Response:
-    fields = await form_lists(request)
+def save_trash(request: Request, fields: FormLists) -> Response:
     errors: list[str] = []
     values = {
         "libraries": lines(fields, "libraries"),
@@ -672,8 +674,7 @@ def version_page(request: Request, version_id: int, error: str | None = None) ->
 
 
 @router.post("/settings/history/{version_id}/restore")
-async def restore_version(request: Request, version_id: int) -> Response:
-    fields = await form_lists(request)
+def restore_version(request: Request, version_id: int, fields: FormLists) -> Response:
     version = store(request).version(version_id)
     if version is None:
         raise HTTPException(status_code=404)
@@ -747,9 +748,8 @@ def arr_settings(
 
 
 @router.post("/settings/{arr}")
-async def save_arr(request: Request, arr: str) -> Response:
+def save_arr(request: Request, arr: str, fields: FormLists) -> Response:
     check_arr(arr)
-    fields = await form_lists(request)
     values = {"dry_run": first(fields, "dry_run"), "tag": first(fields, "tag")}
     _, document = store(request).document()
     section = document.setdefault(arr, {})
@@ -949,19 +949,18 @@ def edit_rule_page(request: Request, arr: str, kind: str, number: int) -> HTMLRe
 
 
 @router.post("/settings/{arr}/{kind}/new")
-async def create_rule(request: Request, arr: str, kind: str) -> Response:
+def create_rule(request: Request, arr: str, kind: str, fields: FormLists) -> Response:
     check_kind(arr, kind)
-    return await save_rule(request, arr, kind, None)
+    return save_rule(request, arr, kind, None, fields)
 
 
 @router.post("/settings/{arr}/{kind}/{number}")
-async def update_rule(request: Request, arr: str, kind: str, number: int) -> Response:
+def update_rule(request: Request, arr: str, kind: str, number: int, fields: FormLists) -> Response:
     check_kind(arr, kind)
-    return await save_rule(request, arr, kind, number)
+    return save_rule(request, arr, kind, number, fields)
 
 
-async def save_rule(request: Request, arr: str, kind: str, number: int | None) -> Response:
-    fields = await form_lists(request)
+def save_rule(request: Request, arr: str, kind: str, number: int | None, fields: FormLists) -> Response:
     values = rule_values(kind, arr, fields)
     # a re-rendered form keeps the rule it was opened on
     loaded = first(fields, "loaded") or None
@@ -1014,9 +1013,8 @@ def rule_preview(
 
 
 @router.post("/settings/{arr}/{kind}/{number}/delete")
-async def delete_rule(request: Request, arr: str, kind: str, number: int) -> Response:
+def delete_rule(request: Request, arr: str, kind: str, number: int, fields: FormLists) -> Response:
     check_kind(arr, kind)
-    fields = await form_lists(request)
     _, document = store(request).document()
     if changed_since_loaded(document, arr, kind, number, fields):
         return error_page(
@@ -1033,10 +1031,9 @@ async def delete_rule(request: Request, arr: str, kind: str, number: int) -> Res
 
 
 @router.post("/settings/{arr}/{kind}/{number}/move")
-async def move_rule(request: Request, arr: str, kind: str, number: int, direction: str) -> Response:
+def move_rule(request: Request, arr: str, kind: str, number: int, direction: str, fields: FormLists) -> Response:
     """movers run in order and the first match wins, so their order matters"""
     check_kind(arr, kind)
-    fields = await form_lists(request)
     _, document = store(request).document()
     rule_number(document, arr, kind, number)
     rules = document[arr][kind]
@@ -1053,9 +1050,8 @@ async def move_rule(request: Request, arr: str, kind: str, number: int, directio
 
 
 @router.post("/settings/{arr}/remover-settings")
-async def save_remover_settings(request: Request, arr: str) -> Response:
+def save_remover_settings(request: Request, arr: str, fields: FormLists) -> Response:
     check_arr(arr)
-    fields = await form_lists(request)
     errors: list[str] = []
     max_deletes = checked_int(first(fields, "max_deletes"), "Max deletes", errors, 1, optional=True)
     if errors:

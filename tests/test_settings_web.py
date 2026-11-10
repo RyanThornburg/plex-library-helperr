@@ -1,4 +1,6 @@
 import re
+import threading
+import time
 """Tests for the settings pages and config api, against a real store and fake lookups"""
 
 from datetime import timedelta
@@ -213,6 +215,30 @@ class TestConnections:
         assert "Connected to Radarr 6.4.4" in response.text
         assert seen == [("radarr", {"url": "http://radarr:7878", "public_url": "", "username": "", "secret": "radarr-key"})]
         assert "radarr-key" not in response.text
+
+    def test_a_slow_test_doesnt_block_other_requests(self, client, monkeypatch):
+        """a connection test runs in a worker thread: the app keeps answering while an
+        arr takes its time (it used to run on the event loop and freeze everything)"""
+        started, release = threading.Event(), threading.Event()
+
+        def check(service, values):
+            started.set()
+            release.wait(5)
+            return "Radarr 6.4.4"
+
+        monkeypatch.setattr("web.settings_routes.check_connection", check)
+        form = {"version": version(client), "action": "test", "url": "http://radarr:7878", "secret": "new-key"}
+        testing = threading.Thread(target=post, args=(client, "/settings/connections/radarr", form))
+        testing.start()
+        try:
+            assert started.wait(5)
+            began = time.monotonic()
+            assert client.get("/healthz").status_code == 200
+            # answered while the test still waits, not after it gives up
+            assert time.monotonic() - began < 2 and not release.is_set()
+        finally:
+            release.set()
+            testing.join(5)
 
     def test_failed_test_is_shown_without_the_key(self, client, monkeypatch):
         def check(service, values):

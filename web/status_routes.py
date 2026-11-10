@@ -4,10 +4,10 @@ the history of problems web.health recorded, and removing stuck downloads from t
 import logging
 from dataclasses import asdict
 from datetime import timedelta
-from typing import Literal
+from typing import Annotated, Literal
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
@@ -302,10 +302,11 @@ def queue_get(request: Request, service: str) -> HTMLResponse:
 
 
 @router.post("/status/{service}/queue/remove", response_model=None)
-async def queue_remove(request: Request, service: str) -> HTMLResponse | RedirectResponse:
+def queue_remove(
+    request: Request, service: str, fields: Annotated[dict[str, list[str]], Depends(form_lists)]
+) -> HTMLResponse | RedirectResponse:
     if service not in QUEUES:
         raise HTTPException(status_code=404)
-    fields = await form_lists(request)
     keys = fields.get("download", [])
     method = (fields.get("method") or ["client"])[-1]
     blocklist = (fields.get("blocklist") or ["none"])[-1]

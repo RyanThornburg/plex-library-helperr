@@ -11,6 +11,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 from sqlalchemy import Engine, delete
 from sqlalchemy.orm import Session
 
@@ -139,6 +140,11 @@ async def arr_webhook(request: Request) -> JSONResponse:
     ignored, so turning more on in radarr/sonarr doesn't make them report errors"""
     check_key(request)
     payload = await json_body(request)
+    # sqlite writes and the job queue's lock stay off the event loop
+    return await run_in_threadpool(handle, request, payload)
+
+
+def handle(request: Request, payload: dict[str, Any]) -> JSONResponse:
     event = str(payload.get("eventType", ""))
     runner: JobRunner = request.app.state.runner
     if event == IMPORT_EVENT and payload.get("isUpgrade") is True:

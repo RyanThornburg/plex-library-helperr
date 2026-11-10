@@ -3,10 +3,10 @@
 import logging
 import pathlib
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import parse_qs, urlencode
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
@@ -616,8 +616,8 @@ def new_schedule_page(request: Request) -> HTMLResponse:
 
 
 @router.post("/schedules")
-async def create_schedule_form(request: Request) -> Response:
-    values = form_values(await form_fields(request))
+def create_schedule_form(request: Request, fields: Annotated[dict[str, str], Depends(form_fields)]) -> Response:
+    values = form_values(fields)
     if errors := schedule_errors(
         values["name"], values["job"], values["cron"], values["timezone"]
     ):
@@ -633,9 +633,11 @@ def edit_schedule_page(request: Request, schedule_id: int) -> HTMLResponse:
 
 
 @router.post("/schedules/{schedule_id}")
-async def update_schedule_form(request: Request, schedule_id: int) -> Response:
+def update_schedule_form(
+    request: Request, schedule_id: int, fields: Annotated[dict[str, str], Depends(form_fields)]
+) -> Response:
     get_schedule(request, schedule_id)
-    values = form_values(await form_fields(request))
+    values = form_values(fields)
     if errors := schedule_errors(
         values["name"], values["job"], values["cron"], values["timezone"]
     ):
