@@ -17,6 +17,8 @@
   /* behind white text */
   --bad-fill: #c62828;
   --on-accent: #111;
+  /* white text on the red and blue fills, both themes */
+  --on-fill: #fff;
   /* the primary button: ink, so gold keeps meaning brand, here and warning */
   --primary: #1c2128;
   --on-primary: #fff;
@@ -124,9 +126,9 @@ html { scroll-padding-top: 132px; }
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
-.badge-warn { background: var(--gold); color: #111; }
-.badge-bad { background: var(--bad-fill); color: #fff; }
-.badge-info { background: var(--info-fill); color: #fff; }
+.badge-warn { background: var(--gold); color: var(--on-accent); }
+.badge-bad { background: var(--bad-fill); color: var(--on-fill); }
+.badge-info { background: var(--info-fill); color: var(--on-fill); }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 .icon { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -211,7 +213,7 @@ th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--bor
 th { color: var(--muted); font-weight: 600; font-size: 13px; white-space: nowrap; }
 /* cells keep their words whole, so short values (ids, counts, statuses) aren't squeezed
    by a long neighbour; the cells holding names, paths and text (.long) break anywhere */
-td { overflow-wrap: break-word; }
+td { overflow-wrap: break-word; font-variant-numeric: tabular-nums; }
 td.long, td .items { overflow-wrap: anywhere; }
 td.long { min-width: 8rem; }
 
@@ -282,7 +284,7 @@ button, .button {
   cursor: pointer;
 }
 .button-secondary { background: transparent; color: var(--text); border-color: var(--border); }
-.button-danger { background: var(--bad-fill); border-color: var(--bad-fill); color: #fff; }
+.button-danger { background: var(--bad-fill); border-color: var(--bad-fill); color: var(--on-fill); }
 button:focus-visible, .button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 
 .tag {
@@ -298,7 +300,7 @@ button:focus-visible, .button:focus-visible { outline: 2px solid var(--text); ou
 /* a state that needs reading: filled */
 .tag-solid-warn, .tag-solid-bad { font-weight: 600; }
 .tag-solid-warn { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-.tag-solid-bad { background: var(--bad-fill); border-color: var(--bad-fill); color: #fff; }
+.tag-solid-bad { background: var(--bad-fill); border-color: var(--bad-fill); color: var(--on-fill); }
 
 .banner {
   padding: 10px 14px;
@@ -819,7 +821,6 @@ meter.share:-moz-meter-sub-sub-optimum::-moz-meter-bar { background: var(--accen
 .dialog-head h1 { margin: 0; }
 .dialog-body { display: flex; flex-direction: column; gap: 12px; padding: 16px 20px 20px; }
 .dialog-body > * { margin: 0; }
-.dialog-body table { border-radius: 0; }
 .dialog-foot {
   display: flex;
   flex-wrap: wrap;
