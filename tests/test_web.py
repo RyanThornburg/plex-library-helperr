@@ -488,7 +488,8 @@ class TestScheduleRoutes:
     def test_times_are_utc_for_the_browser_to_convert(self, client):
         post_form(client, "/schedules", "name=a&job=movers&cron=%40daily&timezone=UTC&enabled=on")
         page = client.get("/schedules", headers=auth()).text
-        assert re.search(r'<time datetime="\d{4}-\d\d-\d\dT00:00:00Z" title="[^"]+ 00:00:00 UTC">[^<]+ 00:00 UTC</time>', page)
+        # the next run says how soon (static/app.js), the time itself in its title
+        assert re.search(r'<time datetime="\d{4}-\d\d-\d\dT00:00:00Z" title="[^"]+ 00:00:00 UTC" data-relative>[^<]+ 00:00 UTC</time>', page)
         assert '<script src="/static/app.js" defer>' in page
 
     def test_form_posts_need_same_origin(self, client):

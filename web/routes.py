@@ -73,6 +73,18 @@ def localtime(value: datetime | None) -> str:
     )
 
 
+def relative(value: datetime | None) -> str:
+    """localtime for "how long ago / how soon" (next and last runs, a check): static/app.js
+    says "in 12 min" or "3 hours ago" within a week, the full time in its title"""
+    if value is None:
+        return "-"
+    return Markup('<time datetime="{}Z" title="{} UTC" data-relative>{} UTC</time>').format(
+        value.isoformat(timespec="seconds"),
+        value.strftime("%Y-%m-%d %H:%M:%S"),
+        value.strftime("%Y-%m-%d %H:%M"),
+    )
+
+
 def localdate(value: datetime | None) -> str:
     """localtime for dense tables: static/app.js shows the browser's date, the full
     time in its title"""
@@ -103,6 +115,7 @@ def run_source(run: JobRun) -> str:
 
 templates.env.filters["localtime"] = localtime
 templates.env.filters["localdate"] = localdate
+templates.env.filters["relative"] = relative
 templates.env.globals["duration"] = duration
 templates.env.globals["run_source"] = run_source
 templates.env.globals["JOB_INFO"] = JOB_INFO

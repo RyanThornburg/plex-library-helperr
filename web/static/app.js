@@ -2,16 +2,34 @@
 
 const pad = (n) => String(n).padStart(2, "0");
 
-// times are rendered in utc, show them in the browser's time zone
-for (const el of document.querySelectorAll("time[datetime]")) {
-  const d = new Date(el.dateTime);
-  if (Number.isNaN(d.getTime())) continue;
-  const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  const minutes = `${date} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  // to the minute, the seconds in the title; data-date (dense tables) shows only the date
-  el.title = `${minutes}:${pad(d.getSeconds())}`;
-  el.textContent = "date" in el.dataset ? date : minutes;
-}
+// "in 12 min", "3 hours ago", "yesterday": within a week, null past that
+const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+const relative = (d) => {
+  const seconds = (d.getTime() - Date.now()) / 1000;
+  const away = Math.abs(seconds);
+  if (away < 45) return seconds < 0 ? "just now" : "in under a minute";
+  if (away < 3600) return rtf.format(Math.round(seconds / 60), "minute");
+  if (away < 86400) return rtf.format(Math.round(seconds / 3600), "hour");
+  if (away < 7 * 86400) return rtf.format(Math.round(seconds / 86400), "day");
+  return null;
+};
+
+// times are rendered in utc, show them in the browser's time zone: to the minute, the
+// seconds in the title; data-date (dense tables) shows only the date, data-relative
+// how long ago or how soon, kept current
+const renderTimes = () => {
+  for (const el of document.querySelectorAll("time[datetime]")) {
+    const d = new Date(el.dateTime);
+    if (Number.isNaN(d.getTime())) continue;
+    const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const minutes = `${date} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    el.title = `${minutes}:${pad(d.getSeconds())}`;
+    const when = "relative" in el.dataset && relative(d);
+    el.textContent = when || ("date" in el.dataset ? date : minutes);
+  }
+};
+renderTimes();
+if (document.querySelector("time[data-relative]")) setInterval(renderTimes, 30000);
 
 // a new schedule starts in the browser's time zone
 const zone = document.querySelector("select[data-browser-zone]");

@@ -4,7 +4,7 @@
 {% set on = setting and setting.auto_approve %}
 <td>
   {% if on %}<span class="tag tag-live">on</span>{% else %}<span class="tag">off</span>{% endif %}
-  {% if setting %}<br><span class="muted">{{ setting.updated_at | localtime }}</span>{% endif %}
+  {% if setting %}<br><span class="muted">{{ setting.updated_at | relative }}</span>{% endif %}
 </td>
 <td>
   <div class="actions row-actions">

@@ -20,7 +20,7 @@
       <td>{{ JOB_INFO[schedule.job][0] if schedule.job in JOB_INFO else schedule.job }}</td>
       <td><code>{{ schedule.cron }}</code> <span class="muted">{{ schedule.timezone }}</span></td>
       <td>{% if schedule.dry_run %}{{ ui.mode_tag("dry_run", "forced") }}{% else %}{{ ui.mode_tag(modes.get(schedule.job, "unknown")) }}{% endif %}</td>
-      <td>{% if schedule.enabled %}{{ next_runs[schedule.id] | localtime }}{% else %}<span class="tag">paused</span>{% endif %}</td>
+      <td>{% if schedule.enabled %}{{ next_runs[schedule.id] | relative }}{% else %}<span class="tag">paused</span>{% endif %}</td>
       <td>
         {% if last %}<a href="/runs/{{ last.id }}">#{{ last.id }}</a> <span class="status status-{{ last.status }}">{{ last.status | replace("_", " ") }}</span>{% else %}-{% endif %}
       </td>

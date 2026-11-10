@@ -31,13 +31,13 @@
         {% else %}{{ ui.mode_tag(key) }}{% endif %}
       </td>
       <td>
-        {% if job in next_runs %}{% set next_run, schedule = next_runs[job] %}{{ next_run | localtime }}<br><a href="/schedules/{{ schedule.id }}">{{ schedule.name }}</a>{% if schedule.dry_run %} <span class="muted">(dry run)</span>{% endif %}{% endif %}
-        {% if job == "empty_trash" and followup %}{% if job in next_runs %}<br>{% endif %}<span class="muted">Follow-up</span> {{ followup | localtime }}{% endif %}
+        {% if job in next_runs %}{% set next_run, schedule = next_runs[job] %}{{ next_run | relative }}<br><a href="/schedules/{{ schedule.id }}">{{ schedule.name }}</a>{% if schedule.dry_run %} <span class="muted">(dry run)</span>{% endif %}{% endif %}
+        {% if job == "empty_trash" and followup %}{% if job in next_runs %}<br>{% endif %}<span class="muted">Follow-up</span> {{ followup | relative }}{% endif %}
         {% if job not in next_runs and not (job == "empty_trash" and followup) %}<span class="muted">Not scheduled</span>{% endif %}
       </td>
       <td>
         {% if last %}<a href="/runs/{{ last.id }}">#{{ last.id }}</a> <span class="status status-{{ last.status }}">{{ last.status | replace("_", " ") }}</span>
-        {% if job == "removers" and reviewable %}<br><a href="/runs/{{ last.id }}">Review the plan</a>{% else %}<br>{{ last.started_at | localtime if last.started_at else last.created_at | localtime }}{% endif %}
+        {% if job == "removers" and reviewable %}<br><a href="/runs/{{ last.id }}">Review the plan</a>{% else %}<br>{{ last.started_at | relative if last.started_at else last.created_at | relative }}{% endif %}
         {% else %}<span class="muted">Never run</span>{% endif %}
       </td>
       <td class="row-actions">
@@ -70,7 +70,7 @@
       <td class="end"><span class="status status-{{ run.status }}">{{ run.status | replace("_", " ") }}</span></td>
       <td data-label="Mode">{{ ui.mode_tag(run | run_mode) }}</td>
       <td data-label="Changes">{{ run.result.changes | length if run.result else "-" }}</td>
-      <td class="row" data-label="Started">{{ run.started_at | localtime }}</td>
+      <td class="row" data-label="Started">{{ run.started_at | relative }}</td>
       <td data-label="Took">{{ duration(run) }}</td>
       <td class="long muted" data-label="By">{{ run_source(run) }}</td>
     </tr>

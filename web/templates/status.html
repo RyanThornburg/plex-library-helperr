@@ -51,7 +51,7 @@
 {% endblock %}
 {% block content %}
 <h1>Status</h1>
-<p class="muted">Checked {{ checked_at | localtime }}. {% if refresh %}Refreshes every minute, <a href="/status?refresh=0">pause</a>.{% else %}Not refreshing, <a href="/status">resume</a>.{% endif %}</p>
+<p class="muted">Checked {{ checked_at | relative }}. {% if refresh %}Refreshes every minute, <a href="/status?refresh=0">pause</a>.{% else %}Not refreshing, <a href="/status">resume</a>.{% endif %}</p>
 
 {% set attention = services | selectattr("state", "in", ["warn", "bad"]) | list %}
 {% set connected = services | rejectattr("state", "equalto", "off") | list %}
