@@ -309,7 +309,8 @@ button:focus-visible, .button:focus-visible { outline: 2px solid var(--text); ou
   background: var(--surface);
 }
 .banner-warn { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
-.banner-bad { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 7%, var(--surface)); }
+/* an error, or a dialog's live or destructive consequence: the same red as the live tag and the danger button */
+.banner-bad, .banner-live { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 7%, var(--surface)); }
 
 .status-done { color: var(--ok); }
 .status-dry_run { color: var(--muted); }

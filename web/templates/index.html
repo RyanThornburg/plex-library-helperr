@@ -27,7 +27,7 @@
       <td class="long"><span class="job-name">{{ title }}</span><span class="job-desc">{{ description }}</span></td>
       <td>
         {% set key = "unknown" if config_error else configured_mode(job, mode, auto_rules | length > 0) %}
-        {% if key == "review_auto" %}<a class="tag tag-warn" href="/removers">review, auto-approve on for {{ auto_rules | length }}</a>
+        {% if key == "review_auto" %}<a class="tag tag-live" href="/removers">review, auto-approve on for {{ auto_rules | length }}</a>
         {% else %}{{ ui.mode_tag(key) }}{% endif %}
       </td>
       <td>

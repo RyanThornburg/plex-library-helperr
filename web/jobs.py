@@ -57,9 +57,9 @@ class ApplyRefused(Exception):
 MODES = {
     "dry_run": ("dry run", ""),
     "live": ("live", "live"),
-    "mixed": ("live for some *arrs", "warn"),
+    "mixed": ("live for some *arrs", "live"),
     "review": ("plan for review", "info"),
-    "review_auto": ("review, auto-approve on", "warn"),
+    "review_auto": ("review, auto-approve on", "live"),
     "apply": ("apply plan", "live"),
     "unknown": ("unknown", ""),
 }

@@ -26,13 +26,13 @@
     {% if mode == "unknown" %}
     <p class="banner banner-bad">The settings can't be loaded, so this run will fail: {{ config_error }}</p>
     {% elif mode == "review_auto" %}
-    <p class="banner banner-warn"><strong>Auto-approve is on</strong> for {{ auto_rules | length }} remover{{ "s" if auto_rules | length != 1 }} ({% for rule in auto_rules %}{{ rule.label }}{{ "; " if not loop.last }}{% endfor %}): their removals <strong>will be deleted</strong> without review. Other rules' removals are planned for review.</p>
+    <p class="banner banner-live"><strong>Auto-approve is on</strong> for {{ auto_rules | length }} remover{{ "s" if auto_rules | length != 1 }} ({% for rule in auto_rules %}{{ rule.label }}{{ "; " if not loop.last }}{% endfor %}): their removals <strong>will be deleted</strong> without review. Other rules' removals are planned for review.</p>
     {% elif mode == "review" %}
     <p class="banner">This only plans: nothing is deleted until you approve the plan on the run's page.</p>
     {% elif mode == "mixed" %}
-    <p class="banner banner-warn">Dry run is off for some *arrs: this run <strong>will make changes</strong> there ({{ changes[job] }}) and only list what it would do for the others.</p>
+    <p class="banner banner-live">Dry run is off for some *arrs: this run <strong>will make changes</strong> there ({{ changes[job] }}) and only list what it would do for the others.</p>
     {% elif mode == "live" %}
-    <p class="banner banner-warn">Dry run is off for this job, so this run <strong>will make changes</strong>: it will {{ changes[job] }}.</p>
+    <p class="banner banner-live">Dry run is off for this job, so this run <strong>will make changes</strong>: it will {{ changes[job] }}.</p>
     {% else %}
     <p class="banner">Dry run is on for this job, so nothing will change. The run lists what it would do.</p>
     {% endif %}

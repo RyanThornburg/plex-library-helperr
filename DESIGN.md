@@ -402,11 +402,11 @@ A count on a sidebar section, read from the database only. A 20px pill, at least
 
 ### Tags
 - **Style:** pill, 1px Rule Line border, 1px × 8px padding, 12px text, transparent fill. Neutral for facts with no state: dry run, off, paused, current, connected, not set up, movie, muted.
-- **State:** the border and text take a color: `tag-live` Alarm Red (live, apply plan, auto-approve on), `tag-warn` Projector Amber border with Warning Ink text (live for some *arrs, auto-approve on, not by removers), `tag-info` Signal Blue (plan for review).
+- **State:** the border and text take a color: `tag-live` Alarm Red (live, live for some *arrs, review with auto-approve on, apply plan, a remover's auto-approve on), `tag-warn` Projector Amber border with Warning Ink text (not by removers), `tag-info` Signal Blue (plan for review).
 - **Solid:** a state that needs reading now is a filled pill at 600: Alarm Fill with white text (`down`, `error`, an ongoing error incident, the error pill), Projector Amber with On Amber text (`warning`, an ongoing warning, the warning pill).
 
 ### Mode Tags
-A job's or run's mode has one name and one tag everywhere (the Jobs table, Recent runs, a run's page, Schedules, dialogs), from one table in the code: dry run (neutral), live (red), live for some *arrs (amber), plan for review (blue), review, auto-approve on (amber; on the Jobs table it reads "review, auto-approve on for N" and links to Removers), apply plan (red), unknown (neutral). A dry run may say why in Dim Ink after it ("forced", "from the settings"). "settings" is never a mode.
+A job's or run's mode has one name and one tag everywhere (the Jobs table, Recent runs, a run's page, Schedules, dialogs), from one table in the code: dry run (neutral), live (red), live for some *arrs (red), plan for review (blue), review, auto-approve on (red; on the Jobs table it reads "review, auto-approve on for N" and links to Removers), apply plan (red), unknown (neutral). A dry run may say why in Dim Ink after it ("forced", "from the settings"). "settings" is never a mode.
 
 ### Cards / Containers
 - **Corner Style:** 8px.
@@ -430,7 +430,7 @@ Runs lists its jobs the way the *arrs' System → Tasks does: a "Jobs" table wit
 ### Dialogs
 Every confirmation (run a job, apply a plan, auto-approve a remover, make a job live) is a page laid out like an *arr dialog, not a modal: no script, and Back works. A Panel up to 680px wide (960px when it lists a plan), centered, 8px radius, 1px Rule Line.
 - **Head:** the question as the `h1` ("Run Movers & profilers?", "Apply plan #12?", "Make this job live?") with the mode tag at the right, 14px × 20px, a Rule Line under it.
-- **Body:** what will happen, in a banner (warning when it changes or deletes things, error when it can't go ahead), with any list of what's affected; 16px × 20px (20px at the bottom), 12px between blocks.
+- **Body:** what will happen, in a banner (`banner-live`, the error banner's red, when it changes or deletes things, so banner, mode tag and decision button agree; error when it can't go ahead), with any list of what's affected; 16px × 20px (20px at the bottom), 12px between blocks.
 - **Foot:** on Console Floor behind a Rule Line, 12px × 20px, buttons 8px apart at the right: Cancel, then any safer alternative ("Dry run instead"), then the decision last. The decision's label names its consequence ("Start dry run", "Run live", "Run partly live", "Plan removals", "Run and delete auto-approved", "Delete 13 files", "Delete without review", "Save and go live"), never "OK"; it's Danger when it changes or deletes things.
 - **Phone:** 16px side padding, the head wraps, the buttons stack full width with the decision on top and Cancel last.
 

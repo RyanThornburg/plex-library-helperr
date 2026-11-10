@@ -17,9 +17,9 @@
 {% else %}
 {% for arr in arrs %}
 {% if arr.service == "SONARR" %}
-<p class="banner banner-warn">This <strong>unmonitors and deletes up to {{ arr.files }} episode files</strong> from {{ arr.removals | length }} series in Sonarr. Each series is planned again first: anything watched, replaced, downloading or no longer outside the keep window since this plan is skipped and reported.</p>
+<p class="banner banner-live">This <strong>unmonitors and deletes up to {{ arr.files }} episode files</strong> from {{ arr.removals | length }} series in Sonarr. Each series is planned again first: anything watched, replaced, downloading or no longer outside the keep window since this plan is skipped and reported.</p>
 {% else %}
-<p class="banner banner-warn">{% set n = arr.removals | length %}This <strong>deletes {{ n }} movie{{ "s" if n != 1 }} and {{ "their files" if n != 1 else "its file" }}</strong> from Radarr. Each movie is checked again first: one that was played (when its rule checks plays), replaced, is downloading or left its root folder since this plan is skipped and reported.</p>
+<p class="banner banner-live">{% set n = arr.removals | length %}This <strong>deletes {{ n }} movie{{ "s" if n != 1 }} and {{ "their files" if n != 1 else "its file" }}</strong> from Radarr. Each movie is checked again first: one that was played (when its rule checks plays), replaced, is downloading or left its root folder since this plan is skipped and reported.</p>
 {% endif %}
 {% endfor %}
 {% endif %}
