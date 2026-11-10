@@ -42,9 +42,12 @@
 {%- endmacro %}
 
 {# a share as a small bar after its number, hidden from screen readers (the number says
-   it). rate=True is something you want low (transcoded plays): past half it's amber #}
+   it). rate=True is something you want low (transcoded plays): past half it's amber.
+   An svg: the CSP allows no inline widths, but a width attribute is markup, and
+   Chrome's <meter> wouldn't fill its own track's height #}
 {% macro share(percent, rate=False) -%}
-<meter class="share" min="0" max="100" value="{{ percent }}"{% if rate %} low="25" high="50" optimum="0"{% endif %} aria-hidden="true"></meter>
+{% set percent = [[percent or 0, 0] | max, 100] | min %}
+<svg class="share{% if rate and percent > 50 %} share-high{% endif %}" width="56" height="6" aria-hidden="true" focusable="false"><rect class="share-track" width="100%" height="100%"/>{% if percent %}<rect class="share-fill" width="{{ '%g' | format(percent | round(1)) }}%" height="100%"/>{% endif %}</svg>
 {%- endmacro %}
 
 {# a job's or run's mode (web.jobs.MODES), the same tag everywhere; note says why, in dim ink #}

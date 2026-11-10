@@ -193,7 +193,7 @@ components:
     backgroundColor: "{colors.panel}"
     textColor: "{colors.ink}"
     padding: "10px 12px"
-  share-meter:
+  share-bar:
     backgroundColor: "{colors.signal-blue}"
     rounded: "{rounded.pill}"
     width: "56px"
@@ -274,7 +274,7 @@ It is a dense, expert surface for one admin at a desktop browser, readable on a 
 
 The shell is modelled on Sonarr and Radarr, so Helperr reads as a sibling *arr: a dark header and a dark sidebar in both themes, and a toolbar of icon-over-label actions above each page. The chrome frames the board; it carries no state color except the badges and the header pill that say something needs you, and Gold for the brand and where you are. The Status page is the reference for the idea: a one-line verdict first, then a card for each service that needs you, then every healthy or unconnected service as one dim line.
 
-The look is system-native on purpose: system fonts, native form controls, native `<details>`, `<meter>`, `<progress>` and checkboxes, so pages render instantly, work without JavaScript, and satisfy a strict CSP with nothing to load.
+The look is system-native on purpose: system fonts, native form controls, native `<details>`, `<progress>` and checkboxes, so pages render instantly, work without JavaScript, and satisfy a strict CSP with nothing to load.
 
 **Key Characteristics:**
 - Neutral at rest; color only marks state (ok / warn / bad), blue marks links, progress and data, and Gold marks the brand and where you are. A healthy service has no state color at all.
@@ -292,7 +292,7 @@ A cool slate neutral scale with three signal colors and the *arrs' blue, inside 
 ### Primary
 - **Primary** (`--primary` / `--on-primary`): the primary button. Ink fill with Panel text in light mode; Ink (dark) with Console Floor (dark) text in dark mode. Ink, so gold keeps meaning brand, here and warning. Run, Apply, Save and form submits use it.
 - **Gold** (`gold`, `--gold`, the same in both themes): the chrome's brand color. The "H" mark and the Helperr wordmark, the active sidebar section and its current sub page, focus rings inside the chrome, and the warning badge. Never on the board as decoration and never a button.
-- **Projector Amber** (`projector-amber` / `projector-amber-dark`, `--accent`): the warning color for borders, fills and washes: a warning card's and banner's outline, the filled `warning` tag, the warning verdict's border, an ongoing warning incident's row, and a share bar past its high mark. The dark value is Plex's gold.
+- **Projector Amber** (`projector-amber` / `projector-amber-dark`, `--accent`): the warning color for borders, fills and washes: a warning card's and banner's outline, the filled `warning` tag, the warning verdict's border, an ongoing warning incident's row, and a share bar past half. The dark value is Plex's gold.
 - **Warning Ink** (`warning-ink`, `--warn-text`; dark mode uses Projector Amber): amber as text. Warning state words, `tag-warn` labels, blocked statuses and transcode decisions use it, because Projector Amber on white is only about 3.4:1.
 
 ### Secondary
@@ -444,7 +444,7 @@ A service that needs you: a card with its whole border in the state color, its n
 Healthy and unconnected services, as rows of one Panel (8px radius) with Rule Lines between them. Each row is a grid, 12px gaps, 10px × 16px: the chevron (8px), name and version (up to 14rem, 600 Ink, version in 13px Dim Ink), state (7rem, 13px Dim Ink), facts (Dim Ink, tabular, joined by " · ", wrapping to more lines when long, never clipped) and the service's links (13px). A healthy row is a `<details>` that opens to its facts, items and notes, indented 48px; its chevron is drawn in CSS and the row takes a 4% Ink wash under the pointer. An unconnected row says "not connected" and links to its Connections form. Below 700px the facts sit under the name.
 
 ### Share Bars
-A number's share drawn after it: a native `<meter>` (the CSP allows no inline widths), 56px × 6px, 8px after the number, a pill track of 12% Ink, hidden from screen readers since the number beside it says it. Signal Blue is data (finished requests); a rate you want low (transcoded plays, low 25, high 50, optimum 0) turns Projector Amber past half. Used in the Requests users table and Playback's transcode columns, never as decoration or without the number.
+A number's share drawn beside it: a 56px × 6px inline `<svg>` (`ui.share()`; the CSP allows no inline widths, but a rect's width attribute is markup, and Chrome's styled `<meter>` drew its fill half the track's height), a pill track of 12% Ink with a square-ended fill, hidden from screen readers since the number beside it says it. In a table it sits at the cell's start, vertically centred, with the number 80px in, so the bars line up down the column and never wrap; in a stacked phone row it follows its number, 8px after. Signal Blue is data (finished requests); a rate you want low (transcoded plays) turns Projector Amber past half. Used in the Requests users table and Playback's transcode columns, never as decoration or without the number.
 
 ### Fix List
 Playback leads with what to change, not rates: its verdict, then a "Fix these" table with one row per person and device (a setting lives on one app on one device), worst first, its count as "N of M" in Warning Ink with a share bar, ending in the change: the cause and current value, a Dim Ink arrow, and the target in bold. It stops at 8 devices, once it covers three quarters of the transcodes, or below 3 transcodes.
@@ -466,7 +466,7 @@ Panel boxes, 6px radius, in 12px monospace, capped at 60% of the viewport height
 
 ### Do:
 - **Do** use the CSS custom properties (`--bg`, `--surface`, `--text`, `--muted`, `--border`, `--accent`, `--warn-text`, `--info`, `--link`, `--ok`, `--bad`, `--bad-fill`, `--primary`, `--gold`, `--chrome*`) and give any new themed one both a light and a dark value.
-- **Do** keep pages working without JavaScript and within the CSP: one stylesheet, self-hosted assets, no inline styles or scripts; use native `<details>`, `<meter>` and `<progress>` where a script or inline width would otherwise be needed.
+- **Do** keep pages working without JavaScript and within the CSP: one stylesheet, self-hosted assets, no inline styles or scripts; use native `<details>` and `<progress>` where a script or inline width would otherwise be needed.
 - **Do** put the page's actions in the toolbar as icon-over-label buttons; keep a form's own buttons next to its fields.
 - **Do** show a job's or run's mode with its mode tag, using the one name from the modes table, every time.
 - **Do** make every confirmation a dialog page: question as the heading, mode tag at the right, what happens in a banner, Cancel first and the decision last, named by its consequence.

@@ -742,29 +742,23 @@ td.units { min-width: 10rem; }
 /* a file count in a table ("▸ 9") stays on one line */
 td details > summary { white-space: nowrap; }
 
-/* a share next to its number (finished requests, transcoded plays): a <meter>, since the
-   CSP allows no inline widths. Blue is data; a rate past the meter's high mark (a
-   transcode rate over half) turns amber. Each engine gets its own rules: a selector one
-   browser doesn't know drops the whole rule */
-td.with-share { white-space: nowrap; }
-meter.share {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 56px;
-  height: 6px;
-  margin-left: 8px;
-  vertical-align: middle;
-  border: 0;
+/* a share next to its number (finished requests, transcoded plays): a small svg, since
+   the CSP allows no inline widths (its rect's width attribute is markup). Blue is data;
+   a rate past half (share-high) turns amber. The svg's rounded box clips both rects.
+   It sits at the cell's start, in padding kept for it, so the bars line up down the
+   column whatever the numbers' widths, each next to its number, and never wrap */
+td.with-share { position: relative; padding-left: 80px; white-space: nowrap; }
+svg.share {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--text) 12%, transparent);
+  overflow: hidden;
 }
-meter.share::-webkit-meter-inner-element { display: block; }
-meter.share::-webkit-meter-bar { height: 6px; border: 0; border-radius: 999px; background: color-mix(in srgb, var(--text) 12%, transparent); }
-meter.share::-webkit-meter-optimum-value { border-radius: 999px; background: var(--info); }
-meter.share::-webkit-meter-suboptimum-value { border-radius: 999px; background: var(--info); }
-meter.share::-webkit-meter-even-less-good-value { border-radius: 999px; background: var(--accent); }
-meter.share::-moz-meter-bar { border-radius: 999px; background: var(--info); }
-meter.share:-moz-meter-sub-sub-optimum::-moz-meter-bar { background: var(--accent); }
+.share-track { fill: color-mix(in srgb, var(--text) 12%, transparent); }
+.share-fill { fill: var(--info); }
+.share-high .share-fill { fill: var(--accent); }
 
 /* wide tables on a phone (table.stack): each row stacks instead of scrolling sideways.
    The row's name (.lead, after any .first cells such as a checkbox or #) leads with its
@@ -793,6 +787,9 @@ meter.share:-moz-meter-sub-sub-optimum::-moz-meter-bar { background: var(--accen
   table.stack td.lead { flex: 1 1 0; min-width: 50%; font-weight: 600; }
   table.stack td.end { order: 1; font-size: 15px; }
   table.stack td.row { flex-basis: 100%; }
+  /* a stacked row has one share per line: the bar just follows its number */
+  table.stack td.with-share { padding-left: 0; }
+  table.stack td.with-share svg.share { position: static; transform: none; display: inline-block; margin-left: 8px; vertical-align: middle; }
   table.stack td:empty { display: none; }
   table.stack td[data-label]::before { content: attr(data-label) " "; color: var(--muted); }
   table.stack td.lead .muted { font-weight: 400; }
