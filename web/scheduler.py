@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from config.models import WebDefaults
 from results import JOBS
 from web import cron
-from web.db import JobRun, Schedule, TrashEvent
+from web.db import WITHOUT_LOG, JobRun, Schedule, TrashEvent
 from web.jobs import ACTIVE, AlreadyActive, JobRunner, utc_now
 
 logger = logging.getLogger(__name__)
@@ -60,6 +60,7 @@ def trash_followup_due(
     trash_runs = list(
         session.scalars(
             select(JobRun)
+            .options(WITHOUT_LOG)
             .where(JobRun.job == "empty_trash")
             .order_by(JobRun.id.desc())
             .limit(50)
@@ -74,7 +75,7 @@ def trash_followup_due(
     if last_emptied and last_emptied.started_at and last_emptied.started_at - delay > since:
         since = last_emptied.started_at - delay
     runs = session.scalars(
-        select(JobRun).where(
+        select(JobRun).options(WITHOUT_LOG).where(
             JobRun.job.in_(("movers", "removers")),
             JobRun.dry_run.is_(False),
             JobRun.finished_at > since,

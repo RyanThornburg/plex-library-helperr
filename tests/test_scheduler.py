@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.orm import Session
 
 from config.models import ConfigSettings, WebDefaults
@@ -214,6 +214,16 @@ def due(engine, now, defaults=DEFAULTS):
 
 
 class TestTrashFollowup:
+    def test_never_loads_run_logs(self, engine):
+        # it runs every minute, and a run's log can be a megabyte
+        add_run(engine, "movers", START, MOVED)
+        add_run(engine, "empty_trash", START - timedelta(hours=1), EMPTIED)
+        statements = []
+        event.listen(engine, "before_cursor_execute", lambda *a: statements.append(a[2]))
+        due(engine, START)
+        selects = [s for s in statements if "FROM job_runs" in s]
+        assert selects and all("job_runs.log" not in s for s in selects)
+
     def test_due_a_while_after_files_moved_or_removed(self, engine):
         add_run(engine, "movers", START, MOVED)
         assert due(engine, START) == START + TRASH_FOLLOWUP_DELAY

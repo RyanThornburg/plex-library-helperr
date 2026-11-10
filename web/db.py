@@ -17,7 +17,7 @@ from sqlalchemy import (
     false,
     true,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, defer, mapped_column, relationship
 
 MIGRATIONS_DIR = pathlib.Path(__file__).parent / "migrations"
 
@@ -126,6 +126,11 @@ class JobRun(Base):
         ForeignKey("job_runs.id", ondelete="SET NULL"), index=True
     )
     approved: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+
+
+# for queries listing runs: a run's log can be a megabyte, and only its page shows it.
+# Reading it from a run loaded this way raises, rather than quietly loading it after all
+WITHOUT_LOG = defer(JobRun.log, raiseload=True)
 
 
 class TrashEvent(Base):

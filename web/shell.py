@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from web.db import HealthIncident, JobRun
+from web.db import WITHOUT_LOG, HealthIncident, JobRun
 from web.health import LABELS
 from web.jobs import utc_now
 
@@ -153,6 +153,7 @@ def read_needs(request: Request) -> Needs:
             # the newest plan is the one to review: an older one is superseded
             plan = session.scalars(
                 select(JobRun)
+                .options(WITHOUT_LOG)
                 .where(JobRun.job == "removers", JobRun.plan_run_id.is_(None), JobRun.status == "succeeded")
                 .order_by(JobRun.id.desc())
                 .limit(1)

@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 import config
 from config.models import ConfigSettings, MovieRemoverRule, RemoverRule
 from results import JOBS
-from web.db import JobRun, RemoverRuleSetting, Schedule
+from web.db import WITHOUT_LOG, JobRun, RemoverRuleSetting, Schedule
 from web.jobs import (
     ACTIVE,
     APPROVABLE,
@@ -146,7 +146,7 @@ def missing_connections(request: Request, *services: str) -> list[str]:
 
 def recent_runs(request: Request, limit: int, before: int | None = None) -> list[JobRun]:
     """newest first, those before a run id when paging back"""
-    query = select(JobRun).order_by(JobRun.id.desc()).limit(limit)
+    query = select(JobRun).options(WITHOUT_LOG).order_by(JobRun.id.desc()).limit(limit)
     if before is not None:
         query = query.where(JobRun.id < before)
     with Session(request.app.state.engine) as session:
@@ -267,7 +267,7 @@ def last_runs(request: Request) -> dict[int, JobRun]:
             .group_by(JobRun.schedule_id)
             .subquery()
         )
-        runs = session.scalars(select(JobRun).join(latest, JobRun.id == latest.c.id))
+        runs = session.scalars(select(JobRun).options(WITHOUT_LOG).join(latest, JobRun.id == latest.c.id))
         return {run.schedule_id: run for run in runs.unique() if run.schedule_id}
 
 
@@ -340,7 +340,7 @@ def index(request: Request, before: int | None = Query(default=None, ge=1, le=2*
         # each job's newest run, and whether that removers plan is waiting for review
         last_runs = {
             job: session.scalars(
-                select(JobRun).where(JobRun.job == job).order_by(JobRun.id.desc()).limit(1)
+                select(JobRun).options(WITHOUT_LOG).where(JobRun.job == job).order_by(JobRun.id.desc()).limit(1)
             ).first()
             for job in JOBS
         }
