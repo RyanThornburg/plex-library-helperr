@@ -375,11 +375,13 @@ class JobRunner:
                 if run_id is None:
                     return
                 try:
-                    job = self._execute(run_id)
+                    job: str | None = self._execute(run_id)
                 except Exception:
-                    # e.g. the db stayed locked: the run fails, the jobs after it still run
+                    # e.g. the db stayed locked: the run fails, the jobs after it still run,
+                    # and a run asked for meanwhile (a webhook's) is still queued below
                     logger.exception("WEB\t Run %s couldn't be run or stored", run_id)
-                    self._fail(run_id)
+                    job = self._fail(run_id)
+                if job is None:
                     continue
                 with self._submit_lock:
                     rerun = self._rerun.pop(job, None)
@@ -392,14 +394,18 @@ class JobRunner:
             finally:
                 self._queue.task_done()
 
-    def _fail(self, run_id: int) -> None:
+    def _fail(self, run_id: int) -> str | None:
+        """marks the run failed, returns its job (None when the db can't say)"""
         try:
             with Session(self.engine) as session:
                 run = session.get_one(JobRun, run_id)
                 run.status, run.finished_at = "failed", utc_now()
+                job = run.job
                 session.commit()
+                return job
         except Exception:
             logger.exception("WEB\t Run %s couldn't be marked failed", run_id)
+            return None
 
     def _execute(self, run_id: int) -> str:
         """run it and store the result, returns the job"""

@@ -559,6 +559,30 @@ class TestSubmitSoon:
         assert live.status == "succeeded"
         runner.stop()
 
+    def test_a_run_asked_for_during_a_failed_one_still_runs(self, engine, monkeypatch):
+        # a webhook during a run that then fails to store still gets its movers run
+        runner = make_runner(engine, lambda job, settings: JobResult(job))
+        real = runner._execute
+        running, release = threading.Event(), threading.Event()
+
+        def execute(run_id):
+            if run_id == first:
+                running.set()
+                release.wait(5)
+                raise RuntimeError("database is locked")
+            return real(run_id)
+
+        monkeypatch.setattr(runner, "_execute", execute)
+        first = runner.submit("movers", True, "manual", None)
+        assert running.wait(5)
+        assert runner.submit_soon("movers", "webhook", "Radarr: A") is None
+        release.set()
+        runner.wait_idle()
+        runner.wait_idle()
+        followup = get(engine, first + 1)
+        assert followup is not None and (followup.trigger, followup.status) == ("webhook", "succeeded")
+        runner.stop()
+
 
 class TestModes:
     def test_configured(self):
