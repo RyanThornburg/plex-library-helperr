@@ -27,6 +27,9 @@ from web.routes import error_page, router
 from web.webhooks import api_key
 from web.webhooks import router as webhook_router
 from web.scheduler import Scheduler
+from web.config_api import router as config_api_router
+from web.connection_routes import router as connection_router
+from web.rule_routes import router as rule_router
 from web.settings_routes import router as settings_router
 from web.stats import StatsSync
 from web.stats_routes import router as stats_router
@@ -137,6 +140,10 @@ def create_app(
     app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
     app.include_router(router)
     app.include_router(settings_router)
+    app.include_router(connection_router)
+    app.include_router(config_api_router)
+    # last of the settings pages: /settings/{arr} would catch /settings/trash
+    app.include_router(rule_router)
     app.include_router(webhook_router)
     app.include_router(stats_router)
     app.include_router(status_router)

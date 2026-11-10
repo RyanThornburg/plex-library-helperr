@@ -19,7 +19,7 @@ from web.app import create_app
 from web.db import ConfigSecret, RemoverRuleSetting
 from web.jobs import utc_now
 from web.lookups import ArrLibrary, LookupFailed
-from web.settings_routes import turns_live
+from web.settings_common import turns_live
 
 NOW = utc_now()
 
@@ -220,7 +220,7 @@ class TestConnections:
             seen.append((service, values))
             return "Radarr 6.4.4"
 
-        monkeypatch.setattr("web.settings_routes.check_connection", check)
+        monkeypatch.setattr("web.connection_routes.check_connection", check)
         response = post(client, "/settings/connections/radarr", {"version": version(client), "action": "test", "url": "http://radarr:7878"})
         assert "Connected to Radarr 6.4.4" in response.text
         assert seen == [("radarr", {"url": "http://radarr:7878", "public_url": "", "username": "", "secret": "radarr-key"})]
@@ -232,7 +232,7 @@ class TestConnections:
         with Session(client.app.state.engine) as session:
             session.add(ConfigSecret(name="tautulli.apikey", value="saved-under-another-key", updated_at=utc_now()))
             session.commit()
-        monkeypatch.setattr("web.settings_routes.check_connection", lambda service, values: "Radarr 6.4.4")
+        monkeypatch.setattr("web.connection_routes.check_connection", lambda service, values: "Radarr 6.4.4")
         response = post(client, "/settings/connections/radarr", {"version": version(client), "action": "test", "url": "http://radarr:7878"})
         assert "Connected to Radarr 6.4.4" in response.text
 
@@ -246,7 +246,7 @@ class TestConnections:
             release.wait(5)
             return "Radarr 6.4.4"
 
-        monkeypatch.setattr("web.settings_routes.check_connection", check)
+        monkeypatch.setattr("web.connection_routes.check_connection", check)
         form = {"version": version(client), "action": "test", "url": "http://radarr:7878", "secret": "new-key"}
         testing = threading.Thread(target=post, args=(client, "/settings/connections/radarr", form))
         testing.start()
@@ -264,7 +264,7 @@ class TestConnections:
         def check(service, values):
             raise LookupFailed("ConnectionError: http://radarr:7878 refused")
 
-        monkeypatch.setattr("web.settings_routes.check_connection", check)
+        monkeypatch.setattr("web.connection_routes.check_connection", check)
         response = post(client, "/settings/connections/radarr", {"version": 0, "action": "test", "url": "http://radarr:7878", "secret": "new-key"})
         assert "Test failed: ConnectionError" in response.text
         assert version(client) == 0
