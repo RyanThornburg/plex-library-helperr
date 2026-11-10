@@ -28,7 +28,7 @@
 
 {% if summary %}
 <div class="table-scroll">
-<table>
+<table data-sortable>
   <thead><tr><th>Service</th><th>Problems</th><th>Ongoing</th><th>Down</th></tr></thead>
   <tbody>
     {% for s in summary %}
@@ -36,7 +36,7 @@
       <td><a href="/status/history?days={{ days }}&amp;service={{ s.service }}">{{ s.label }}</a></td>
       <td>{{ s.incidents }}</td>
       <td>{{ s.ongoing or "-" }}</td>
-      <td>{{ s.down or "-" }}</td>
+      <td data-sort="{{ s.down_seconds or '' }}">{{ s.down or "-" }}</td>
     </tr>
     {% endfor %}
   </tbody>

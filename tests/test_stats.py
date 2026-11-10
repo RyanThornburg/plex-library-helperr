@@ -662,6 +662,12 @@ class TestRequestsPage:
         assert '<option value="year" selected>' in page.text
         assert "made this year" in page.text
 
+    def test_only_the_whole_users_table_sorts(self, client):
+        page = client.get("/requests?period=all", headers=auth()).text
+        # by requester sorts (app.js), finished by its share; the list is capped, so it doesn't
+        assert page.count("data-sortable") == 1
+        assert 'data-label="Finished" data-sort="33"' in page and 'data-label="Finished" data-sort=""' in page
+
     def test_a_long_list_shows_the_first_ones(self, client, monkeypatch):
         monkeypatch.setattr("web.stats_routes.REQUESTS_SHOWN", 2)
         page = client.get("/requests?period=all", headers=auth()).text

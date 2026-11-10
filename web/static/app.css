@@ -236,6 +236,24 @@ table {
 }
 th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
 th { color: var(--muted); font-weight: 600; font-size: 13px; white-space: nowrap; }
+/* a sortable table's headers are buttons (app.js) that read as the header; the sorted
+   column says which way with an arrow and aria-sort */
+th > button.sort {
+  display: inline-flex;
+  gap: 4px;
+  align-items: baseline;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+th > button.sort:hover { color: var(--text); }
+th > button.sort:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; border-radius: 2px; }
+th[aria-sort] { color: var(--text); }
+th[aria-sort="ascending"] > button.sort::after { content: "↑"; }
+th[aria-sort="descending"] > button.sort::after { content: "↓"; }
 /* cells keep their words whole, so short values (ids, counts, statuses) aren't squeezed
    by a long neighbour; the cells holding names, paths and text (.long) break anywhere */
 td { overflow-wrap: break-word; font-variant-numeric: tabular-nums; }

@@ -91,7 +91,7 @@
 <details class="fold">
 <summary><h2>By user</h2> <span class="muted">{{ r.users | length }}</span></summary>
 <div class="table-scroll">
-<table>
+<table data-sortable>
   <thead><tr><th>User</th><th>Plays</th><th>Direct play</th><th>Direct stream</th><th>Transcode</th><th>Main cause</th><th>Players</th><th>Latest play</th></tr></thead>
   <tbody>
     {% for u in r.users %}
@@ -100,7 +100,7 @@
       <td>{{ u.plays }}</td>
       <td>{{ u.direct_play }}</td>
       <td>{{ u.direct_stream }}</td>
-      <td class="with-share">{% if u.transcode %}<span class="decision decision-transcode">{{ u.transcode }}</span> <span class="muted">({{ u.transcode_percent }}%)</span>{{ ui.share(u.transcode_percent, rate=True) }}{% else %}0{{ ui.share(0, rate=True) }}{% endif %}</td>
+      <td class="with-share" data-sort="{{ u.transcode_percent or 0 }}">{% if u.transcode %}<span class="decision decision-transcode">{{ u.transcode }}</span> <span class="muted">({{ u.transcode_percent }}%)</span>{{ ui.share(u.transcode_percent, rate=True) }}{% else %}0{{ ui.share(0, rate=True) }}{% endif %}</td>
       <td>{{ u.main_cause or "-" }}{% if u.quality_limit %}<br><span class="muted">set to {{ u.quality_limit }}</span>{% endif %}{% if u.file_format %}<br><span class="muted">files: {{ u.file_format }}</span>{% endif %}</td>
       <td class="long">{{ u.players | join(", ") }}</td>
       <td>{{ latest(u.latest) }}</td>
@@ -114,7 +114,7 @@
 <details class="fold">
 <summary><h2>By device</h2> <span class="muted">{{ r.players | length }}</span></summary>
 <div class="table-scroll">
-<table>
+<table data-sortable>
   <thead><tr><th>Device</th><th>Plays</th><th>Users</th><th>Direct play</th><th>Direct stream</th><th>Transcode</th><th>Main cause</th><th>Latest play</th></tr></thead>
   <tbody>
     {% for p in r.players %}
@@ -124,7 +124,7 @@
       <td>{{ p.users }}</td>
       <td>{{ p.direct_play }}</td>
       <td>{{ p.direct_stream }}</td>
-      <td class="with-share">{% if p.transcode %}<span class="decision decision-transcode">{{ p.transcode }}</span> <span class="muted">({{ p.transcode_percent }}%)</span>{{ ui.share(p.transcode_percent, rate=True) }}{% else %}0{{ ui.share(0, rate=True) }}{% endif %}</td>
+      <td class="with-share" data-sort="{{ p.transcode_percent or 0 }}">{% if p.transcode %}<span class="decision decision-transcode">{{ p.transcode }}</span> <span class="muted">({{ p.transcode_percent }}%)</span>{{ ui.share(p.transcode_percent, rate=True) }}{% else %}0{{ ui.share(0, rate=True) }}{% endif %}</td>
       <td>{{ p.main_cause or "-" }}{% if p.quality_limit %}<br><span class="muted">mostly {{ p.quality_limit }}</span>{% endif %}{% if p.file_format %}<br><span class="muted">files: {{ p.file_format }}</span>{% endif %}</td>
       <td>{{ latest(p.latest) }}</td>
     </tr>
@@ -139,14 +139,14 @@
 <summary><h2>File formats that transcode</h2> <span class="muted">{{ r.formats | length }}</span></summary>
 <p class="muted">How often each format in the files (audio, subtitles shown, video format, HDR) made a play transcode, of all plays of that format, and on which players. Quality limited plays count under their quality setting, not here. A high rate across many players points at the files you get; one player that can't play what others can is about that player's settings (audio passthrough, Direct Play) or app, so take it up with its user.</p>
 <div class="table-scroll">
-<table>
+<table data-sortable>
   <thead><tr><th>Cause</th><th>Format</th><th>Transcoded</th><th>Users</th><th>Players</th><th>Last transcode</th></tr></thead>
   <tbody>
     {% for f in r.formats %}
     <tr>
       <td>{{ f.cause }}</td>
       <td>{{ f.format }}</td>
-      <td class="with-share"><span class="decision decision-transcode">{{ f.transcodes }}</span> of {{ f.plays }} <span class="muted">({{ f.percent }}%)</span>{{ ui.share(f.percent, rate=True) }}</td>
+      <td class="with-share" data-sort="{{ f.percent or 0 }}"><span class="decision decision-transcode">{{ f.transcodes }}</span> of {{ f.plays }} <span class="muted">({{ f.percent }}%)</span>{{ ui.share(f.percent, rate=True) }}</td>
       <td>{{ f.users }}</td>
       <td class="long">{% for name, count in f.players %}{{ name }} <span class="muted">({{ count }})</span>{% if not loop.last %}, {% endif %}{% endfor %}</td>
       <td>{{ f.last_transcoded_at | localtime }}</td>
@@ -163,7 +163,7 @@
 <summary><h2>Files that transcode for several people</h2> <span class="muted">{{ r.files | length }}</span></summary>
 <p class="muted">The same file transcoding for {{ file_min_users }} or more people because of the file. A better version of it fixes every player.</p>
 <div class="table-scroll">
-<table>
+<table data-sortable>
   <thead><tr><th>Title</th><th>Cause</th><th>File</th><th>Users</th><th>Plays</th><th>Last played</th></tr></thead>
   <tbody>
     {% for f in r.files %}

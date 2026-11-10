@@ -274,3 +274,49 @@ if (board) {
   }
   render();
 }
+
+// a table with data-sortable sorts by a column when its header is clicked, like the
+// *arrs' tables. A cell sorts by its data-sort, its <time>, its leading number or its
+// text; numbers and times sort biggest/newest first on the first click, text A-Z.
+// Rows without a value ("-") stay last. Only tables that show every row are sortable
+for (const table of document.querySelectorAll("table[data-sortable]")) {
+  const body = table.tBodies[0];
+  const headers = [...table.tHead.rows[0].cells];
+  const key = (cell) => {
+    if (!cell) return null;
+    if (cell.dataset.sort !== undefined) {
+      const n = Number(cell.dataset.sort);
+      return cell.dataset.sort === "" ? null : Number.isNaN(n) ? cell.dataset.sort.toLowerCase() : n;
+    }
+    const time = cell.querySelector("time[datetime]");
+    if (time) return new Date(time.dateTime).getTime();
+    const text = cell.textContent.trim();
+    if (text === "" || text === "-") return null;
+    const number = text.match(/^-?[\d,]*\.?\d+/);
+    return number ? Number(number[0].replace(/,/g, "")) : text.toLowerCase();
+  };
+  headers.forEach((th, column) => {
+    if ("nosort" in th.dataset) return;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "sort";
+    button.append(...th.childNodes);
+    th.append(button);
+    button.addEventListener("click", () => {
+      const rows = [...body.rows];
+      const keys = new Map(rows.map((row) => [row, key(row.cells[column])]));
+      const numeric = [...keys.values()].some((k) => typeof k === "number");
+      const current = th.getAttribute("aria-sort");
+      const descending = current ? current === "ascending" : numeric;
+      for (const other of headers) other.removeAttribute("aria-sort");
+      th.setAttribute("aria-sort", descending ? "descending" : "ascending");
+      rows.sort((a, b) => {
+        const x = keys.get(a), y = keys.get(b);
+        if (x === null || y === null) return (x === null) - (y === null);
+        const order = typeof x === typeof y ? (x < y ? -1 : x > y ? 1 : 0) : typeof x === "number" ? -1 : 1;
+        return descending ? -order : order;
+      });
+      body.append(...rows);
+    });
+  });
+}
