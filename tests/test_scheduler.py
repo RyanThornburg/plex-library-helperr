@@ -118,6 +118,21 @@ class TestTick:
         assert scheduler.tick(START + timedelta(minutes=59)) == []
         assert len(scheduler.tick(START + timedelta(hours=1))) == 1
 
+    @pytest.mark.parametrize("started_at, expected", [("04:00", 1), ("06:05", 0)])
+    def test_repeated_hour_when_clocks_go_back_fires_once(self, engine, runner, scheduler, started_at, expected):
+        # 2026-11-01 in new york: 01:00-01:59 happens at 05:xx utc and again at 06:xx.
+        # Started in the second pass, 01:30 was already due in the first
+        start = datetime.combine(datetime(2026, 11, 1), datetime.strptime(started_at, "%H:%M").time())
+        scheduler.started_at = start
+        add_schedule(engine, "30 1 * * *", timezone="America/New_York", updated_at=start)
+        fired = []
+        now = start + timedelta(seconds=1)
+        while now < datetime(2026, 11, 1, 8, 0):
+            fired += scheduler.tick(now)
+            runner.wait_idle()
+            now += timedelta(minutes=1)
+        assert len(fired) == expected
+
     def test_disabled_never_fires(self, engine, scheduler):
         add_schedule(engine, "* * * * *", enabled=False)
         assert scheduler.tick(START + timedelta(hours=1)) == []

@@ -99,6 +99,12 @@ class TestTautulliWatches:
         events, _ = self._run([history_row(date=old, stopped=old)])
         assert events == []
 
+    def test_asks_from_the_day_before_since(self):
+        # tautulli compares `after` with each play's local date: a server at utc-5 dates a
+        # play at 01:00 utc on the 1st as the 31st, and asking from the 1st would miss it
+        _, get = self._run([])
+        assert get.call_args.kwargs["params"]["after"] == "2026-08-31"
+
     def test_rows_without_episode_numbers_skipped(self):
         events, _ = self._run([history_row(media_index=None)])
         assert events == []

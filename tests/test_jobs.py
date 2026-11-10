@@ -539,3 +539,22 @@ class TestSubmitSoon:
         run = get(engine, first)
         assert (run.trigger, run.dry_run, run.requested_by) == ("webhook", False, "Radarr: A")
         runner.stop()
+
+    def test_a_queued_forced_dry_run_is_followed_by_a_live_one(self, engine):
+        # a webhook asking for movers while a dry run is queued must still get a live run
+        release = threading.Event()
+
+        def slow(job, settings):
+            release.wait(5)
+            return JobResult(job)
+
+        runner = make_runner(engine, slow)
+        runner.submit("removers", True, "manual", None)
+        dry = runner.submit("movers", True, "manual", "me@example.com")
+        assert runner.submit_soon("movers", "webhook", "Radarr: A") is None
+        release.set()
+        runner.wait_idle()
+        live = get(engine, dry + 1)
+        assert (live.job, live.trigger, live.dry_run, live.requested_by) == ("movers", "webhook", False, "Radarr: A")
+        assert live.status == "succeeded"
+        runner.stop()

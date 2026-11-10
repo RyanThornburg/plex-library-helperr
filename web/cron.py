@@ -60,12 +60,18 @@ class Cron:
         return None
 
     def next_after_utc(self, after: datetime, zone: tzinfo) -> datetime | None:
-        """next_after for naive utc times, matching the cron's wall time in `zone`"""
-        local = after.replace(tzinfo=timezone.utc).astimezone(zone).replace(tzinfo=None)
-        found = self.next_after(local)
-        if found is None:
-            return None
-        return found.replace(tzinfo=zone).astimezone(timezone.utc).replace(tzinfo=None)
+        """next_after for naive utc times, matching the cron's wall time in `zone`.
+        A wall time that happens twice (clocks going back) runs once, at its first
+        occurrence, so the repeated hour is skipped rather than run again"""
+        wall = after.replace(tzinfo=timezone.utc).astimezone(zone).replace(tzinfo=None)
+        while (found := self.next_after(wall)) is not None:
+            # fold=0 is the first occurrence. It's already past when `after` is in the
+            # repeated hour, and was due then, not now
+            utc = found.replace(tzinfo=zone, fold=0).astimezone(timezone.utc).replace(tzinfo=None)
+            if utc > after:
+                return utc
+            wall = found
+        return None
 
 
 def parse_zone(name: str) -> ZoneInfo:

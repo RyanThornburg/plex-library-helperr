@@ -17,6 +17,7 @@ from web.app import create_app
 from web.db import RemoverRuleSetting
 from web.jobs import utc_now
 from web.lookups import ArrLibrary, LookupFailed
+from web.settings_routes import turns_live
 
 NOW = utc_now()
 
@@ -98,6 +99,11 @@ def store(client):
     return client.app.state.store
 
 
+def loaded(client, url: str) -> str:
+    """the fingerprint a rule's form is opened with, saving or deleting it by number needs it"""
+    return re.search(r'name="loaded" value="(\w+)"', client.get(url, headers=auth()).text).group(1)
+
+
 class TestGeneral:
     def test_page(self, client):
         page = client.get("/settings", headers=auth()).text
@@ -165,6 +171,19 @@ class TestConnections:
         client.post("/api/jobs/movers", json={"dry_run": True}, headers={**auth(), **ORIGIN})
         client.app.state.runner.wait_idle()
         assert runs[0].radarr.apikey == "radarr-key"
+
+    def test_connecting_while_general_is_live_starts_dry(self, client):
+        # a new arr section would inherit General's live dry run, unconfirmed
+        store(client).save({"settings": {"dry_run": False}}, "me", "live", 0)
+        connect_radarr(client)
+        assert document(client)["radarr"] == {"baseurl": "http://radarr:7878", "dry_run": True}
+        assert store(client).load_settings().radarr.dry_run is True
+
+    def test_rule_save_while_general_is_live_starts_dry(self, client):
+        store(client).save({"settings": {"dry_run": False}}, "me", "live", 0)
+        response = post(client, "/settings/radarr/movers/new", {"version": version(client), "action": "save", "path": "/movies/kids", "genres": "Family"})
+        assert response.status_code == 303
+        assert document(client)["radarr"]["dry_run"] is True
 
     def test_empty_key_keeps_the_saved_one(self, client):
         connect_radarr(client)
@@ -259,12 +278,11 @@ class TestConnections:
     def test_a_rule_changed_in_another_tab_isnt_overwritten(self, client):
         for path in ("/movies/a", "/movies/b"):
             post(client, "/settings/radarr/movers/new", {"version": version(client), "action": "save", "path": path, "genres": "Family"})
-        form = client.get("/settings/radarr/movers/2", headers=auth()).text
-        loaded = re.search(r'name="loaded" value="(\w+)"', form).group(1)
+        opened = loaded(client, "/settings/radarr/movers/2")
         # another tab deletes mover 1, so this form's number 2 no longer exists... or is another rule
         post(client, "/settings/radarr/movers/new", {"version": version(client), "action": "save", "path": "/movies/c", "genres": "Family"})
-        post(client, "/settings/radarr/movers/1/delete", {"version": version(client)})
-        response = post(client, "/settings/radarr/movers/2", {"version": version(client), "loaded": loaded, "action": "save", "path": "/movies/b2", "genres": "Family"})
+        post(client, "/settings/radarr/movers/1/delete", {"version": version(client), "loaded": loaded(client, "/settings/radarr/movers/1")})
+        response = post(client, "/settings/radarr/movers/2", {"version": version(client), "loaded": opened, "action": "save", "path": "/movies/b2", "genres": "Family"})
         assert "changed since this form was opened" in response.text
         assert [m["path"] for m in document(client)["radarr"]["movers"]] == ["/movies/b", "/movies/c"]
 
@@ -300,12 +318,32 @@ class TestRules:
 
         post(client, "/settings/radarr/movers/2/move?direction=up", {"version": version(client)})
         assert [m["path"] for m in document(client)["radarr"]["movers"]] == ["/movies/main", "/movies/kids"]
-        post(client, "/settings/radarr/movers/1", {"version": version(client), "action": "save", "path": "/movies/main", "certifications": "R\nNC-17"})
+        post(client, "/settings/radarr/movers/1", {"version": version(client), "loaded": loaded(client, "/settings/radarr/movers/1"), "action": "save", "path": "/movies/main", "certifications": "R\nNC-17"})
         assert document(client)["radarr"]["movers"][0]["certifications"] == ["R", "NC-17"]
-        post(client, "/settings/radarr/movers/1/delete", {"version": version(client)})
+        post(client, "/settings/radarr/movers/1/delete", {"version": version(client), "loaded": loaded(client, "/settings/radarr/movers/1")})
         assert [m["path"] for m in document(client)["radarr"]["movers"]] == ["/movies/kids"]
         notes = [v["note"] for v in client.get("/api/config/versions", headers=auth()).json()]
         assert notes[:3] == ["Radarr mover 1 deleted", "Radarr mover 1 edited", "Radarr mover 2 moved up"]
+
+    @pytest.mark.parametrize("number", [0, -1, 3])
+    def test_a_rule_number_that_doesnt_exist_changes_nothing(self, client, number):
+        for path in ("/movies/a", "/movies/b"):
+            post(client, "/settings/radarr/movers/new", {"version": version(client), "action": "save", "path": path, "genres": "Family"})
+        opened = loaded(client, "/settings/radarr/movers/2")
+        saved = post(client, f"/settings/radarr/movers/{number}", {"version": version(client), "loaded": opened, "action": "save", "path": "/movies/x", "genres": "Family"})
+        deleted = post(client, f"/settings/radarr/movers/{number}/delete", {"version": version(client), "loaded": opened})
+        assert "changed since this form was opened" in saved.text
+        assert deleted.status_code == 409
+        assert [m["path"] for m in document(client)["radarr"]["movers"]] == ["/movies/a", "/movies/b"]
+
+    def test_saving_by_number_needs_the_loaded_rule_and_version(self, client):
+        post(client, "/settings/radarr/movers/new", {"version": 0, "action": "save", "path": "/movies/a", "genres": "Family"})
+        rule = {"action": "save", "path": "/movies/x", "genres": "Family"}
+        without_loaded = post(client, "/settings/radarr/movers/1", {"version": version(client), **rule})
+        without_version = post(client, "/settings/radarr/movers/1", {"loaded": loaded(client, "/settings/radarr/movers/1"), **rule})
+        assert "changed since this form was opened" in without_loaded.text
+        assert "reload the page" in without_version.text
+        assert document(client)["radarr"]["movers"] == [{"path": "/movies/a", "genres": ["Family"]}]
 
     def test_invalid_rule_is_refused(self, client):
         response = post(client, "/settings/radarr/movers/new", {"version": 0, "action": "save", "path": "/movies/kids"})
@@ -392,7 +430,7 @@ class TestRemovers:
         with Session(client.app.state.engine) as session:
             session.add(RemoverRuleSetting(rule_key="rm-2", auto_approve=True, updated_at=utc_now()))
             session.commit()
-        post(client, "/settings/sonarr/removers/1", {**self.REMOVER, "version": version(client), "keep": "1"})
+        post(client, "/settings/sonarr/removers/1", {**self.REMOVER, "version": version(client), "loaded": loaded(client, "/settings/sonarr/removers/1"), "keep": "1"})
         with Session(client.app.state.engine) as session:
             assert session.get_one(RemoverRuleSetting, "rm-2").auto_approve is False
 
@@ -461,7 +499,7 @@ class TestMovieRemovers:
         response = client.post("/removers/auto-approve?" + urlencode({"rule": key, "enabled": "true"}), headers={**auth(), **ORIGIN}, follow_redirects=False)
         assert response.status_code == 303
         assert {"rule": key, "auto_approve": True, "service": "RADARR", "path": "/movies/kids"} in client.get("/api/removers", headers=auth()).json()
-        post(client, "/settings/radarr/removers/1", {**self.REMOVER, "version": version(client), "min_age": "365d"})
+        post(client, "/settings/radarr/removers/1", {**self.REMOVER, "version": version(client), "loaded": loaded(client, "/settings/radarr/removers/1"), "min_age": "365d"})
         with Session(client.app.state.engine) as session:
             assert session.get_one(RemoverRuleSetting, key).auto_approve is False
 
@@ -552,6 +590,13 @@ class TestConfigApi:
         body = {"version": 0, "config": {"settings": {"dry_run": False}}, "confirm_live": True}
         assert client.put("/api/config", json=body, headers={**auth(), **ORIGIN}).status_code == 200
 
+    def test_partly_live_to_fully_live_needs_confirming(self, client):
+        store(client).save({"settings": {"dry_run": True}, "radarr": {"dry_run": False}, "sonarr": {}}, "me", "a", 0)
+        body = {"version": version(client), "config": {"settings": {"dry_run": True}, "radarr": {"dry_run": False}, "sonarr": {"dry_run": False}}}
+        response = client.put("/api/config", json=body, headers={**auth(), **ORIGIN})
+        assert response.status_code == 422
+        assert response.json()["live"] == ["movers"]
+
     def test_versions_and_restore(self, client):
         store(client).save({"settings": {"dry_run": True, "filter_time": "1d"}}, "me", "a", 0)
         first = version(client)
@@ -578,3 +623,23 @@ def test_every_settings_page_renders(client):
         assert response.status_code == 200, url
         assert "Traceback" not in response.text
 
+
+
+class TestTurnsLive:
+    @pytest.mark.parametrize(
+        "before, after, live",
+        [
+            ({}, {"settings": {"dry_run": False}}, ["empty_trash"]),
+            ({}, {"settings": {"dry_run": False}, "radarr": {}}, ["movers", "empty_trash"]),
+            # one arr live already, the other going live still asks
+            ({"radarr": {"dry_run": False}, "sonarr": {}}, {"radarr": {"dry_run": False}, "sonarr": {"dry_run": False}}, ["movers"]),
+            # a new arr inheriting a live General
+            ({"settings": {"dry_run": False}}, {"settings": {"dry_run": False}, "sonarr": {}}, ["movers"]),
+            ({"radarr": {"dry_run": False}}, {"radarr": {"dry_run": False}}, []),
+            ({"radarr": {"dry_run": False}}, {"radarr": {"dry_run": True}}, []),
+            # an invalid config before counts as dry
+            ({"settings": {"dry_run": "x"}}, {"radarr": {"dry_run": False}}, ["movers"]),
+        ],
+    )
+    def test_turns_live(self, before, after, live):
+        assert turns_live(before, after) == live

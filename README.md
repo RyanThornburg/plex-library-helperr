@@ -168,7 +168,7 @@ Settings are edited in the web app. These are the keys behind its forms, grouped
 | Key           | Description                                                                                                           |
 |-----          |-------------                                                                                                          |
 | `dry_run`     | `true` to preview changes without applying them (default: `true`)                                     |
-| `filter_time` | Only evaluate movies added within this window. Format: `7d`, `12h`, `30m`. Leave empty to evaluate all movies. An invalid value is an error. |
+| `filter_time` | Only evaluate movies added within this window. Format: `7d`, `12h`, `30m`. Leave empty to evaluate all movies. An invalid or zero value is an error. |
 
 ### `[web]` (optional)
 

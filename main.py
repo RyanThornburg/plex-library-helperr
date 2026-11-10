@@ -246,7 +246,7 @@ def run_arr(
     media: list[Movie | Series] = getattr(arr, all_fn)()
     logger.info("%s\t Total Files: %s", log_name, len(media))
 
-    if filter_time:
+    if filter_time is not None:
         logger.info("%s\t Filtering media...", log_name)
         cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - filter_time
         media = [m for m in media if m.added >= cutoff]

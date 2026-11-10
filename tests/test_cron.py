@@ -91,6 +91,30 @@ class TestTimeZone:
         found = cron.parse("0 4 * * *").next_after_utc(datetime(2026, 11, 2, 0, 0), NEW_YORK)
         assert found == datetime(2026, 11, 2, 9, 0)
 
+    # 2026-11-01 in new york: 01:00-01:59 happens twice, edt (05:00-05:59 utc) then
+    # est (06:00-06:59 utc)
+    @pytest.mark.parametrize(
+        "expression, after, expected",
+        [
+            # first pass runs as usual
+            ("*/15 * * * *", datetime(2026, 11, 1, 5, 50), datetime(2026, 11, 1, 7, 0)),
+            ("30 1 * * *", datetime(2026, 11, 1, 5, 0), datetime(2026, 11, 1, 5, 30)),
+            # from the repeated hour, the next time is after it, never back in the first pass
+            ("*/15 * * * *", datetime(2026, 11, 1, 6, 5), datetime(2026, 11, 1, 7, 0)),
+            ("30 1 * * *", datetime(2026, 11, 1, 6, 10), datetime(2026, 11, 2, 6, 30)),
+            ("30 1 * * *", datetime(2026, 11, 1, 5, 30), datetime(2026, 11, 2, 6, 30)),
+        ],
+    )
+    def test_repeated_hour_runs_once(self, expression, after, expected):
+        found = cron.parse(expression).next_after_utc(after, NEW_YORK)
+        assert found == expected
+        assert found > after
+
+    def test_skipped_hour_runs_at_the_same_offset(self):
+        # 2026-03-08 in new york: 02:00-02:59 doesn't exist, 02:30 runs at 03:30 edt
+        found = cron.parse("30 2 * * *").next_after_utc(datetime(2026, 3, 8, 6, 0), NEW_YORK)
+        assert found == datetime(2026, 3, 8, 7, 30)
+
     def test_after_is_converted_to_the_zone(self):
         # 03:00 utc is 23:00 the day before in new york, so 04:00 is still to come that day
         found = cron.parse("0 23 * * *").next_after_utc(datetime(2026, 10, 22, 2, 0), NEW_YORK)

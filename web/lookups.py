@@ -148,7 +148,7 @@ class Preview:
 
 
 def _matches(media: list[Movie | Series], filter_time: timedelta | None) -> Preview:
-    cutoff = utc_now() - filter_time if filter_time else None
+    cutoff = utc_now() - filter_time if filter_time is not None else None
     matches = [
         Match(
             m.title,

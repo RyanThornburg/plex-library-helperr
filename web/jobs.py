@@ -226,15 +226,16 @@ class JobRunner:
 
     def submit_soon(self, job: str, trigger: str, requested_by: str | None) -> int | None:
         """queue a run with the config's dry run settings unless one is already queued, which will
-        see whatever asked for this. While one is running, one more is queued when it
-        finishes. Returns the queued run's id, None when it'll follow the running one"""
+        see whatever asked for this. While one is running, or the queued one is a forced dry
+        run, one more is queued when it finishes. Returns the queued run's id, None when
+        it'll follow the active one"""
         with self._submit_lock, Session(self.engine) as session:
             active = session.execute(
-                select(JobRun.id, JobRun.status).where(
+                select(JobRun.id, JobRun.status, JobRun.dry_run).where(
                     JobRun.job == job, JobRun.status.in_(ACTIVE)
                 )
             ).first()
-            if active is not None and active.status == "queued":
+            if active is not None and active.status == "queued" and not active.dry_run:
                 return active.id
             if active is not None:
                 self._rerun[job] = (trigger, requested_by)
@@ -341,10 +342,11 @@ class JobRunner:
                 with self._submit_lock:
                     rerun = self._rerun.pop(job, None)
                 if rerun:
+                    # joins a run queued meanwhile, unless that one's forced dry
                     try:
-                        self.submit(job, False, *rerun)
-                    except AlreadyActive:
-                        pass  # queued meanwhile, that run covers it
+                        self.submit_soon(job, *rerun)
+                    except Exception:
+                        logger.exception("WEB\t Couldn't queue the %s run asked for during run %s", job, run_id)
             finally:
                 self._queue.task_done()
 

@@ -124,21 +124,22 @@ def _build_arr_config(data: Mapping[str, Any], dry_run: bool, arr_name: str) -> 
     _validate_rules(profilers, arr_name, "profilers")
     removers = _build_removers(data, arr_name)
 
-    return ArrConfig(
-        baseurl=data.get("baseurl") or None,
-        apikey=data.get("apikey") or None,
-        dry_run=data.get("dry_run", dry_run),
-        movers=movers,
-        profilers=profilers,
-        removers=removers,
-        remover_settings=_build(
+    values = {
+        "baseurl": data.get("baseurl") or None,
+        "apikey": data.get("apikey") or None,
+        "dry_run": data.get("dry_run", dry_run),
+        "movers": movers,
+        "profilers": profilers,
+        "removers": removers,
+        "remover_settings": _build(
             RemoverSettings,
             data.get("remover_settings", {}),
             f"[{arr_name}.remover_settings]",
         ),
-        tag=data.get("tag") or None,
-        public_url=data.get("public_url") or None,
-    )
+        "tag": data.get("tag") or None,
+        "public_url": data.get("public_url") or None,
+    }
+    return _build(ArrConfig, values, f"[{arr_name}]")
 
 
 def _build_empty_trash(data: Mapping[str, Any], dry_run: bool) -> EmptyTrashSettings:
@@ -250,6 +251,11 @@ def _build_config(data: Mapping[str, Any]) -> ConfigSettings:
         if raw_filter in (None, "")
         else parse_duration(raw_filter, "[settings] filter_time")
     )
+    # 0 would read as "no filter", i.e. the whole library: leaving it empty says that
+    if filter_time is not None and filter_time <= timedelta(0):
+        raise ValueError(
+            "[settings] filter_time must be greater than 0, leave it empty to check the whole library"
+        )
 
     plex = (
         PlexConfig(baseurl=plex_config["baseurl"], token=plex_config["token"])

@@ -126,9 +126,10 @@ class TestPlays:
         read, calls = self.run_sync(engine, first)
         assert read == 3
         assert "after" not in calls[0] and calls[0]["order_dir"] == "asc"
-        # again: from a day before the newest play, existing plays are updated not repeated
+        # again: from a day before the newest play (and a day more, tautulli compares its
+        # local dates), existing plays are updated not repeated
         read, calls = self.run_sync(engine, [[history_row(id=3, started=DAY + timedelta(days=5), watched_status=0)]])
-        assert calls[0]["after"] == "2026-10-05"
+        assert calls[0]["after"] == "2026-10-04"
         with Session(engine) as session:
             plays = {p.id: p for p in session.scalars(select(Play))}
         assert sorted(plays) == [1, 2, 3]

@@ -57,6 +57,12 @@ class TestSettings:
         with pytest.raises(ValueError, match="filter_time"):
             load("[settings]\nfilter_time = '1 day'\n")
 
+    @pytest.mark.parametrize("value", ["0d", "0h", "0m"])
+    def test_zero_filter_time_raises(self, value):
+        # 0 would mean no filter, the whole library
+        with pytest.raises(ValueError, match="filter_time must be greater than 0"):
+            load(f"[settings]\nfilter_time = '{value}'\n")
+
     def test_dry_run_must_be_a_bool(self):
         with pytest.raises(ValueError, match="dry_run"):
             load("[settings]\ndry_run = 'false'\n")
@@ -450,3 +456,61 @@ class TestMovieRemoverConfig:
             "MovieRemoverRule(path=/data/media/movies/movies-hallmark,min_age=730 days, 0:00:00,"
             "skip_if_ever_watched=True)"
         )
+
+
+class TestFieldTypes:
+    """the config is json: a value of the wrong type must never load, a string where a
+    list belongs would be read letter by letter and 0 for a dry_run would be live"""
+
+    ARRS = {"radarr": {"baseurl": "http://radarr", "apikey": "k"}, "sonarr": {"baseurl": "http://sonarr", "apikey": "k"}}
+
+    @pytest.mark.parametrize(
+        "arr, kind, rule, field",
+        [
+            ("radarr", "removers", {"path": "/m", "min_age": "30d", "exclude_tags": "keep"}, "exclude_tags"),
+            ("radarr", "removers", {"path": "/m", "min_age": "30d", "skip_if_ever_watched": 1}, "skip_if_ever_watched"),
+            ("sonarr", "removers", {"type": "seasons", "keep": 1, "tags": "tv", "min_age": "30d"}, "tags"),
+            ("sonarr", "removers", {"type": "seasons", "keep": "2", "tags": ["tv"], "min_age": "30d"}, "keep"),
+            ("sonarr", "removers", {"type": "seasons", "keep": True, "tags": ["tv"], "min_age": "30d"}, "keep"),
+            ("radarr", "movers", {"path": "/m", "genres": ["Anime"], "exclude_genres": "Kids"}, "exclude_genres"),
+            ("radarr", "movers", {"path": "/m", "genres": ["Anime", 3]}, "genres"),
+            ("radarr", "movers", {"path": 5, "genres": ["Anime"]}, "path"),
+            ("radarr", "profilers", {"profile": "HD", "titles": ["x"], "monitored": "yes"}, "monitored"),
+        ],
+    )
+    def test_rule_fields(self, arr, kind, rule, field):
+        document = {arr: {**self.ARRS[arr], kind: [rule]}}
+        with pytest.raises(ValueError, match=rf"\[\[{arr}.{kind}\]\] #1: {field} must be"):
+            config.build_config(document)
+
+    @pytest.mark.parametrize("value", [0, 1, "false", None])
+    def test_arr_dry_run(self, value):
+        with pytest.raises(ValueError, match=r"\[radarr\]: dry_run must be true or false"):
+            config.build_config({"radarr": {**self.ARRS["radarr"], "dry_run": value}})
+
+    @pytest.mark.parametrize(
+        "values, field",
+        [({"dry_run": 0}, "dry_run"), ({"libraries": "Movies"}, "libraries"), ({"max_items": 1.5}, "max_items")],
+    )
+    def test_empty_trash(self, values, field):
+        with pytest.raises(ValueError, match=rf"\[plex.empty_trash\]: {field} must be"):
+            config.build_config({"plex": {"empty_trash": values}})
+
+    def test_max_deletes(self):
+        with pytest.raises(ValueError, match="max_deletes must be"):
+            config.build_config({"sonarr": {**self.ARRS["sonarr"], "remover_settings": {"max_deletes": "10"}}})
+
+    def test_right_types_load(self):
+        settings = config.build_config(
+            {
+                "radarr": {
+                    **self.ARRS["radarr"],
+                    "dry_run": False,
+                    "movers": [{"path": "/m", "genres": ["Anime"], "plex_library": "Anime"}],
+                    "removers": [{"path": "/old", "min_age": "30d", "exclude_tags": ["keep"]}],
+                },
+                "plex": {"empty_trash": {"libraries": ["Movies"], "dry_run": True}},
+            }
+        )
+        assert settings.radarr.dry_run is False
+        assert settings.radarr.removers[0].exclude_tags == ["keep"]

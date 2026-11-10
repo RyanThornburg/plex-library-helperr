@@ -42,8 +42,9 @@ ARRS = ("radarr", "sonarr")
 # the media field each arr matches that the other doesn't
 ARR_FIELD = {"radarr": "studios", "sonarr": "networks"}
 RULE_NAMES = {"movers": "mover", "profilers": "profiler", "removers": "remover"}
-# the jobs whose dry run settings live in the config, removers only delete approvals
-DRY_RUN_JOBS = ("movers", "empty_trash")
+# the jobs whose dry run settings live in the config (removers only delete approvals),
+# and the live_parts() each covers
+DRY_RUN_JOBS: dict[str, set[str]] = {"movers": set(ARRS), "empty_trash": {"empty_trash"}}
 
 # the config section of each: label, its secret's label, the url key
 SERVICES: dict[str, tuple[str, str, str]] = {
@@ -143,19 +144,36 @@ def current_settings(request: Request) -> tuple[ConfigSettings | None, str | Non
         return None, str(e)
 
 
-def dry_run_states(document: dict[str, Any]) -> dict[str, bool | None]:
+def live_parts(document: dict[str, Any]) -> set[str]:
+    """the parts of the config that change media as configured: an arr's movers by the
+    arr's name, and empty_trash"""
     settings = config.build_config(document)
-    return {job: config.config_dry_run(job, settings) for job in DRY_RUN_JOBS}
+    parts = {name for name in ARRS if (arr := getattr(settings, name)) and not arr.dry_run}
+    if not settings.empty_trash.dry_run:
+        parts.add("empty_trash")
+    return parts
 
 
 def turns_live(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
-    """jobs a change takes off dry run, they need confirming"""
+    """jobs a change makes live anywhere they weren't, they need confirming. Per arr, so
+    making sonarr's movers live when radarr's already are still asks"""
     try:
-        was = dry_run_states(before)
+        was = live_parts(before)
     except ValueError:
-        was = dict.fromkeys(DRY_RUN_JOBS, True)
-    now = dry_run_states(after)
-    return [job for job in DRY_RUN_JOBS if was[job] is True and now[job] is not True]
+        was = set()
+    newly = live_parts(after) - was
+    return [job for job, parts in DRY_RUN_JOBS.items() if newly & parts]
+
+
+def keep_new_arrs_dry(before: dict[str, Any], after: dict[str, Any]) -> None:
+    """an arr section a save creates inherits [settings].dry_run. Connection and rule saves
+    aren't confirmed, so when General is live a new arr starts dry instead, and going
+    live is the arr page's change, which is"""
+    if after.get("settings", {}).get("dry_run", True) is not False:
+        return
+    for arr in ARRS:
+        if arr in after and arr not in before and "dry_run" not in after[arr]:
+            after[arr]["dry_run"] = True
 
 
 def commit(
@@ -168,10 +186,21 @@ def commit(
     secrets: dict[str, str | None] | None = None,
     check_live: bool = True,
 ) -> Response:
-    """save a form's change, going through a confirmation when it makes a job live"""
-    if check_live and not first(fields, "confirm_live"):
+    """save a form's change, going through a confirmation when it makes a job live.
+    Forms that can't change dry run pass check_live=False"""
+    before = store(request).document()[1]
+    if not check_live:
+        keep_new_arrs_dry(before, document)
         try:
-            live = turns_live(store(request).document()[1], document)
+            live = turns_live(before, document)
+        except ValueError as e:
+            return on_error(str(e))
+        if live:
+            # a bug in the form, never save it unconfirmed
+            return on_error(f"This change would make {' and '.join(live)} live, it wasn't saved")
+    elif not first(fields, "confirm_live"):
+        try:
+            live = turns_live(before, document)
         except ValueError as e:
             return on_error(str(e))
         if live:
@@ -188,10 +217,12 @@ def commit(
                     "back": redirect,
                 },
             )
+    version = form_version(fields)
+    if version is None:
+        # every settings form carries it, without it a stale page would overwrite newer changes
+        return on_error("This form didn't say which settings it was opened on, reload the page and try again")
     try:
-        store(request).save(
-            document, request.state.user, note, form_version(fields), secrets
-        )
+        store(request).save(document, request.state.user, note, version, secrets)
     except (ConfigConflict, ValueError) as e:
         return on_error(str(e))
     return RedirectResponse(f"{redirect}{'&' if '?' in redirect else '?'}saved=1", status_code=303)
@@ -773,8 +804,11 @@ def fingerprint(rule: Any) -> str:
 
 
 def changed_since_loaded(document: dict[str, Any], arr: str, kind: str, number: int, fields: dict[str, list[str]]) -> bool:
+    """whether rule `number` isn't the rule the form was opened on: another tab deleted or
+    moved one. A form that doesn't say counts as changed, rules are saved by number"""
+    rules = document.get(arr, {}).get(kind, [])
     loaded = first(fields, "loaded")
-    return bool(loaded) and loaded != fingerprint(rule_number(document, arr, kind, number))
+    return not loaded or not 1 <= number <= len(rules) or loaded != fingerprint(rules[number - 1])
 
 
 RULE_CHANGED = (

@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from config.models import ConfigSettings, PlexConfig, SeerrConfig, TautulliConfig
 from movie_remover import PlayLookup, RadarrMovie
-from watch_history import history_rows
+from watch_history import history_rows, tautulli_after
 from web.db import AppSetting, MediaRequest, Play
 from web.jobs import utc_now
 from web.lookups import redact
@@ -153,7 +153,7 @@ def sync_plays(engine: Engine, config: TautulliConfig) -> int:
         "length": TAUTULLI_PAGE,
     }
     if last is not None:
-        params["after"] = (last - PLAYS_OVERLAP).date().isoformat()
+        params["after"] = tautulli_after(last - PLAYS_OVERLAP)
     read = 0
     start = 0
     while True:

@@ -20,7 +20,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from config.models import ConfigSettings, TautulliConfig
-from watch_history import history_rows
+from watch_history import history_rows, tautulli_after
 from web.db import Playback
 from web.jobs import utc_now
 from web.lookups import redact
@@ -221,8 +221,8 @@ def sync_playbacks(engine: Engine, config: TautulliConfig, now: datetime) -> int
         "order_column": "date",
         "order_dir": "desc",
         "length": TAUTULLI_PAGE,
-        # tautulli compares dates, the started_at check below is exact
-        "after": (since - timedelta(days=1)).date().isoformat(),
+        # the started_at check below is exact
+        "after": tautulli_after(since),
     }
     rows: list[Mapping[str, Any]] = []
     start = 0

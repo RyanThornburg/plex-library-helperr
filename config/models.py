@@ -1,7 +1,47 @@
-"""models.py"""
+"""models.py - the settings a config document builds"""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from datetime import timedelta
+from types import NoneType, UnionType
+from typing import Any, get_args, get_origin
+
+
+def _is_type(value: Any, expected: Any) -> bool:
+    if expected is bool:
+        return isinstance(value, bool)
+    if expected is int:
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected is NoneType:
+        return value is None
+    origin = get_origin(expected)
+    if origin is UnionType:
+        return any(_is_type(value, option) for option in get_args(expected))
+    if origin is list:
+        (item,) = get_args(expected)
+        return isinstance(value, list) and all(_is_type(v, item) for v in value)
+    if expected in (str, timedelta):
+        return isinstance(value, expected)
+    # nested settings (rules, RemoverSettings) are built by the loader, not read from json
+    return True
+
+
+def check_types(settings: Any) -> None:
+    """ValueError naming the first field that isn't its declared type. The config is json:
+    a string where a list belongs would be read letter by letter ("keep" excluding the
+    tags k, e and p), and 0 for a dry_run would mean live"""
+    for f in fields(settings):
+        value = getattr(settings, f.name)
+        if not _is_type(value, f.type):
+            raise ValueError(f"{f.name} must be {_type_name(f.type)}, got {value!r}")
+
+
+def _type_name(expected: Any) -> str:
+    if get_origin(expected) is UnionType:
+        return " or ".join(_type_name(option) for option in get_args(expected))
+    if get_origin(expected) is list:
+        return f"a list of {_type_name(get_args(expected)[0])}"
+    names = {bool: "true or false", int: "a whole number", str: "text", NoneType: "empty", timedelta: "a duration"}
+    return names.get(expected, getattr(expected, "__name__", str(expected)))
 
 
 @dataclass
@@ -15,6 +55,7 @@ class ProfileRule:
     monitored: bool | None = None
 
     def __post_init__(self):
+        check_types(self)
         if not any((self.studios, self.networks, self.titles)):
             raise ValueError(
                 "ProfileRule requires at least one of [Titles, Networks, Studios]"
@@ -75,6 +116,7 @@ class MoverRule:
     exclude_tags: list[str] = field(default_factory=list[str])
 
     def __post_init__(self):
+        check_types(self)
         if self.genres and self.genre_match not in ("any", "all"):
             raise ValueError(
                 f"MoverRule.genre_match must be 'any' or 'all', got '{self.genre_match}'"
@@ -138,21 +180,18 @@ class RemoverRule:
     plex_library: str | None = None
 
     def __post_init__(self):
+        check_types(self)
         if self.type not in REMOVER_TYPES:
             raise ValueError(
                 f"RemoverRule.type must be 'seasons' or 'episodes', got '{self.type}'"
             )
-        if (
-            not isinstance(self.keep, int)
-            or isinstance(self.keep, bool)
-            or self.keep < 1
-        ):
+        if self.keep < 1:
             raise ValueError(
                 f"RemoverRule.keep must be an integer >= 1, got '{self.keep}'"
             )
         if not self.tags:
             raise ValueError("RemoverRule requires at least one tag")
-        if not isinstance(self.min_age, timedelta) or self.min_age <= timedelta(0):
+        if self.min_age <= timedelta(0):
             raise ValueError("RemoverRule.min_age must be greater than 0")
         if (
             self.skip_if_watched_within is not None
@@ -164,7 +203,7 @@ class RemoverRule:
 
     @property
     def key(self) -> str:
-        """identifies the rule outside config.toml, e.g. its auto-approve setting in the web
+        """identifies the rule outside the config document, e.g. its auto-approve setting in the web
         app's database. Removers can't share a tag, so their tag sets are unique"""
         return ",".join(sorted({t.casefold() for t in self.tags}))
 
@@ -208,15 +247,11 @@ class MovieRemoverRule:
     plex_library: str | None = None
 
     def __post_init__(self):
-        if not isinstance(self.path, str) or not self.path.strip("/ "):
+        check_types(self)
+        if not self.path.strip("/ "):
             raise ValueError("MovieRemoverRule requires a root folder path")
-        if not isinstance(self.min_age, timedelta) or self.min_age <= timedelta(0):
+        if self.min_age <= timedelta(0):
             raise ValueError("MovieRemoverRule.min_age must be greater than 0")
-        if not isinstance(self.skip_if_ever_watched, bool):
-            raise ValueError(
-                "MovieRemoverRule.skip_if_ever_watched must be true or false, "
-                f"got '{self.skip_if_ever_watched}'"
-            )
         if (
             self.skip_if_watched_within is not None
             and self.skip_if_watched_within <= timedelta(0)
@@ -273,11 +308,8 @@ class RemoverSettings:
     max_deletes: int | None = None
 
     def __post_init__(self):
-        if self.max_deletes is not None and (
-            not isinstance(self.max_deletes, int)
-            or isinstance(self.max_deletes, bool)
-            or self.max_deletes < 1
-        ):
+        check_types(self)
+        if self.max_deletes is not None and self.max_deletes < 1:
             raise ValueError(
                 f"remover_settings.max_deletes must be an integer >= 1, got '{self.max_deletes}'"
             )
@@ -299,27 +331,20 @@ class EmptyTrashSettings:
     dry_run: bool = False
 
     def __post_init__(self):
-        if (
-            not isinstance(self.max_items, int)
-            or isinstance(self.max_items, bool)
-            or self.max_items < 1
-        ):
+        check_types(self)
+        if self.max_items < 1:
             raise ValueError(
                 f"plex.empty_trash.max_items must be an integer >= 1, got '{self.max_items}'"
             )
-        if (
-            not isinstance(self.max_deleted_items, int)
-            or isinstance(self.max_deleted_items, bool)
-            or self.max_deleted_items < 0
-        ):
+        if self.max_deleted_items < 0:
             raise ValueError(
                 "plex.empty_trash.max_deleted_items must be an integer >= 0, "
                 f"got '{self.max_deleted_items}'"
             )
 
 
-def _positive_span(value: object, name: str) -> None:
-    if not isinstance(value, timedelta) or value <= timedelta(0):
+def _positive_span(value: timedelta, name: str) -> None:
+    if value <= timedelta(0):
         raise ValueError(f"web.{name} must be greater than 0")
 
 
@@ -340,18 +365,15 @@ class WebDefaults:
     min_free_gb: int = 100
 
     def __post_init__(self):
+        check_types(self)
         _positive_span(self.followup_delay, "followup_delay")
         _positive_span(self.followup_lookback, "followup_lookback")
         _positive_span(self.plan_max_age, "plan_max_age")
-        if (
-            not isinstance(self.followup_attempts, int)
-            or isinstance(self.followup_attempts, bool)
-            or not 0 <= self.followup_attempts <= 10
-        ):
+        if not 0 <= self.followup_attempts <= 10:
             raise ValueError(
                 f"web.followup_attempts must be an integer from 0 to 10, got '{self.followup_attempts}'"
             )
-        if not isinstance(self.min_free_gb, int) or isinstance(self.min_free_gb, bool) or self.min_free_gb < 0:
+        if self.min_free_gb < 0:
             raise ValueError(f"web.min_free_gb must be a whole number of GB, 0 or more, got '{self.min_free_gb}'")
 
 
@@ -479,6 +501,9 @@ class ArrConfig:
     dry_run: bool = False
     # where the status page links to away from home, baseurl is the local one
     public_url: str | None = None
+
+    def __post_init__(self):
+        check_types(self)
 
     def __repr__(self):
         fields: list[

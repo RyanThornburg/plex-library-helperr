@@ -3,7 +3,7 @@
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from typing import Any
 
@@ -74,6 +74,13 @@ def _tautulli_show_tvdb_id(config: TautulliConfig, rating_key: object) -> int | 
     return _tvdb_from_guids([*data.get("guids", []), data.get("guid") or ""])
 
 
+def tautulli_after(since: datetime) -> str:
+    """get_history's `after` for plays since a naive utc time. Tautulli compares it (on or
+    after) with each play's date in its own time zone, up to a day behind utc, so the
+    day before is asked for and callers check the exact times"""
+    return (since - timedelta(days=1)).date().isoformat()
+
+
 def history_rows(data: object) -> list[dict[str, Any]]:
     """the rows of a get_history page. Anything else raises: read as no plays, it would
     let removers delete what was just watched"""
@@ -96,7 +103,7 @@ def get_tautulli_watches(
                 "get_history",
                 media_type="episode",
                 grouping=0,
-                after=since.date().isoformat(),
+                after=tautulli_after(since),
                 start=start,
                 length=TAUTULLI_PAGE_SIZE,
             )
