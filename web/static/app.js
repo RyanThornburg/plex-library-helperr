@@ -147,6 +147,15 @@ const store = (key, value) => {
   } catch {}
 };
 
+// a folded line a link points at (Status's "Connect Sonarr" → #sonarr) opens
+const openTarget = () => {
+  const target = location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1)));
+  const fold = target && (target.matches("details") ? target : target.querySelector(":scope > details"));
+  if (fold) fold.open = true;
+};
+openTarget();
+window.addEventListener("hashchange", openTarget);
+
 // a toolbar menu closes on a click outside it or Escape, like a menu
 for (const menu of document.querySelectorAll("details.tool-menu")) {
   document.addEventListener("click", (event) => {

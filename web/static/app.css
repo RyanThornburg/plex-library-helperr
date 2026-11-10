@@ -294,7 +294,7 @@ main > h2 { margin-top: 24px; }
 
 button, .button, .tag, .status, .state-word { overflow-wrap: normal; white-space: nowrap; }
 select { max-width: 100%; }
-.services > .card, .form > * { min-width: 0; }
+.form > * { min-width: 0; }
 
 button, .button {
   display: inline-block;
@@ -417,8 +417,11 @@ main h2 { margin-top: 24px; }
 .banner-ok { border-color: var(--ok); }
 main .banner { margin: 0 0 12px; }
 
-.services { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 12px; align-items: start; }
-.services .card { scroll-margin-top: 16px; }
+/* Settings → Connections: a line per service, its form folded under it */
+.connection-lines { margin-bottom: 16px; }
+.connection-lines .line-facts { overflow-wrap: anywhere; }
+.connection-lines .line-body { max-width: 760px; }
+.connection-lines .line-body .hint { margin: 0; }
 .form-compact { margin: 4px 0 0; grid-template-columns: max-content minmax(0, 1fr); }
 /* contain: their width doesn't widen the label column they span */
 .form > .form-heading { grid-column: 1 / -1; margin: 12px 0 0; contain: inline-size; }

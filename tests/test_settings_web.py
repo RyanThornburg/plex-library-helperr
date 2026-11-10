@@ -161,6 +161,16 @@ class TestGeneral:
 
 
 class TestConnections:
+    def test_each_service_is_a_folded_line(self, client):
+        connect_radarr(client)
+        page = client.get("/settings/connections", headers=auth()).text
+        assert re.search(r'<li id="radarr">\s*<details>', page) and re.search(r'<li id="sonarr">\s*<details>', page)
+        assert '<span class="line-state">connected</span>' in page and "http://radarr:7878" in page
+        # a form with news opens: here a save that failed
+        response = post(client, "/settings/connections/sonarr", {"version": version(client), "action": "save", "url": "nope"})
+        assert re.search(r'<li id="sonarr">\s*<details open>', response.text)
+        assert re.search(r'<li id="radarr">\s*<details>', response.text)
+
     def test_key_is_saved_encrypted_and_never_shown(self, client, runs):
         connect_radarr(client)
         page = client.get("/settings/connections", headers=auth()).text
