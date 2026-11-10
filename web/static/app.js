@@ -7,10 +7,10 @@ for (const el of document.querySelectorAll("time[datetime]")) {
   const d = new Date(el.dateTime);
   if (Number.isNaN(d.getTime())) continue;
   const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-  // data-date: dense tables show the date, the time is in the title
-  el.title = "date" in el.dataset ? `${date} ${time}` : el.textContent;
-  el.textContent = "date" in el.dataset ? date : `${date} ${time}`;
+  const minutes = `${date} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  // to the minute, the seconds in the title; data-date (dense tables) shows only the date
+  el.title = `${minutes}:${pad(d.getSeconds())}`;
+  el.textContent = "date" in el.dataset ? date : minutes;
 }
 
 // a new schedule starts in the browser's time zone

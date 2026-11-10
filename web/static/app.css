@@ -389,7 +389,7 @@ main h2 { margin-top: 24px; }
 .banner-ok { border-color: var(--ok); }
 main .banner { margin: 0 0 12px; }
 
-.services { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 12px; }
+.services { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 12px; align-items: start; }
 .services .card { scroll-margin-top: 16px; }
 .form-compact { margin: 4px 0 0; grid-template-columns: max-content minmax(0, 1fr); }
 /* contain: their width doesn't widen the label column they span */

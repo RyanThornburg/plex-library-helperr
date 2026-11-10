@@ -54,7 +54,7 @@
 {% else %}
 <table>
   <thead>
-    <tr><th>Tags</th><th>Removes</th><th>Keeps</th><th>Older than</th><th>Watch protection</th><th>Auto-approve</th><th></th></tr>
+    <tr><th>Tags</th><th>Removes</th><th>Keeps</th><th>Older than</th><th>Watch protection</th><th>Auto-approve</th><th><span class="visually-hidden">Actions</span></th></tr>
   </thead>
   <tbody>
     {% for rule in rules %}
@@ -79,7 +79,7 @@
 {% else %}
 <table>
   <thead>
-    <tr><th>Root folder</th><th>Older than</th><th>Watched movies</th><th>Auto-approve</th><th></th></tr>
+    <tr><th>Root folder</th><th>Older than</th><th>Watched movies</th><th>Auto-approve</th><th><span class="visually-hidden">Actions</span></th></tr>
   </thead>
   <tbody>
     {% for rule in movie_rules %}

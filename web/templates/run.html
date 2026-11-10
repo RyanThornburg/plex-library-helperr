@@ -22,7 +22,7 @@
   {% if run.schedule %}
   <dt>Requested by</dt><dd>schedule <a href="/schedules/{{ run.schedule.id }}">{{ run.schedule.name }}</a></dd>
   {% else %}
-  <dt>Requested by</dt><dd>{{ run.requested_by or "-" }} ({{ run.trigger }})</dd>
+  <dt>Requested by</dt><dd>{{ run.requested_by ~ " (" ~ run.trigger ~ ")" if run.requested_by else run_source(run) }}</dd>
   {% endif %}
   <dt>Queued</dt><dd>{{ run.created_at | localtime }}</dd>
   <dt>Started</dt><dd>{{ run.started_at | localtime }}</dd>
@@ -40,6 +40,7 @@
 <ul class="errors">
   {% for error in run.result.errors %}<li>{{ error }}</li>{% endfor %}
 </ul>
+<p class="muted">A service that couldn't be reached shows on <a href="/status">Status</a>; its address and key are under <a href="/settings/connections">Settings → Connections</a>.</p>
 {% endif %}
 
 {% if removals %}
@@ -68,9 +69,9 @@
       <td class="long first lead">{{ removal.title }}{% if removal.service == "RADARR" %} <span class="tag">movie</span>{% endif %}</td>
       <td class="long muted" data-label="Rule">{{ removal.rule }}</td>
       <td class="units row" data-label="Remove">{{ removal.labels | join(", ") }}</td>
-      <td data-label="Files">
+      <td>
         <details>
-          <summary>{{ removal.files | length }}</summary>
+          <summary>{% set n = removal.files | length %}{{ n }} file{{ "s" if n != 1 }}</summary>
           <ul class="items files">{% for file in removal.files %}<li>{{ file.path }}</li>{% endfor %}</ul>
         </details>
       </td>
@@ -100,7 +101,7 @@
       <td class="long">{{ item.title }}</td>
       <td>
         <details>
-          <summary>{{ item.files | length }}</summary>
+          <summary>{% set n = item.files | length %}{{ n }} file{{ "s" if n != 1 }}</summary>
           <ul class="items files">{% for file in item.files %}<li>{{ file }}</li>{% endfor %}</ul>
         </details>
       </td>
@@ -129,7 +130,7 @@
       <td>
         {% if change["items"] %}
         <details>
-          <summary>{{ change["items"] | length }}</summary>
+          <summary>{% set n = change["items"] | length %}{{ n }} item{{ "s" if n != 1 }}</summary>
           <ul class="items">{% for item in change["items"] %}<li>{{ item }}</li>{% endfor %}</ul>
         </details>
         {% else %}-{% endif %}

@@ -32,9 +32,9 @@
     <tr>
       <td class="long first lead">{{ removal.title }}{% if removal.service == "RADARR" %} <span class="tag">movie</span>{% endif %}</td>
       <td class="units row" data-label="Remove">{{ removal.labels | join(", ") }}</td>
-      <td data-label="Files">
+      <td>
         <details>
-          <summary>{{ removal.files | length }}</summary>
+          <summary>{% set n = removal.files | length %}{{ n }} file{{ "s" if n != 1 }}</summary>
           <ul class="items files">{% for file in removal.files %}<li>{{ file.path }}</li>{% endfor %}</ul>
         </details>
       </td>

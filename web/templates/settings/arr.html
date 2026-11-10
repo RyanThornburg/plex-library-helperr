@@ -35,7 +35,7 @@
 {% set movers = section.get("movers", []) %}
 {% if movers %}
 <table>
-  <thead><tr><th>#</th><th>Move to</th><th>When</th><th>Plex library</th><th></th></tr></thead>
+  <thead><tr><th>#</th><th>Move to</th><th>When</th><th>Plex library</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
   <tbody>
     {% for rule in movers %}
     <tr>
@@ -57,7 +57,7 @@
 {% set profilers = section.get("profilers", []) %}
 {% if profilers %}
 <table>
-  <thead><tr><th>#</th><th>Profile</th><th>When</th><th></th></tr></thead>
+  <thead><tr><th>#</th><th>Profile</th><th>When</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
   <tbody>
     {% for rule in profilers %}
     <tr>

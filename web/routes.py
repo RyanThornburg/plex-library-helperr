@@ -65,9 +65,11 @@ def localtime(value: datetime | None) -> str:
     rewrites in the browser's time zone"""
     if value is None:
         return "-"
-    return Markup('<time datetime="{}Z">{} UTC</time>').format(
+    # to the minute on the page, the seconds in the tooltip
+    return Markup('<time datetime="{}Z" title="{} UTC">{} UTC</time>').format(
         value.isoformat(timespec="seconds"),
         value.strftime("%Y-%m-%d %H:%M:%S"),
+        value.strftime("%Y-%m-%d %H:%M"),
     )
 
 
