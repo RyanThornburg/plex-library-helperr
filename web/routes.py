@@ -387,6 +387,8 @@ def index(request: Request, before: int | None = Query(default=None, ge=1, le=2*
             "active_jobs": {r.job for r in latest if r.status in ACTIVE},
             "next_runs": next_runs,
             "followup": followup,
+            # past due only until the scheduler's next tick queues it
+            "followup_due": followup is not None and followup <= now,
             "last_runs": last_runs,
             "reviewable": reviewable,
         },

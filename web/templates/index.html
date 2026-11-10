@@ -30,12 +30,12 @@
         {% if key == "review_auto" %}<a class="tag tag-live" href="/removers">review, auto-approve on for {{ auto_rules | length }}</a>
         {% else %}{{ ui.mode_tag(key) }}{% endif %}
       </td>
-      <td>
+      <td class="next-run">
         {% if job in next_runs %}{% set next_run, schedule = next_runs[job] %}{{ next_run | relative }}<br><a href="/schedules/{{ schedule.id }}">{{ schedule.name }}</a>{% if schedule.dry_run %} <span class="muted">(dry run)</span>{% endif %}{% endif %}
-        {% if job == "empty_trash" and followup %}{% if job in next_runs %}<br>{% endif %}<span class="muted">Follow-up</span> {{ followup | relative }}{% endif %}
+        {% if job == "empty_trash" and followup %}{% if job in next_runs %}<br>{% endif %}{% if followup_due %}due now{% else %}{{ followup | relative }}{% endif %}<br><span class="muted">Follow-up</span>{% endif %}
         {% if job not in next_runs and not (job == "empty_trash" and followup) %}<span class="muted">Not scheduled</span>{% endif %}
       </td>
-      <td>
+      <td class="last-run">
         {% if last %}<a href="/runs/{{ last.id }}">#{{ last.id }}</a> <span class="status status-{{ last.status }}">{{ last.status | replace("_", " ") }}</span>
         {% if job == "removers" and reviewable %}<br><a href="/runs/{{ last.id }}">Review the plan</a>{% else %}<br>{{ last.started_at | relative if last.started_at else last.created_at | relative }}{% endif %}
         {% else %}<span class="muted">Never run</span>{% endif %}

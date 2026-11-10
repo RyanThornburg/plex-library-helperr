@@ -280,6 +280,9 @@ main > h2 { margin-top: 24px; }
 /* Runs: the jobs, like the *arrs' System → Tasks */
 .tasks td { vertical-align: middle; }
 .tasks time { white-space: nowrap; }
+/* next and last run lines ("Nightly movers", "#7 succeeded", "Review the plan") stay
+   whole; the job's description wraps instead */
+.tasks td.next-run, .tasks td.last-run { white-space: nowrap; }
 .job-name { font-weight: 600; }
 .job-desc { display: block; color: var(--muted); font-size: 13px; }
 .tasks td.row-actions { text-align: right; }

@@ -4,7 +4,7 @@ import dataclasses
 import re
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 import jwt
@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from config.models import ArrConfig, ConfigSettings
 from results import Change, JobResult, PlannedFile, PlannedRemoval
 from web.app import create_app
-from web.jobs import AlreadyActive
+from web.jobs import AlreadyActive, utc_now
 from web.db import TrashEvent, make_engine, migrate
 from web.settings import WebSettings, load_web_settings
 
@@ -909,6 +909,13 @@ class TestWebhooks:
         assert client.get("/api/runs", headers=auth()).json() == []
         assert trash_events(client) == [("Download", source)]
         assert '<span class="muted">Follow-up</span>' in client.get("/runs", headers=auth()).text
+
+    def test_a_follow_up_past_due_says_due_now(self, client):
+        # until the scheduler's next tick queues it, rather than "2 hours ago"
+        with Session(client.app.state.engine) as session:
+            session.add(TrashEvent(received_at=utc_now() - timedelta(hours=2), event="Download", source="x"))
+            session.commit()
+        assert 'due now<br><span class="muted">Follow-up</span>' in client.get("/runs", headers=auth()).text
 
     def test_old_upgrades_are_dropped(self, client):
         with Session(client.app.state.engine) as session:
