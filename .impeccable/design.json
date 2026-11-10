@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-10T02:40:11+00:00",
+  "generatedAt": "2026-11-10T04:51:23+00:00",
   "title": "Design System: Helperr",
   "extensions": {
     "colorMeta": {
@@ -9,104 +9,44 @@
         "displayName": "Projector Amber",
         "canonical": "oklch(64.6% 0.142 65.6)",
         "tonalRamp": [
-          "oklch(15% 0.061 65.6)",
-          "oklch(26% 0.105 65.6)",
-          "oklch(38% 0.142 65.6)",
+          "oklch(15% 0.053 65.6)",
+          "oklch(26% 0.092 65.6)",
+          "oklch(38% 0.135 65.6)",
           "oklch(49% 0.142 65.6)",
-          "oklch(61% 0.142 65.6)",
-          "oklch(72% 0.114 65.6)",
-          "oklch(84% 0.065 65.6)",
-          "oklch(95% 0.020 65.6)"
+          "oklch(61% 0.138 65.6)",
+          "oklch(72% 0.099 65.6)",
+          "oklch(84% 0.057 65.6)",
+          "oklch(95% 0.042 65.6)"
         ]
       },
       "projector-amber-dark": {
         "role": "primary",
-        "displayName": "Projector Amber (dark) / Gold",
+        "displayName": "Projector Amber (dark)",
         "canonical": "oklch(75.4% 0.155 77.3)",
         "tonalRamp": [
-          "oklch(15% 0.066 77.3)",
-          "oklch(26% 0.115 77.3)",
-          "oklch(38% 0.155 77.3)",
+          "oklch(15% 0.058 77.3)",
+          "oklch(26% 0.101 77.3)",
+          "oklch(38% 0.148 77.3)",
           "oklch(49% 0.155 77.3)",
-          "oklch(61% 0.155 77.3)",
-          "oklch(72% 0.124 77.3)",
-          "oklch(84% 0.071 77.3)",
-          "oklch(95% 0.022 77.3)"
+          "oklch(61% 0.151 77.3)",
+          "oklch(72% 0.109 77.3)",
+          "oklch(84% 0.062 77.3)",
+          "oklch(95% 0.047 77.3)"
         ]
       },
-      "signal-green": {
-        "role": "secondary",
-        "displayName": "Signal Green",
-        "canonical": "oklch(52.4% 0.140 148.0)",
+      "gold": {
+        "role": "primary",
+        "displayName": "Gold",
+        "canonical": "oklch(75.4% 0.155 77.3)",
         "tonalRamp": [
-          "oklch(15% 0.060 148.0)",
-          "oklch(26% 0.104 148.0)",
-          "oklch(38% 0.140 148.0)",
-          "oklch(49% 0.140 148.0)",
-          "oklch(61% 0.140 148.0)",
-          "oklch(72% 0.112 148.0)",
-          "oklch(84% 0.064 148.0)",
-          "oklch(95% 0.020 148.0)"
-        ]
-      },
-      "signal-green-dark": {
-        "role": "secondary",
-        "displayName": "Signal Green (dark)",
-        "canonical": "oklch(69.5% 0.181 145.6)",
-        "tonalRamp": [
-          "oklch(15% 0.078 145.6)",
-          "oklch(26% 0.134 145.6)",
-          "oklch(38% 0.181 145.6)",
-          "oklch(49% 0.181 145.6)",
-          "oklch(61% 0.181 145.6)",
-          "oklch(72% 0.145 145.6)",
-          "oklch(84% 0.083 145.6)",
-          "oklch(95% 0.026 145.6)"
-        ]
-      },
-      "alarm-red": {
-        "role": "secondary",
-        "displayName": "Alarm Red",
-        "canonical": "oklch(53.9% 0.194 26.7)",
-        "tonalRamp": [
-          "oklch(15% 0.083 26.7)",
-          "oklch(26% 0.144 26.7)",
-          "oklch(38% 0.194 26.7)",
-          "oklch(49% 0.194 26.7)",
-          "oklch(61% 0.194 26.7)",
-          "oklch(72% 0.155 26.7)",
-          "oklch(84% 0.089 26.7)",
-          "oklch(95% 0.028 26.7)"
-        ]
-      },
-      "alarm-red-dark": {
-        "role": "secondary",
-        "displayName": "Alarm Red (dark)",
-        "canonical": "oklch(66.5% 0.205 27.0)",
-        "tonalRamp": [
-          "oklch(15% 0.088 27.0)",
-          "oklch(26% 0.152 27.0)",
-          "oklch(38% 0.205 27.0)",
-          "oklch(49% 0.205 27.0)",
-          "oklch(61% 0.205 27.0)",
-          "oklch(72% 0.164 27.0)",
-          "oklch(84% 0.094 27.0)",
-          "oklch(95% 0.029 27.0)"
-        ]
-      },
-      "alarm-fill-dark": {
-        "role": "secondary",
-        "displayName": "Alarm Fill (dark)",
-        "canonical": "oklch(58.6% 0.201 26.8)",
-        "tonalRamp": [
-          "oklch(15% 0.086 26.8)",
-          "oklch(26% 0.149 26.8)",
-          "oklch(38% 0.201 26.8)",
-          "oklch(49% 0.201 26.8)",
-          "oklch(61% 0.201 26.8)",
-          "oklch(72% 0.161 26.8)",
-          "oklch(84% 0.092 26.8)",
-          "oklch(95% 0.029 26.8)"
+          "oklch(15% 0.058 77.3)",
+          "oklch(26% 0.101 77.3)",
+          "oklch(38% 0.148 77.3)",
+          "oklch(49% 0.155 77.3)",
+          "oklch(61% 0.151 77.3)",
+          "oklch(72% 0.109 77.3)",
+          "oklch(84% 0.062 77.3)",
+          "oklch(95% 0.047 77.3)"
         ]
       },
       "warning-ink": {
@@ -114,29 +54,134 @@
         "displayName": "Warning Ink",
         "canonical": "oklch(50.7% 0.112 66.7)",
         "tonalRamp": [
-          "oklch(15% 0.048 66.7)",
-          "oklch(26% 0.083 66.7)",
-          "oklch(38% 0.112 66.7)",
+          "oklch(15% 0.042 66.7)",
+          "oklch(26% 0.073 66.7)",
+          "oklch(38% 0.107 66.7)",
           "oklch(49% 0.112 66.7)",
-          "oklch(61% 0.112 66.7)",
-          "oklch(72% 0.090 66.7)",
-          "oklch(84% 0.051 66.7)",
-          "oklch(95% 0.016 66.7)"
+          "oklch(61% 0.109 66.7)",
+          "oklch(72% 0.079 66.7)",
+          "oklch(84% 0.045 66.7)",
+          "oklch(95% 0.034 66.7)"
         ]
       },
       "link-ink": {
-        "role": "primary",
+        "role": "secondary",
         "displayName": "Link Ink",
         "canonical": "oklch(52.5% 0.169 257.1)",
         "tonalRamp": [
-          "oklch(15% 0.073 257.1)",
-          "oklch(26% 0.125 257.1)",
-          "oklch(38% 0.169 257.1)",
+          "oklch(15% 0.063 257.1)",
+          "oklch(26% 0.110 257.1)",
+          "oklch(38% 0.160 257.1)",
           "oklch(49% 0.169 257.1)",
-          "oklch(61% 0.169 257.1)",
-          "oklch(72% 0.135 257.1)",
-          "oklch(84% 0.078 257.1)",
-          "oklch(95% 0.024 257.1)"
+          "oklch(61% 0.165 257.1)",
+          "oklch(72% 0.118 257.1)",
+          "oklch(84% 0.068 257.1)",
+          "oklch(95% 0.051 257.1)"
+        ]
+      },
+      "signal-blue": {
+        "role": "secondary",
+        "displayName": "Signal Blue",
+        "canonical": "oklch(52.5% 0.169 257.1)",
+        "tonalRamp": [
+          "oklch(15% 0.063 257.1)",
+          "oklch(26% 0.110 257.1)",
+          "oklch(38% 0.160 257.1)",
+          "oklch(49% 0.169 257.1)",
+          "oklch(61% 0.165 257.1)",
+          "oklch(72% 0.118 257.1)",
+          "oklch(84% 0.068 257.1)",
+          "oklch(95% 0.051 257.1)"
+        ]
+      },
+      "signal-blue-dark": {
+        "role": "secondary",
+        "displayName": "Signal Blue (dark)",
+        "canonical": "oklch(68.6% 0.136 255.2)",
+        "tonalRamp": [
+          "oklch(15% 0.051 255.2)",
+          "oklch(26% 0.088 255.2)",
+          "oklch(38% 0.129 255.2)",
+          "oklch(49% 0.136 255.2)",
+          "oklch(61% 0.132 255.2)",
+          "oklch(72% 0.095 255.2)",
+          "oklch(84% 0.054 255.2)",
+          "oklch(95% 0.041 255.2)"
+        ]
+      },
+      "signal-green": {
+        "role": "secondary",
+        "displayName": "Signal Green",
+        "canonical": "oklch(52.4% 0.140 148.0)",
+        "tonalRamp": [
+          "oklch(15% 0.053 148.0)",
+          "oklch(26% 0.091 148.0)",
+          "oklch(38% 0.133 148.0)",
+          "oklch(49% 0.140 148.0)",
+          "oklch(61% 0.137 148.0)",
+          "oklch(72% 0.098 148.0)",
+          "oklch(84% 0.056 148.0)",
+          "oklch(95% 0.042 148.0)"
+        ]
+      },
+      "signal-green-dark": {
+        "role": "secondary",
+        "displayName": "Signal Green (dark)",
+        "canonical": "oklch(69.5% 0.181 145.6)",
+        "tonalRamp": [
+          "oklch(15% 0.068 145.6)",
+          "oklch(26% 0.118 145.6)",
+          "oklch(38% 0.172 145.6)",
+          "oklch(49% 0.181 145.6)",
+          "oklch(61% 0.176 145.6)",
+          "oklch(72% 0.127 145.6)",
+          "oklch(84% 0.072 145.6)",
+          "oklch(95% 0.054 145.6)"
+        ]
+      },
+      "alarm-red": {
+        "role": "secondary",
+        "displayName": "Alarm Red",
+        "canonical": "oklch(53.9% 0.194 26.7)",
+        "tonalRamp": [
+          "oklch(15% 0.073 26.7)",
+          "oklch(26% 0.126 26.7)",
+          "oklch(38% 0.184 26.7)",
+          "oklch(49% 0.194 26.7)",
+          "oklch(61% 0.189 26.7)",
+          "oklch(72% 0.136 26.7)",
+          "oklch(84% 0.077 26.7)",
+          "oklch(95% 0.058 26.7)"
+        ]
+      },
+      "alarm-red-dark": {
+        "role": "secondary",
+        "displayName": "Alarm Red (dark)",
+        "canonical": "oklch(66.5% 0.205 27.0)",
+        "tonalRamp": [
+          "oklch(15% 0.077 27.0)",
+          "oklch(26% 0.133 27.0)",
+          "oklch(38% 0.194 27.0)",
+          "oklch(49% 0.205 27.0)",
+          "oklch(61% 0.199 27.0)",
+          "oklch(72% 0.143 27.0)",
+          "oklch(84% 0.082 27.0)",
+          "oklch(95% 0.061 27.0)"
+        ]
+      },
+      "alarm-fill-dark": {
+        "role": "secondary",
+        "displayName": "Alarm Fill (dark)",
+        "canonical": "oklch(58.6% 0.201 26.8)",
+        "tonalRamp": [
+          "oklch(15% 0.075 26.8)",
+          "oklch(26% 0.131 26.8)",
+          "oklch(38% 0.191 26.8)",
+          "oklch(49% 0.201 26.8)",
+          "oklch(61% 0.196 26.8)",
+          "oklch(72% 0.141 26.8)",
+          "oklch(84% 0.080 26.8)",
+          "oklch(95% 0.060 26.8)"
         ]
       },
       "console-floor": {
@@ -151,7 +196,7 @@
           "oklch(61% 0.003 264.5)",
           "oklch(72% 0.002 264.5)",
           "oklch(84% 0.001 264.5)",
-          "oklch(95% 0.000 264.5)"
+          "oklch(95% 0.001 264.5)"
         ]
       },
       "console-floor-dark": {
@@ -160,19 +205,19 @@
         "canonical": "oklch(19.0% 0.009 255.6)",
         "tonalRamp": [
           "oklch(15% 0.004 255.6)",
-          "oklch(26% 0.007 255.6)",
+          "oklch(26% 0.006 255.6)",
           "oklch(38% 0.009 255.6)",
           "oklch(49% 0.009 255.6)",
           "oklch(61% 0.009 255.6)",
           "oklch(72% 0.007 255.6)",
           "oklch(84% 0.004 255.6)",
-          "oklch(95% 0.001 255.6)"
+          "oklch(95% 0.003 255.6)"
         ]
       },
       "panel": {
         "role": "neutral",
         "displayName": "Panel",
-        "canonical": "oklch(100% 0 0)",
+        "canonical": "oklch(100.0% 0.000 0.0)",
         "tonalRamp": [
           "oklch(15% 0.000 0.0)",
           "oklch(26% 0.000 0.0)",
@@ -189,14 +234,14 @@
         "displayName": "Panel (dark)",
         "canonical": "oklch(23.7% 0.014 253.1)",
         "tonalRamp": [
-          "oklch(15% 0.006 253.1)",
-          "oklch(26% 0.010 253.1)",
-          "oklch(38% 0.014 253.1)",
+          "oklch(15% 0.005 253.1)",
+          "oklch(26% 0.009 253.1)",
+          "oklch(38% 0.013 253.1)",
           "oklch(49% 0.014 253.1)",
-          "oklch(61% 0.014 253.1)",
-          "oklch(72% 0.011 253.1)",
-          "oklch(84% 0.006 253.1)",
-          "oklch(95% 0.002 253.1)"
+          "oklch(61% 0.013 253.1)",
+          "oklch(72% 0.010 253.1)",
+          "oklch(84% 0.005 253.1)",
+          "oklch(95% 0.004 253.1)"
         ]
       },
       "ink": {
@@ -205,13 +250,13 @@
         "canonical": "oklch(24.6% 0.015 256.8)",
         "tonalRamp": [
           "oklch(15% 0.006 256.8)",
-          "oklch(26% 0.011 256.8)",
+          "oklch(26% 0.010 256.8)",
           "oklch(38% 0.015 256.8)",
           "oklch(49% 0.015 256.8)",
           "oklch(61% 0.015 256.8)",
-          "oklch(72% 0.012 256.8)",
-          "oklch(84% 0.007 256.8)",
-          "oklch(95% 0.002 256.8)"
+          "oklch(72% 0.011 256.8)",
+          "oklch(84% 0.006 256.8)",
+          "oklch(95% 0.005 256.8)"
         ]
       },
       "ink-dark": {
@@ -219,14 +264,14 @@
         "displayName": "Ink (dark)",
         "canonical": "oklch(93.3% 0.006 255.5)",
         "tonalRamp": [
-          "oklch(15% 0.003 255.5)",
+          "oklch(15% 0.002 255.5)",
           "oklch(26% 0.004 255.5)",
           "oklch(38% 0.006 255.5)",
           "oklch(49% 0.006 255.5)",
           "oklch(61% 0.006 255.5)",
-          "oklch(72% 0.005 255.5)",
+          "oklch(72% 0.004 255.5)",
           "oklch(84% 0.003 255.5)",
-          "oklch(95% 0.001 255.5)"
+          "oklch(95% 0.002 255.5)"
         ]
       },
       "dim-ink": {
@@ -234,14 +279,14 @@
         "displayName": "Dim Ink",
         "canonical": "oklch(50.7% 0.023 257.5)",
         "tonalRamp": [
-          "oklch(15% 0.010 257.5)",
-          "oklch(26% 0.017 257.5)",
-          "oklch(38% 0.023 257.5)",
+          "oklch(15% 0.009 257.5)",
+          "oklch(26% 0.015 257.5)",
+          "oklch(38% 0.022 257.5)",
           "oklch(49% 0.023 257.5)",
           "oklch(61% 0.023 257.5)",
-          "oklch(72% 0.018 257.5)",
-          "oklch(84% 0.011 257.5)",
-          "oklch(95% 0.003 257.5)"
+          "oklch(72% 0.016 257.5)",
+          "oklch(84% 0.009 257.5)",
+          "oklch(95% 0.007 257.5)"
         ]
       },
       "dim-ink-dark": {
@@ -249,14 +294,14 @@
         "displayName": "Dim Ink (dark)",
         "canonical": "oklch(70.6% 0.020 255.6)",
         "tonalRamp": [
-          "oklch(15% 0.009 255.6)",
-          "oklch(26% 0.015 255.6)",
-          "oklch(38% 0.020 255.6)",
+          "oklch(15% 0.008 255.6)",
+          "oklch(26% 0.013 255.6)",
+          "oklch(38% 0.019 255.6)",
           "oklch(49% 0.020 255.6)",
           "oklch(61% 0.020 255.6)",
-          "oklch(72% 0.016 255.6)",
-          "oklch(84% 0.009 255.6)",
-          "oklch(95% 0.003 255.6)"
+          "oklch(72% 0.014 255.6)",
+          "oklch(84% 0.008 255.6)",
+          "oklch(95% 0.006 255.6)"
         ]
       },
       "rule-line": {
@@ -264,14 +309,14 @@
         "displayName": "Rule Line",
         "canonical": "oklch(89.6% 0.009 258.3)",
         "tonalRamp": [
-          "oklch(15% 0.004 258.3)",
-          "oklch(26% 0.007 258.3)",
+          "oklch(15% 0.003 258.3)",
+          "oklch(26% 0.006 258.3)",
           "oklch(38% 0.009 258.3)",
           "oklch(49% 0.009 258.3)",
           "oklch(61% 0.009 258.3)",
-          "oklch(72% 0.007 258.3)",
+          "oklch(72% 0.006 258.3)",
           "oklch(84% 0.004 258.3)",
-          "oklch(95% 0.001 258.3)"
+          "oklch(95% 0.003 258.3)"
         ]
       },
       "rule-line-dark": {
@@ -279,20 +324,20 @@
         "displayName": "Rule Line (dark)",
         "canonical": "oklch(31.8% 0.019 254.8)",
         "tonalRamp": [
-          "oklch(15% 0.008 254.8)",
-          "oklch(26% 0.014 254.8)",
-          "oklch(38% 0.019 254.8)",
+          "oklch(15% 0.007 254.8)",
+          "oklch(26% 0.012 254.8)",
+          "oklch(38% 0.018 254.8)",
           "oklch(49% 0.019 254.8)",
-          "oklch(61% 0.019 254.8)",
-          "oklch(72% 0.015 254.8)",
-          "oklch(84% 0.009 254.8)",
-          "oklch(95% 0.003 254.8)"
+          "oklch(61% 0.018 254.8)",
+          "oklch(72% 0.013 254.8)",
+          "oklch(84% 0.008 254.8)",
+          "oklch(95% 0.006 254.8)"
         ]
       },
       "on-amber": {
         "role": "neutral",
         "displayName": "On Amber",
-        "canonical": "oklch(17.8% 0 0)",
+        "canonical": "oklch(17.8% 0.000 0.0)",
         "tonalRamp": [
           "oklch(15% 0.000 0.0)",
           "oklch(26% 0.000 0.0)",
@@ -309,14 +354,14 @@
         "displayName": "Chrome",
         "canonical": "oklch(22.0% 0.012 254.1)",
         "tonalRamp": [
-          "oklch(15% 0.005 254.1)",
-          "oklch(26% 0.009 254.1)",
-          "oklch(38% 0.012 254.1)",
+          "oklch(15% 0.004 254.1)",
+          "oklch(26% 0.007 254.1)",
+          "oklch(38% 0.011 254.1)",
           "oklch(49% 0.012 254.1)",
-          "oklch(61% 0.012 254.1)",
-          "oklch(72% 0.009 254.1)",
+          "oklch(61% 0.011 254.1)",
+          "oklch(72% 0.008 254.1)",
           "oklch(84% 0.005 254.1)",
-          "oklch(95% 0.002 254.1)"
+          "oklch(95% 0.003 254.1)"
         ]
       },
       "chrome-dark": {
@@ -325,13 +370,13 @@
         "canonical": "oklch(16.2% 0.008 248.3)",
         "tonalRamp": [
           "oklch(15% 0.003 248.3)",
-          "oklch(26% 0.006 248.3)",
+          "oklch(26% 0.005 248.3)",
           "oklch(38% 0.008 248.3)",
           "oklch(49% 0.008 248.3)",
           "oklch(61% 0.008 248.3)",
           "oklch(72% 0.006 248.3)",
-          "oklch(84% 0.004 248.3)",
-          "oklch(95% 0.001 248.3)"
+          "oklch(84% 0.003 248.3)",
+          "oklch(95% 0.002 248.3)"
         ]
       },
       "chrome-side": {
@@ -339,14 +384,14 @@
         "displayName": "Chrome Side",
         "canonical": "oklch(26.2% 0.016 252.4)",
         "tonalRamp": [
-          "oklch(15% 0.007 252.4)",
-          "oklch(26% 0.012 252.4)",
-          "oklch(38% 0.016 252.4)",
+          "oklch(15% 0.006 252.4)",
+          "oklch(26% 0.010 252.4)",
+          "oklch(38% 0.015 252.4)",
           "oklch(49% 0.016 252.4)",
-          "oklch(61% 0.016 252.4)",
-          "oklch(72% 0.013 252.4)",
-          "oklch(84% 0.007 252.4)",
-          "oklch(95% 0.002 252.4)"
+          "oklch(61% 0.015 252.4)",
+          "oklch(72% 0.011 252.4)",
+          "oklch(84% 0.006 252.4)",
+          "oklch(95% 0.005 252.4)"
         ]
       },
       "chrome-side-dark": {
@@ -354,14 +399,14 @@
         "displayName": "Chrome Side (dark)",
         "canonical": "oklch(20.7% 0.012 254.1)",
         "tonalRamp": [
-          "oklch(15% 0.005 254.1)",
-          "oklch(26% 0.009 254.1)",
-          "oklch(38% 0.012 254.1)",
+          "oklch(15% 0.004 254.1)",
+          "oklch(26% 0.008 254.1)",
+          "oklch(38% 0.011 254.1)",
           "oklch(49% 0.012 254.1)",
-          "oklch(61% 0.012 254.1)",
-          "oklch(72% 0.009 254.1)",
+          "oklch(61% 0.011 254.1)",
+          "oklch(72% 0.008 254.1)",
           "oklch(84% 0.005 254.1)",
-          "oklch(95% 0.002 254.1)"
+          "oklch(95% 0.004 254.1)"
         ]
       },
       "chrome-hover": {
@@ -369,14 +414,14 @@
         "displayName": "Chrome Hover",
         "canonical": "oklch(30.9% 0.020 251.5)",
         "tonalRamp": [
-          "oklch(15% 0.008 251.5)",
-          "oklch(26% 0.015 251.5)",
-          "oklch(38% 0.020 251.5)",
+          "oklch(15% 0.007 251.5)",
+          "oklch(26% 0.013 251.5)",
+          "oklch(38% 0.019 251.5)",
           "oklch(49% 0.020 251.5)",
-          "oklch(61% 0.020 251.5)",
-          "oklch(72% 0.016 251.5)",
-          "oklch(84% 0.009 251.5)",
-          "oklch(95% 0.003 251.5)"
+          "oklch(61% 0.019 251.5)",
+          "oklch(72% 0.014 251.5)",
+          "oklch(84% 0.008 251.5)",
+          "oklch(95% 0.006 251.5)"
         ]
       },
       "chrome-hover-dark": {
@@ -384,14 +429,14 @@
         "displayName": "Chrome Hover (dark)",
         "canonical": "oklch(26.2% 0.016 252.4)",
         "tonalRamp": [
-          "oklch(15% 0.007 252.4)",
-          "oklch(26% 0.012 252.4)",
-          "oklch(38% 0.016 252.4)",
+          "oklch(15% 0.006 252.4)",
+          "oklch(26% 0.010 252.4)",
+          "oklch(38% 0.015 252.4)",
           "oklch(49% 0.016 252.4)",
-          "oklch(61% 0.016 252.4)",
-          "oklch(72% 0.013 252.4)",
-          "oklch(84% 0.007 252.4)",
-          "oklch(95% 0.002 252.4)"
+          "oklch(61% 0.015 252.4)",
+          "oklch(72% 0.011 252.4)",
+          "oklch(84% 0.006 252.4)",
+          "oklch(95% 0.005 252.4)"
         ]
       },
       "chrome-text": {
@@ -399,14 +444,14 @@
         "displayName": "Chrome Text",
         "canonical": "oklch(83.9% 0.015 251.2)",
         "tonalRamp": [
-          "oklch(15% 0.007 251.2)",
-          "oklch(26% 0.011 251.2)",
+          "oklch(15% 0.006 251.2)",
+          "oklch(26% 0.010 251.2)",
           "oklch(38% 0.015 251.2)",
           "oklch(49% 0.015 251.2)",
           "oklch(61% 0.015 251.2)",
-          "oklch(72% 0.012 251.2)",
-          "oklch(84% 0.007 251.2)",
-          "oklch(95% 0.002 251.2)"
+          "oklch(72% 0.011 251.2)",
+          "oklch(84% 0.006 251.2)",
+          "oklch(95% 0.005 251.2)"
         ]
       },
       "chrome-muted": {
@@ -414,71 +459,43 @@
         "displayName": "Chrome Muted",
         "canonical": "oklch(71.4% 0.020 250.7)",
         "tonalRamp": [
-          "oklch(15% 0.008 250.7)",
-          "oklch(26% 0.015 250.7)",
-          "oklch(38% 0.020 250.7)",
+          "oklch(15% 0.007 250.7)",
+          "oklch(26% 0.013 250.7)",
+          "oklch(38% 0.019 250.7)",
           "oklch(49% 0.020 250.7)",
-          "oklch(61% 0.020 250.7)",
-          "oklch(72% 0.016 250.7)",
-          "oklch(84% 0.009 250.7)",
-          "oklch(95% 0.003 250.7)"
-        ]
-      },
-      "signal-blue": {
-        "role": "secondary",
-        "displayName": "Signal Blue",
-        "canonical": "oklch(52.5% 0.169 257.1)",
-        "tonalRamp": [
-          "oklch(15% 0.073 257.1)",
-          "oklch(26% 0.125 257.1)",
-          "oklch(38% 0.169 257.1)",
-          "oklch(49% 0.169 257.1)",
-          "oklch(61% 0.169 257.1)",
-          "oklch(72% 0.135 257.1)",
-          "oklch(84% 0.078 257.1)",
-          "oklch(95% 0.024 257.1)"
-        ]
-      },
-      "signal-blue-dark": {
-        "role": "secondary",
-        "displayName": "Signal Blue (dark)",
-        "canonical": "oklch(68.6% 0.136 255.2)",
-        "tonalRamp": [
-          "oklch(15% 0.058 255.2)",
-          "oklch(26% 0.100 255.2)",
-          "oklch(38% 0.136 255.2)",
-          "oklch(49% 0.136 255.2)",
-          "oklch(61% 0.136 255.2)",
-          "oklch(72% 0.108 255.2)",
-          "oklch(84% 0.062 255.2)",
-          "oklch(95% 0.019 255.2)"
+          "oklch(61% 0.019 250.7)",
+          "oklch(72% 0.014 250.7)",
+          "oklch(84% 0.008 250.7)",
+          "oklch(95% 0.006 250.7)"
         ]
       }
     },
     "typographyMeta": {
       "headline": {
         "displayName": "Headline",
-        "purpose": "Page h1, one per page."
+        "purpose": "The page h1, one per page; a dialog's question."
       },
       "title": {
         "displayName": "Title",
-        "purpose": "h2 section and card titles."
+        "purpose": "h2 section, card and fold titles; the verdict and wordmark share the size."
       },
       "body": {
         "displayName": "Body",
-        "purpose": "All running text, table cells and fields."
+        "purpose": "Everything else: table cells, fields, filter controls."
       },
       "label": {
         "displayName": "Label",
-        "purpose": "Table headers; hints and tags at 400."
+        "purpose": "Table headers at 600; at 400, hints, card subheadings, state words (600) and sidebar sub pages."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Tags, badges (600) and toolbar labels."
       },
       "mono": {
         "displayName": "Mono",
-        "purpose": "Logs, file lists, diffs, cron, keys."
+        "purpose": "Logs, release names, file lists, diffs, cron and API keys."
       }
     },
-    "shadows": [],
-    "motion": [],
     "breakpoints": [
       {
         "name": "phone-shell",
@@ -495,122 +512,99 @@
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "One filled button per decision: Run, Apply, form submits. Ink, never amber.",
-      "html": "<button class=\"ds-btn-primary\">Run now</button>",
-      "css": ".ds-btn-primary { font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; display:inline-block; padding:6px 14px; border:1px solid var(--primary, #1c2128); border-radius:6px; background:var(--primary, #1c2128); color:var(--on-primary, #fff); font-weight:600; cursor:pointer; } .ds-btn-primary:focus-visible { outline:2px solid var(--text, #1c2128); outline-offset:2px; } .ds-btn-primary:disabled { opacity:.4; cursor:default; }"
+      "description": "Ink-filled decision button: Run, Start dry run, Plan removals, Save. Never amber.",
+      "html": "<button class=\"ds-btn\">Start dry run</button>",
+      "css": ".ds-btn { display:inline-block; padding:6px 14px; border:1px solid var(--primary, #1c2128); border-radius:6px; background:var(--primary, #1c2128); color:var(--on-primary, #fff); font:600 15px/1.5 system-ui, -apple-system, \"Segoe UI\", sans-serif; cursor:pointer; white-space:nowrap; } .ds-btn:focus-visible { outline:2px solid var(--text, #1c2128); outline-offset:2px; } .ds-btn:disabled { opacity:0.4; cursor:default; }"
     },
     {
       "name": "Secondary Button",
       "kind": "button",
       "refersTo": "button-secondary",
-      "description": "Cancel, Test, Preview and row actions.",
-      "html": "<button class=\"ds-btn-secondary\">Preview</button>",
-      "css": ".ds-btn-secondary { font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; display:inline-block; padding:6px 14px; border:1px solid var(--border, #d9dde3); border-radius:6px; background:transparent; color:var(--text, #1c2128); font-weight:600; cursor:pointer; } .ds-btn-secondary:focus-visible { outline:2px solid var(--text, #1c2128); outline-offset:2px; }"
+      "description": "Outlined button for Cancel, Dry run, Run..., Edit and row actions.",
+      "html": "<button class=\"ds-btn-secondary\">Cancel</button>",
+      "css": ".ds-btn-secondary { display:inline-block; padding:6px 14px; border:1px solid var(--border, #d9dde3); border-radius:6px; background:transparent; color:var(--text, #1c2128); font:600 15px/1.5 system-ui, -apple-system, \"Segoe UI\", sans-serif; cursor:pointer; white-space:nowrap; } .ds-btn-secondary:focus-visible { outline:2px solid var(--text, #1c2128); outline-offset:2px; } .ds-btn-secondary:disabled { opacity:0.4; cursor:default; }"
     },
     {
       "name": "Danger Button",
       "kind": "button",
       "refersTo": "button-danger",
-      "description": "The final click of something destructive or live.",
-      "html": "<button class=\"ds-btn-danger\">Delete 42 files</button>",
-      "css": ".ds-btn-danger { font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; display:inline-block; padding:6px 14px; border:1px solid var(--bad-fill, #c62828); border-radius:6px; background:var(--bad-fill, #c62828); color:#fff; font-weight:600; cursor:pointer; } .ds-btn-danger:focus-visible { outline:2px solid var(--text, #1c2128); outline-offset:2px; }"
+      "description": "Alarm Fill button, only for the final click of something destructive or live, labelled by its consequence.",
+      "html": "<button class=\"ds-btn-danger\">Delete 13 files</button>",
+      "css": ".ds-btn-danger { display:inline-block; padding:6px 14px; border:1px solid var(--bad-fill, #c62828); border-radius:6px; background:var(--bad-fill, #c62828); color:#fff; font:600 15px/1.5 system-ui, -apple-system, \"Segoe UI\", sans-serif; cursor:pointer; white-space:nowrap; } .ds-btn-danger:focus-visible { outline:2px solid var(--text, #1c2128); outline-offset:2px; } .ds-btn-danger:disabled { opacity:0.4; cursor:default; }"
     },
     {
-      "name": "Text Input",
-      "kind": "input",
-      "refersTo": "input",
-      "description": "Panel-filled field with a 1px rule border.",
-      "html": "<input class=\"ds-input\" value=\"/data/media/movies\">",
-      "css": ".ds-input { font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; width:100%; max-width:520px; padding:6px 10px; border:1px solid var(--border, #d9dde3); border-radius:6px; background:var(--surface, #fff); color:var(--text, #1c2128); } .ds-input:focus-visible { outline:2px solid var(--accent, #c7790b); outline-offset:-1px; }"
+      "name": "Tags and Mode Tags",
+      "kind": "chip",
+      "refersTo": "tag",
+      "description": "Outlined pills for facts and modes (dry run neutral, live red, live for some *arrs amber, plan for review blue); solid pills for a state that needs reading now.",
+      "html": "<span class=\"ds-tag\">dry run</span> <span class=\"ds-tag ds-tag-live\">live</span> <span class=\"ds-tag ds-tag-warn\">live for some *arrs</span> <span class=\"ds-tag ds-tag-info\">plan for review</span> <span class=\"ds-tag ds-tag-solid-warn\">warning</span> <span class=\"ds-tag ds-tag-solid-bad\">down</span> <span class=\"ds-note\">forced</span>",
+      "css": ".ds-tag { display:inline-block; padding:1px 8px; border:1px solid var(--border, #d9dde3); border-radius:999px; color:var(--text, #1c2128); font:400 12px/1.5 system-ui, -apple-system, \"Segoe UI\", sans-serif; white-space:nowrap; } .ds-tag-live { border-color:var(--bad, #c62828); color:var(--bad, #c62828); } .ds-tag-warn { border-color:var(--accent, #c7790b); color:var(--warn-text, #8f5600); } .ds-tag-info { border-color:var(--info, #1a67c9); color:var(--info, #1a67c9); } .ds-tag-solid-warn, .ds-tag-solid-bad { font-weight:600; } .ds-tag-solid-warn { background:var(--accent, #c7790b); border-color:var(--accent, #c7790b); color:var(--on-accent, #111); } .ds-tag-solid-bad { background:var(--bad-fill, #c62828); border-color:var(--bad-fill, #c62828); color:#fff; } .ds-note { color:var(--muted, #5d6673); font:400 15px/1.5 system-ui, -apple-system, \"Segoe UI\", sans-serif; }"
     },
     {
-      "name": "App Bar",
-      "kind": "nav",
-      "refersTo": "appbar",
-      "description": "Dark header in both themes: gold mark and wordmark, state pill to Status, email.",
-      "html": "<header class=\"ds-appbar\"><a class=\"ds-logo\" href=\"#\"><svg class=\"ds-mark\" viewBox=\"0 0 28 28\"><rect x=\"1\" y=\"1\" width=\"26\" height=\"26\" rx=\"7\" fill=\"#e5a00d\"/><path d=\"M9.5 8v12M18.5 8v12M9.5 14h9\" stroke=\"#171b20\" stroke-width=\"3\" fill=\"none\"/></svg>Helperr</a><span class=\"ds-spacer\"></span><a class=\"ds-pill\" href=\"#\">Sonarr needs you</a><span class=\"ds-user\">admin@example.com</span></header>",
-      "css": ".ds-appbar { font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; display:flex; align-items:center; gap:16px; height:56px; padding:0 20px; background:var(--chrome, #171b20); color:var(--chrome-text, #c3cbd4); } .ds-logo { display:flex; align-items:center; gap:10px; color:var(--gold, #e5a00d); font-weight:700; font-size:16px; text-decoration:none; } .ds-mark { width:28px; height:28px; } .ds-spacer { flex:1; } .ds-pill { padding:1px 8px; border-radius:999px; background:var(--accent, #c7790b); color:#111; font-size:12px; font-weight:600; text-decoration:none; } .ds-user { color:var(--chrome-muted, #9aa4af); font-size:13px; } .ds-appbar a:focus-visible { outline:2px solid var(--gold, #e5a00d); outline-offset:2px; }"
-    },
-    {
-      "name": "Sidebar",
+      "name": "Sidebar Item with Badge",
       "kind": "nav",
       "refersTo": "sidebar-item",
-      "description": "212px dark sidebar; only the open section shows its sub pages, gold wash on it.",
-      "html": "<nav class=\"ds-sidebar\"><ul><li><a href=\"#\"><svg class=\"ds-icon\" viewBox=\"0 0 24 24\"><path d=\"M22 12h-4l-3 9L9 3l-3 9H2\"/></svg><span class=\"ds-label\">Status</span><span class=\"ds-badge ds-badge-warn\">1</span></a></li><li class=\"ds-open\"><a href=\"#\"><svg class=\"ds-icon\" viewBox=\"0 0 24 24\"><path d=\"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8\"/><path d=\"M3 3v5h5\"/><path d=\"M12 7v5l4 2\"/></svg><span class=\"ds-label\">Activity</span><span class=\"ds-badge\">2</span></a><ul class=\"ds-sub\"><li><a href=\"#\" aria-current=\"page\">Runs</a></li><li><a href=\"#\">Schedules</a></li></ul></li></ul></nav>",
-      "css": ".ds-sidebar { font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; width:212px; padding:8px 0; background:var(--chrome-side, #1f252c); } .ds-sidebar ul { margin:0; padding:0; list-style:none; } .ds-sidebar a { display:flex; align-items:center; gap:12px; padding:9px 16px 9px 20px; color:var(--chrome-text, #c3cbd4); text-decoration:none; } .ds-sidebar a:hover { background:var(--chrome-hover, #29313a); color:#fff; } .ds-sidebar a:focus-visible { outline:2px solid var(--gold, #e5a00d); outline-offset:2px; } .ds-open > a { color:var(--gold, #e5a00d); background:color-mix(in srgb, var(--gold, #e5a00d) 9%, transparent); } .ds-sub { padding-bottom:6px; } .ds-sub a { padding:6px 16px 6px 50px; color:var(--chrome-muted, #9aa4af); font-size:13px; } .ds-sub a[aria-current] { color:var(--gold, #e5a00d); font-weight:600; } .ds-label { flex:1; } .ds-icon { width:18px; height:18px; flex:none; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; } .ds-badge { min-width:20px; padding:0 6px; border-radius:999px; background:#3a434e; color:#e6e9ed; font-size:12px; font-weight:600; line-height:20px; text-align:center; font-variant-numeric:tabular-nums; } .ds-badge-warn { background:var(--gold, #e5a00d); color:#111; }"
+      "description": "The dark 212px sidebar: an icon and label per section, the open section in Gold on a 9% Gold wash, sub pages indented, counts as pill badges.",
+      "html": "<nav class=\"ds-side\"><a class=\"ds-side-link\" href=\"#\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M22 12h-4l-3 9L9 3l-3 9H2\"/></svg><span class=\"ds-side-label\">Status</span><span class=\"ds-badge ds-badge-warn\">1</span></a><a class=\"ds-side-link ds-open\" href=\"#\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8\"/><path d=\"M3 3v5h5\"/><path d=\"M12 7v5l4 2\"/></svg><span class=\"ds-side-label\">Activity</span><span class=\"ds-badge ds-badge-info\">2</span></a><a class=\"ds-side-sub ds-current\" href=\"#\">Runs</a><a class=\"ds-side-sub\" href=\"#\">Schedules</a></nav>",
+      "css": ".ds-side { width:212px; padding:8px 0; background:var(--chrome-side, #1f252c); font:400 15px/1.5 system-ui, -apple-system, \"Segoe UI\", sans-serif; } .ds-side-link { display:flex; align-items:center; gap:12px; padding:9px 16px 9px 20px; color:var(--chrome-text, #c3cbd4); text-decoration:none; } .ds-side-link svg { width:18px; height:18px; flex:none; } .ds-side-link:hover, .ds-side-sub:hover { background:var(--chrome-hover, #29313a); color:#fff; } .ds-side-link:focus-visible, .ds-side-sub:focus-visible { outline:2px solid var(--gold, #e5a00d); outline-offset:2px; } .ds-side-link.ds-open { color:var(--gold, #e5a00d); background:color-mix(in srgb, var(--gold, #e5a00d) 9%, transparent); } .ds-side-label { flex:1; } .ds-side-sub { display:block; padding:6px 16px 6px 50px; color:var(--chrome-muted, #9aa4af); font-size:13px; text-decoration:none; } .ds-side-sub.ds-current { color:var(--gold, #e5a00d); font-weight:600; } .ds-badge { min-width:20px; padding:0 6px; border-radius:999px; font:600 12px/20px system-ui, -apple-system, \"Segoe UI\", sans-serif; text-align:center; font-variant-numeric:tabular-nums; } .ds-badge-warn { background:var(--gold, #e5a00d); color:#111; } .ds-badge-info { background:var(--info-fill, #1a67c9); color:#fff; } .ds-badge-bad { background:var(--bad-fill, #c62828); color:#fff; }"
     },
     {
       "name": "Toolbar Button",
       "kind": "button",
       "refersTo": "toolbar-button",
-      "description": "The page's actions: icon over a 12px word, monochrome, groups split by a rule.",
-      "html": "<div class=\"ds-toolbar\"><div class=\"ds-group\"><a class=\"ds-tool\" href=\"#\"><svg class=\"ds-icon\" viewBox=\"0 0 24 24\"><path d=\"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8\"/><path d=\"M21 3v5h-5\"/><path d=\"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16\"/><path d=\"M8 16H3v5\"/></svg>Refresh</a></div><div class=\"ds-group\"><a class=\"ds-tool\" href=\"#\"><svg class=\"ds-icon\" viewBox=\"0 0 24 24\"><path d=\"M5 12h14M12 5v14\"/></svg>New schedule</a></div></div>",
-      "css": ".ds-toolbar { font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; display:flex; align-items:stretch; min-height:60px; padding:0 16px; background:var(--surface, #fff); border-bottom:1px solid var(--border, #d9dde3); } .ds-group { display:flex; align-items:center; gap:2px; } .ds-group + .ds-group { margin-left:8px; padding-left:8px; border-left:1px solid var(--border, #d9dde3); } .ds-tool { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; min-width:64px; padding:6px 10px; border-radius:6px; color:var(--text, #1c2128); font-size:12px; text-decoration:none; white-space:nowrap; } .ds-tool:hover { background:color-mix(in srgb, var(--text, #1c2128) 7%, transparent); } .ds-tool:focus-visible { outline:2px solid var(--text, #1c2128); outline-offset:-2px; } .ds-icon { width:18px; height:18px; flex:none; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; } .ds-tool .ds-icon { width:20px; height:20px; }"
+      "description": "A page action in the toolbar strip: a 20px icon over a 12px label, monochrome Ink, groups split by a 1px rule.",
+      "html": "<div class=\"ds-toolbar\"><div class=\"ds-group\"><a class=\"ds-tool\" href=\"#\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8\"/><path d=\"M3 3v5h5\"/><path d=\"M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16\"/><path d=\"M16 16h5v5\"/></svg>Refresh</a></div><div class=\"ds-group\"><a class=\"ds-tool\" href=\"#\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"6\" y=\"4\" width=\"4\" height=\"16\" rx=\"1\"/><rect x=\"14\" y=\"4\" width=\"4\" height=\"16\" rx=\"1\"/></svg>Pause auto-refresh</a></div></div>",
+      "css": ".ds-toolbar { display:flex; align-items:stretch; min-height:60px; padding:0 16px; background:var(--surface, #fff); border-bottom:1px solid var(--border, #d9dde3); } .ds-group { display:flex; align-items:center; gap:2px; } .ds-group + .ds-group { margin-left:8px; padding-left:8px; border-left:1px solid var(--border, #d9dde3); } .ds-tool { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; min-width:64px; padding:6px 10px; border:0; border-radius:6px; background:transparent; color:var(--text, #1c2128); font:400 12px/1.5 system-ui, -apple-system, \"Segoe UI\", sans-serif; text-decoration:none; white-space:nowrap; cursor:pointer; } .ds-tool:hover { background:color-mix(in srgb, var(--text, #1c2128) 7%, transparent); } .ds-tool:focus-visible { outline:2px solid var(--text, #1c2128); outline-offset:-2px; }"
     },
     {
-      "name": "Badge",
-      "kind": "chip",
-      "refersTo": "badge",
-      "description": "A sidebar count: neutral for work, gold for warn, red for bad.",
-      "html": "<span class=\"ds-badge\">2</span> <span class=\"ds-badge ds-badge-warn\">1</span> <span class=\"ds-badge ds-badge-bad\">3</span>",
-      "css": ".ds-badge { display:inline-block; min-width:20px; padding:0 6px; border-radius:999px; background:#3a434e; color:#e6e9ed; font:600 12px/20px system-ui, sans-serif; text-align:center; font-variant-numeric:tabular-nums; } .ds-badge-warn { background:var(--gold, #e5a00d); color:#111; } .ds-badge-bad { background:#da3633; color:#fff; }"
+      "name": "Dialog",
+      "kind": "card",
+      "refersTo": "dialog",
+      "description": "A confirmation page laid out as an *arr dialog: question and mode tag in the head, what happens in a banner, Cancel then the decision at the bottom right.",
+      "html": "<section class=\"ds-dialog\"><header class=\"ds-dialog-head\"><h1>Run Movers &amp; profilers?</h1><span class=\"ds-tag ds-tag-live\">live</span></header><div class=\"ds-dialog-body\"><p class=\"ds-muted\">Moves media between root folders and sets quality profiles.</p><p class=\"ds-banner ds-banner-warn\">Dry run is off for this job, so this run <strong>will make changes</strong>.</p></div><footer class=\"ds-dialog-foot\"><a class=\"ds-b ds-b-secondary\" href=\"#\">Cancel</a><button class=\"ds-b ds-b-secondary\">Dry run instead</button><button class=\"ds-b ds-b-danger\">Run live</button></footer></section>",
+      "css": ".ds-dialog { max-width:680px; background:var(--surface, #fff); border:1px solid var(--border, #d9dde3); border-radius:8px; color:var(--text, #1c2128); font:400 15px/1.5 system-ui, -apple-system, \"Segoe UI\", sans-serif; } .ds-dialog-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 20px; border-bottom:1px solid var(--border, #d9dde3); } .ds-dialog-head h1 { margin:0; font-size:20px; } .ds-dialog-body { display:flex; flex-direction:column; gap:12px; padding:16px 20px 20px; } .ds-dialog-body > * { margin:0; } .ds-muted { color:var(--muted, #5d6673); } .ds-banner { padding:10px 14px; border:1px solid var(--border, #d9dde3); border-radius:6px; background:var(--surface, #fff); } .ds-banner-warn { border-color:var(--accent, #c7790b); background:color-mix(in srgb, var(--accent, #c7790b) 8%, var(--surface, #fff)); } .ds-dialog-foot { display:flex; flex-wrap:wrap; justify-content:flex-end; align-items:center; gap:8px; padding:12px 20px; border-top:1px solid var(--border, #d9dde3); background:var(--bg, #f6f7f9); border-radius:0 0 8px 8px; } .ds-tag { display:inline-block; padding:1px 8px; border:1px solid var(--border, #d9dde3); border-radius:999px; font-size:12px; } .ds-tag-live { border-color:var(--bad, #c62828); color:var(--bad, #c62828); } .ds-b { display:inline-block; padding:6px 14px; border:1px solid; border-radius:6px; font:600 15px/1.5 system-ui, -apple-system, \"Segoe UI\", sans-serif; text-decoration:none; cursor:pointer; } .ds-b:focus-visible { outline:2px solid var(--text, #1c2128); outline-offset:2px; } .ds-b-secondary { background:transparent; color:var(--text, #1c2128); border-color:var(--border, #d9dde3); } .ds-b-danger { background:var(--bad-fill, #c62828); border-color:var(--bad-fill, #c62828); color:#fff; }"
     },
     {
-      "name": "State Tags",
-      "kind": "chip",
-      "refersTo": "tag",
-      "description": "Pill tags; border and text carry the state.",
-      "html": "<span class=\"ds-tag\">dry run</span> <span class=\"ds-tag ds-tag-live\">live</span> <span class=\"ds-tag ds-tag-warn\">warning</span> <span class=\"ds-tag ds-tag-ok\">ok</span>",
-      "css": ".ds-tag { display:inline-block; padding:1px 8px; border-radius:999px; border:1px solid var(--border, #d9dde3); font:12px/1.5 system-ui, sans-serif; color:var(--text, #1c2128); } .ds-tag-live { border-color:var(--bad, #c62828); color:var(--bad, #c62828); } .ds-tag-warn { border-color:var(--accent, #c7790b); color:var(--accent, #c7790b); } .ds-tag-ok { border-color:var(--ok, #1a7f37); color:var(--ok, #1a7f37); }"
-    },
-    {
-      "name": "Service Lines",
-      "kind": "custom",
-      "refersTo": "service-line",
-      "description": "Healthy services as one dim line each, opened for details.",
-      "html": "<ul class=\"ds-lines\"><li><details><summary class=\"ds-line\"><b>Radarr <span>5.14</span></b><span>ok</span><span>Queue 4 \u00b7 Missing 132 \u00b7 Cutoff unmet 867 \u00b7 Free 37.0 TB</span></summary><p>Facts and items</p></details></li><li><div class=\"ds-line\"><b>Seerr</b><span>not connected</span><span><a href=\"#\">Connect Seerr</a></span></div></li></ul>",
-      "css": ".ds-lines { list-style:none; margin:0; padding:0; font:15px/1.5 system-ui, sans-serif; background:var(--surface, #fff); border:1px solid var(--border, #d9dde3); border-radius:8px; overflow:hidden; } .ds-lines li + li { border-top:1px solid var(--border, #d9dde3); } .ds-line { display:grid; grid-template-columns: 12rem 7rem 1fr; gap:12px; padding:10px 16px; color:var(--muted, #5d6673); cursor:pointer; list-style:none; } .ds-line b { color:var(--text, #1c2128); } .ds-line b span { font-weight:400; font-size:13px; color:var(--muted, #5d6673); } .ds-line:hover { background: color-mix(in srgb, var(--text, #1c2128) 4%, transparent); } .ds-lines p { margin:0; padding:0 16px 12px; }"
-    },
-    {
-      "name": "State Card",
+      "name": "Status Verdict and State Card",
       "kind": "card",
       "refersTo": "card",
-      "description": "A service that needs you: whole state border, filled tag, problems first in a wash.",
-      "html": "<article class=\"ds-state-card\"><header><b>Sonarr</b><span class=\"ds-solid\">warning</span></header><ul><li><span class=\"ds-word\">warning</span> Low disk space: 412 GB free on /tv <span class=\"ds-dim\">\u00b7 for 2d 4h</span></li></ul></article>",
-      "css": ".ds-state-card { font:15px/1.5 system-ui, sans-serif; display:flex; flex-direction:column; gap:8px; padding:14px 16px; max-width:340px; background:var(--surface, #fff); color:var(--text, #1c2128); border:1px solid var(--accent, #c7790b); border-radius:8px; } .ds-state-card header { display:flex; justify-content:space-between; align-items:center; } .ds-solid { padding:1px 8px; border-radius:999px; background:var(--accent, #c7790b); color:#111; font-size:12px; font-weight:600; } .ds-state-card ul { list-style:none; margin:0; padding:8px 12px; border-radius:6px; background: color-mix(in srgb, var(--accent, #c7790b) 10%, transparent); } .ds-word { font-size:13px; font-weight:600; color:var(--warn-text, #8f5600); } .ds-dim { color:var(--muted, #5d6673); }"
+      "description": "The Status page's one-line verdict, then a card for a service that needs you: whole border in the state color, a solid state tag, problems in a 10% wash with state words.",
+      "html": "<p class=\"ds-verdict ds-verdict-warn\"><strong>1 service needs you:</strong> <a href=\"#\">Sonarr: 2 warnings, 3 stuck, for 2d 4h</a></p><article class=\"ds-card ds-card-warn\"><div class=\"ds-card-head\"><h2>Sonarr <span class=\"ds-version\">4.0.9</span></h2><span class=\"ds-solid-warn\">warning</span></div><ul class=\"ds-problems\"><li><span class=\"ds-word\">warning</span> Indexers unavailable due to failures <span class=\"ds-dim\">· for 2d 4h</span></li><li><span class=\"ds-word\">warning</span> 3 downloads stuck</li></ul><dl class=\"ds-facts\"><dt>Queue</dt><dd>12</dd><dt>Missing</dt><dd>1,204</dd></dl></article>",
+      "css": ".ds-verdict { margin:0 0 16px; padding:12px 16px; background:var(--surface, #fff); border:1px solid var(--border, #d9dde3); border-radius:8px; color:var(--text, #1c2128); font:400 16px/1.5 system-ui, -apple-system, \"Segoe UI\", sans-serif; } .ds-verdict-warn { border-color:var(--accent, #c7790b); } .ds-verdict a { color:var(--text, #1c2128); font-weight:600; text-underline-offset:3px; } .ds-verdict a:focus-visible { outline:2px solid var(--text, #1c2128); outline-offset:2px; } .ds-card { display:flex; flex-direction:column; gap:8px; max-width:420px; padding:14px 16px; background:var(--surface, #fff); border:1px solid var(--border, #d9dde3); border-radius:8px; color:var(--text, #1c2128); font:400 15px/1.5 system-ui, -apple-system, \"Segoe UI\", sans-serif; } .ds-card-warn { border-color:var(--accent, #c7790b); } .ds-card-head { display:flex; justify-content:space-between; align-items:center; gap:12px; } .ds-card h2 { margin:0; font-size:16px; } .ds-version { color:var(--muted, #5d6673); font-size:13px; font-weight:400; } .ds-solid-warn { padding:1px 8px; border-radius:999px; background:var(--accent, #c7790b); color:var(--on-accent, #111); font-size:12px; font-weight:600; } .ds-problems { list-style:none; margin:0; padding:8px 12px; display:flex; flex-direction:column; gap:4px; border-radius:6px; background:color-mix(in srgb, var(--accent, #c7790b) 10%, transparent); } .ds-word { color:var(--warn-text, #8f5600); font-size:13px; font-weight:600; } .ds-dim { color:var(--muted, #5d6673); } .ds-facts { display:grid; grid-template-columns:max-content 1fr; gap:4px 16px; margin:0; } .ds-facts dt { color:var(--muted, #5d6673); } .ds-facts dd { margin:0; font-variant-numeric:tabular-nums; }"
     },
     {
-      "name": "Card",
-      "kind": "card",
-      "refersTo": "card",
-      "description": "Groups one service or job; flat panel on the floor.",
-      "html": "<section class=\"ds-card\"><h2>Movers</h2><p>Moves media to another root folder by genre, studio or tag.</p><div><span class=\"ds-tag\">dry run</span></div></section>",
-      "css": ".ds-card { font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; display:flex; flex-direction:column; gap:8px; padding:14px 16px; background:var(--surface, #fff); color:var(--text, #1c2128); border:1px solid var(--border, #d9dde3); border-radius:8px; max-width:320px; } .ds-card h2 { font-size:16px; margin:0; } .ds-card p { margin:0; } .ds-card .ds-tag { display:inline-block; padding:1px 8px; border-radius:999px; border:1px solid var(--border, #d9dde3); font-size:12px; }"
-    },
-    {
-      "name": "Data Table",
+      "name": "Share Bar",
       "kind": "custom",
-      "refersTo": "table-header",
-      "description": "The main way data is shown: dim 13px headers, state words in color.",
-      "html": "<table class=\"ds-table\"><thead><tr><th>Run</th><th>Job</th><th>Status</th></tr></thead><tbody><tr><td>#142</td><td>removers</td><td class=\"ds-ok\">succeeded</td></tr><tr><td>#141</td><td>empty trash</td><td class=\"ds-bad\">failed</td></tr></tbody></table>",
-      "css": ".ds-table { font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; width:100%; border-collapse:collapse; background:var(--surface, #fff); color:var(--text, #1c2128); border:1px solid var(--border, #d9dde3); } .ds-table th, .ds-table td { padding:8px 12px; text-align:left; border-bottom:1px solid var(--border, #d9dde3); } .ds-table th { color:var(--muted, #5d6673); font-weight:600; font-size:13px; } .ds-ok { color:var(--ok, #1a7f37); font-weight:600; } .ds-bad { color:var(--bad, #c62828); font-weight:600; }"
+      "refersTo": "share-meter",
+      "description": "A native meter after its number: Signal Blue for data, Projector Amber past half for a rate you want low.",
+      "html": "<p class=\"ds-share-row\">31 <span class=\"ds-dim\">(62%)</span><meter class=\"ds-share\" min=\"0\" max=\"100\" value=\"62\" aria-hidden=\"true\"></meter></p><p class=\"ds-share-row\"><span class=\"ds-transcode\">40</span> of 66<meter class=\"ds-share\" min=\"0\" max=\"100\" value=\"61\" low=\"25\" high=\"50\" optimum=\"0\" aria-hidden=\"true\"></meter></p>",
+      "css": ".ds-share-row { margin:0 0 8px; color:var(--text, #1c2128); font:400 15px/1.5 system-ui, -apple-system, \"Segoe UI\", sans-serif; white-space:nowrap; } .ds-dim { color:var(--muted, #5d6673); } .ds-transcode { color:var(--warn-text, #8f5600); font-weight:600; } .ds-share { -webkit-appearance:none; appearance:none; width:56px; height:6px; margin-left:8px; vertical-align:middle; border:0; border-radius:999px; background:color-mix(in srgb, var(--text, #1c2128) 12%, transparent); } .ds-share::-webkit-meter-inner-element { display:block; } .ds-share::-webkit-meter-bar { height:6px; border:0; border-radius:999px; background:color-mix(in srgb, var(--text, #1c2128) 12%, transparent); } .ds-share::-webkit-meter-optimum-value { border-radius:999px; background:var(--info, #1a67c9); } .ds-share::-webkit-meter-suboptimum-value { border-radius:999px; background:var(--info, #1a67c9); } .ds-share::-webkit-meter-even-less-good-value { border-radius:999px; background:var(--accent, #c7790b); } .ds-share::-moz-meter-bar { border-radius:999px; background:var(--info, #1a67c9); } .ds-share:-moz-meter-sub-sub-optimum::-moz-meter-bar { background:var(--accent, #c7790b); }"
+    },
+    {
+      "name": "Stacked Table Row",
+      "kind": "custom",
+      "refersTo": "table-stack-row",
+      "description": "A table you read on a phone, as it renders below 700px: the name leads in 600 with its status at the right, the other cells follow in 13px with their column name in Dim Ink.",
+      "html": "<table class=\"ds-stack\"><tbody><tr><td class=\"ds-first\"><a href=\"#\">412</a></td><td class=\"ds-lead\">Removers</td><td class=\"ds-end\"><span class=\"ds-status ds-ok\">succeeded</span></td><td data-label=\"Mode\"><span class=\"ds-tag ds-tag-info\">plan for review</span></td><td data-label=\"Changes\">3</td><td class=\"ds-row\" data-label=\"Started\">9 Nov 2026, 04:00</td><td data-label=\"Took\">41s</td></tr><tr><td class=\"ds-first\"><a href=\"#\">411</a></td><td class=\"ds-lead\">Empty trash</td><td class=\"ds-end\"><span class=\"ds-status ds-dry\">dry run</span></td><td data-label=\"Mode\"><span class=\"ds-tag\">dry run</span></td><td data-label=\"Changes\">1</td><td class=\"ds-row\" data-label=\"Started\">9 Nov 2026, 03:30</td><td data-label=\"Took\">2s</td></tr></tbody></table>",
+      "css": ".ds-stack, .ds-stack tbody { display:block; max-width:380px; background:var(--surface, #fff); border:1px solid var(--border, #d9dde3); color:var(--text, #1c2128); font:400 15px/1.5 system-ui, -apple-system, \"Segoe UI\", sans-serif; } .ds-stack tr { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 12px; padding:10px 12px; border-bottom:1px solid var(--border, #d9dde3); } .ds-stack tr:last-child { border-bottom:0; } .ds-stack td { order:2; min-width:0; padding:0; font-size:13px; } .ds-stack td.ds-first { order:0; font-size:15px; } .ds-stack td.ds-lead { flex:1 1 0; min-width:50%; font-weight:600; } .ds-stack td.ds-end { order:1; font-size:15px; } .ds-stack td.ds-row { flex-basis:100%; } .ds-stack td[data-label]::before { content:attr(data-label) \" \"; color:var(--muted, #5d6673); } .ds-stack a { color:var(--link, #1a67c9); text-underline-offset:2px; } .ds-stack a:focus-visible { outline:2px solid var(--text, #1c2128); outline-offset:2px; } .ds-status { font-weight:600; white-space:nowrap; } .ds-ok { color:var(--ok, #1a7f37); } .ds-dry { color:var(--muted, #5d6673); } .ds-tag { display:inline-block; padding:1px 8px; border:1px solid var(--border, #d9dde3); border-radius:999px; font-size:12px; white-space:nowrap; } .ds-tag-info { border-color:var(--info, #1a67c9); color:var(--info, #1a67c9); }"
     }
   ],
   "narrative": {
     "northStar": "The Control Room",
-    "overview": "**Creative North Star: \"The Control Room\"**\n\nHelperr is the room you walk into to check that the server is fine. When everything is healthy it is calm: cool grey floors, white (or slate) panels, black ink, thin rule lines, inside a dark frame. Color is reserved for meaning. Green says a thing worked, amber says look at this, red says something failed or something will be deleted. An operator scanning the screen should be able to find every problem by color alone, and a screen with no problems should have almost no color on it.\n\nIt is a dense, expert surface for one admin at a desktop browser. Information is laid out as tables, fact lists and small cards, not prose; numbers are tabular; logs, paths, release names and cron expressions are monospace. There is no imagery, no illustration, no motion and no shadow; the only pictures are small monochrome line icons, each next to a word. Depth comes from a panel sitting on a slightly darker floor, separated by a 1px rule. Light and dark themes follow the operating system (`prefers-color-scheme`); every color token has a dark counterpart.\n\nThe Status page is the reference for the idea: a one-line verdict first (\"All 5 connected services are OK\", or \"2 services need you: \u2026\" linking to each), then a card for each service that needs you, then every healthy or unconnected service as a single dim line in one panel, opened for its details.\n\nThe shell is modelled on Sonarr and Radarr, so Helperr reads as a sibling *arr: a dark header and a dark sidebar in both themes, and a toolbar of icon-over-label actions above each page. The chrome frames the board; it never carries state color except the badges and pill that say something needs you.\n\nThe look is system-native on purpose: system fonts, native form controls, native `<details>`, `<progress>` and checkboxes, so pages render instantly, work without JavaScript, and satisfy a strict CSP with nothing to load.",
+    "overview": "Helperr is the room you walk into to check that the server is fine. When everything is healthy it is calm: cool grey floors, white (or slate) panels, black ink, thin rule lines, inside a dark frame. Color is reserved for meaning. Green says a thing worked, amber says look at this, red says something failed or something will be deleted, and blue, as in Sonarr and Radarr, is a link, something in progress, or a number's share; blue is never a problem. An operator scanning the screen should be able to find every problem by color alone, and a screen with no problems should have almost no color on it.\n\nIt is a dense, expert surface for one admin at a desktop browser, readable on a phone. Information is laid out as tables, fact lists and small cards, not prose; numbers are tabular; logs, paths, release names and cron expressions are monospace. There is no imagery, no illustration, no motion and no shadow; the only pictures are small monochrome line icons, each next to a word. Depth comes from a panel sitting on a slightly darker floor, separated by a 1px rule. Light and dark themes follow the operating system (`prefers-color-scheme`); every themed color has a dark counterpart.\n\nThe shell is modelled on Sonarr and Radarr, so Helperr reads as a sibling *arr: a dark header and a dark sidebar in both themes, and a toolbar of icon-over-label actions above each page. The chrome frames the board; it carries no state color except the badges and the header pill that say something needs you, and Gold for the brand and where you are. The Status page is the reference for the idea: a one-line verdict first, then a card for each service that needs you, then every healthy or unconnected service as one dim line.\n\nThe look is system-native on purpose: system fonts, native form controls, native `<details>`, `<meter>`, `<progress>` and checkboxes, so pages render instantly, work without JavaScript, and satisfy a strict CSP with nothing to load.",
     "keyCharacteristics": [
-      "Neutral at rest; color only marks state (ok / warn / bad) and, in gold, the brand and where you are. A healthy service has no state color at all.",
-      "A dark *arr-style frame in both themes: header, 212px sidebar, then a toolbar of the page's actions.",
-      "Flat: panels on a floor, 1px rules, no shadows.",
-      "System fonts, one body size (15px), a short heading scale (20 / 16 px).",
-      "Tables and definition lists over cards; cards group a service or a job, never decorate.",
+      "Neutral at rest; color only marks state (ok / warn / bad), blue marks links, progress and data, and Gold marks the brand and where you are. A healthy service has no state color at all.",
+      "A dark *arr-style frame in both themes: 56px header, 212px sidebar, then a toolbar of the page's actions.",
+      "Flat: panels on a floor, 1px rules, no shadows, no motion.",
+      "System fonts, one body size (15px), one small size (13px), a short heading scale (20 / 16px).",
+      "Tables and definition lists over cards; cards group a service, never decorate.",
+      "Confirmations are pages laid out as *arr dialogs, the decision last and named by its consequence.",
       "Light and dark themes from the OS, no theme toggle."
     ],
     "rules": [
       {
         "name": "The Quiet Board Rule",
-        "body": "A healthy screen is almost colorless. Green, amber and red appear only where a state needs reading; never use them for decoration, section color-coding or emphasis. Gold in the chrome marks the brand and where you are, nothing else.",
+        "body": "A healthy screen is almost colorless. Green, amber and red appear only where a state needs reading; blue only on links, things in progress, selection and data. Never use any of them for decoration, section color-coding or emphasis. Waiting isn't failing: a request not started yet is Ink, not red. Gold in the chrome marks the brand and where you are, nothing else.",
         "section": "colors"
       },
       {
@@ -620,17 +614,17 @@
       },
       {
         "name": "The Amber Contrast Caveat",
-        "body": "Light-mode Projector Amber on white is about 3.4:1, below AA for body-size text. Warning text uses Warning Ink and links Link Ink; Projector Amber stays for fills, borders, focus of chip fields and checkbox/radio accents; Gold sits on the dark chrome, where it reads.",
+        "body": "Light-mode Projector Amber on white is about 3.4:1, below AA for body-size text. Warning text uses Warning Ink; Projector Amber stays for fills, borders and washes; Gold sits on the dark chrome, where it reads.",
         "section": "colors"
       },
       {
         "name": "The Two Sizes Rule",
-        "body": "Text is 15px or 13px; headings, and 12px tags, badges and toolbar labels, are the only exceptions. Don't introduce 14px, 17px or 18px.",
+        "body": "Text is 15px or 13px; headings (20 / 16px, which the verdict and wordmark share), and 12px tags, badges, toolbar labels and mono blocks, are the only exceptions. Don't introduce 14px, 17px or 18px.",
         "section": "typography"
       },
       {
         "name": "The Tabular Numbers Rule",
-        "body": "Any number meant to be compared (counts, sizes, metrics) uses tabular numerals.",
+        "body": "Any number meant to be compared (counts, sizes, metrics, dates in dense tables) uses tabular numerals.",
         "section": "typography"
       },
       {
@@ -645,22 +639,25 @@
       }
     ],
     "dos": [
-      "Do use the CSS custom properties (`--bg`, `--surface`, `--text`, `--muted`, `--border`, `--accent`, `--ok`, `--bad`) and add both a light and a dark value for any new one.",
-      "Do keep pages working without JavaScript and within the CSP: one stylesheet, self-hosted assets, no inline styles or scripts.",
+      "Do use the CSS custom properties (`--bg`, `--surface`, `--text`, `--muted`, `--border`, `--accent`, `--warn-text`, `--info`, `--link`, `--ok`, `--bad`, `--bad-fill`, `--primary`, `--gold`, `--chrome*`) and give any new themed one both a light and a dark value.",
+      "Do keep pages working without JavaScript and within the CSP: one stylesheet, self-hosted assets, no inline styles or scripts; use native `<details>`, `<meter>` and `<progress>` where a script or inline width would otherwise be needed.",
       "Do put the page's actions in the toolbar as icon-over-label buttons; keep a form's own buttons next to its fields.",
-      "Do show dry run vs live with a tag next to the job or run, every time.",
-      "Do use tables for any list of more than a few comparable items, with tabular numbers and thousands separators.",
-      "Do say every state in a word next to its color, and let long names and paths wrap (`overflow-wrap: anywhere` in cards, `min-width: 0` on grid children); set release names and paths in 12px mono.",
+      "Do show a job's or run's mode with its mode tag, using the one name from the modes table, every time.",
+      "Do make every confirmation a dialog page: question as the heading, mode tag at the right, what happens in a banner, Cancel first and the decision last, named by its consequence.",
+      "Do use tables for any list of more than a few comparable items, with tabular numbers and thousands separators; mark the tables you read on a phone to stack.",
+      "Do say every state in a word next to its color, and let long names and paths wrap; set release names and paths in 12px mono.",
       "Do collapse what's healthy: a healthy thing is one dim line, a thing that needs you is a card."
     ],
     "donts": [
-      "Don't use green, amber or red for anything but state; gold also marks the brand and where you are. The primary action is Ink, never amber.",
-      "Don't add shadows, gradients, background images or decorative illustration.",
+      "Don't use green, amber or red for anything but state, or blue for anything but links, progress, selection and data; Gold marks only the brand and where you are. The primary action is Ink, never amber.",
+      "Don't color waiting as failure: a request not started yet is Ink, a dry run is Dim Ink.",
+      "Don't add shadows, gradients, transitions, background images or decorative illustration.",
       "Don't mark state with a colored side border (`border-left` wider than 1px); use the whole border, a fill or a wash.",
       "Don't add web fonts or icon fonts; system fonts only, and icons from the self-hosted SVG sprite, always next to a word.",
       "Don't set warning text in Projector Amber; use Warning Ink.",
       "Don't reload a page on a timer without a way to pause it (`?refresh=0` on Status).",
-      "Don't use the danger button for anything reversible or dry; a dry run's Run button is the plain primary."
+      "Don't use the danger button for anything reversible or dry; a dry run's button is the plain primary.",
+      "Don't call \"settings\" a mode, or label a decision \"OK\"."
     ]
   }
 }
