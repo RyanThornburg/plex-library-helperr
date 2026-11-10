@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from config.models import ArrConfig, BazarrConfig, ConfigSettings, LinkConfig, SabnzbdConfig, SeerrConfig, TautulliConfig
 from tests.test_web import ORIGIN, FakeKeys, auth, fake_run_job
 from tests.test_web import settings  # noqa: F401 (fixture)
-from web import status
+from web import health, status
 from web.app import create_app
 from web.status import Item, ServiceStatus, check_all, size
 
@@ -173,6 +173,29 @@ class TestArrQueue:
         ]
         assert result.state == "bad"
         assert dict(result.facts)["Queue"] == "3, 1 downloading, 2 need attention"
+
+    def test_a_season_pack_is_one_download(self):
+        # sonarr lists a season pack as a record per episode: one row, one incident
+        pack = [
+            {
+                "id": n,
+                "downloadId": "SABnzbd_nzo_pack",
+                "trackedDownloadState": "importPending",
+                "trackedDownloadStatus": "warning",
+                "series": {"title": "Big Brother (US)"},
+                "episode": {"seasonNumber": 3, "episodeNumber": n},
+                "statusMessages": [{"title": "pack", "messages": ["Episode file already imported"]}],
+            }
+            for n in (18, 19, 20)
+        ]
+        downloading = [{"id": 30 + n, "downloadId": "nzo_other", "trackedDownloadState": "downloading"} for n in range(4)]
+        result = ServiceStatus("sonarr", "Sonarr")
+        status.arr_queue(result, pack + downloading, 7)
+        assert result.items == [
+            Item("Big Brother (US) S03E18 and 2 more", "Episode file already imported", level="warn", key="SABnzbd_nzo_pack")
+        ]
+        assert dict(result.facts)["Queue"] == "7, 1 downloading, 1 need attention"
+        assert health.item_key(result.items[0]) == "queue:SABnzbd_nzo_pack"
 
     def test_title_falls_back_to_the_release(self):
         assert status.arr_title({"title": "Some.Release.1080p"}) == "Some.Release.1080p"

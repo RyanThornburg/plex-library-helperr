@@ -18,9 +18,8 @@ from web.lookups import BAZARR_NOT_API, redact
 logger = logging.getLogger(__name__)
 
 TIMEOUT = 10
-# queue records read from radarr/sonarr, enough to find the stuck ones
-ARR_QUEUE_PAGE = 200
-# queue records read to clear stuck downloads: all of them, a season pack is one per episode
+# queue records read from radarr/sonarr: all of them, a season pack is a record per
+# episode, so a few big packs would push stuck downloads past a smaller page
 ARR_QUEUE_ALL = 2000
 # sabnzbd downloads listed on the card
 SAB_QUEUE_LIMIT = 10
@@ -67,6 +66,8 @@ class Item:
     detail: str = ""
     progress: int | None = None  # percent
     level: str = "ok"
+    # a queue download's id in the download client, for its incident ("" when it has none)
+    key: str = ""
 
 
 @dataclass
@@ -184,18 +185,33 @@ def stuck_messages(record: dict[str, Any]) -> list[str]:
 
 
 def arr_queue(status: ServiceStatus, records: list[dict[str, Any]], total: int) -> None:
-    """the queue's size and the records radarr/sonarr won't finish on their own"""
-    downloading = 0
-    for record in records:
+    """the queue's size and the downloads radarr/sonarr won't finish on their own. A
+    season pack is a record per episode: it's one download here, as on the queue page"""
+    downloading: set[object] = set()
+    stuck: dict[object, tuple[Item, list[str], list[str]]] = {}
+    for index, record in enumerate(records):
+        group = record.get("downloadId") or ("record", index)
         if record.get("trackedDownloadState") == "downloading":
-            downloading += 1
+            downloading.add(group)
         if level := stuck_level(record):
-            status.items.append(Item(arr_title(record), "; ".join(stuck_messages(record)), level=level))
-            status.raise_state(level)
+            item, titles, messages = stuck.setdefault(
+                group, (Item("", level=level, key=str(record.get("downloadId") or "")), [], [])
+            )
+            if (title := arr_title(record)) not in titles:
+                titles.append(title)
+            messages.extend(m for m in stuck_messages(record) if m not in messages)
+            if LEVELS[level] > LEVELS[item.level]:
+                item.level = level
+    for item, titles, messages in stuck.values():
+        item.title = titles[0] + (f" and {len(titles) - 1} more" if len(titles) > 1 else "")
+        item.detail = "; ".join(messages)
+        status.items.append(item)
+        status.raise_state(item.level)
+    downloading_count = len(downloading)
     status.items_label = "Needs attention in the queue"
     queue = f"{total:,}"
-    if downloading:
-        queue += f", {downloading} downloading"
+    if downloading_count:
+        queue += f", {downloading_count} downloading"
     if status.items:
         queue += f", {len(status.items)} need attention"
     status.facts.append(("Queue", queue))
@@ -330,7 +346,7 @@ def arr_status(service: str, label: str, arr: ArrConfig | None, min_free_gb: int
         if service == "radarr"
         else {"includeSeries": "true", "includeEpisode": "true"}
     )
-    queue = get("queue", pageSize=ARR_QUEUE_PAGE, **include)
+    queue = get("queue", pageSize=ARR_QUEUE_ALL, **include)
     arr_queue(status, queue.get("records") or [], _int(queue.get("totalRecords")))
     missing = get("wanted/missing", pageSize=1, monitored="true").get("totalRecords")
     cutoff = get("wanted/cutoff", pageSize=1, monitored="true").get("totalRecords")
