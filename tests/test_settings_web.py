@@ -418,8 +418,8 @@ class TestRules:
     def test_a_form_and_its_preview_load_the_settings_once(self, client, monkeypatch):
         connect_radarr(client)
         loads = []
-        real = type(store(client)).load_settings
-        monkeypatch.setattr(type(store(client)), "load_settings", lambda self: loads.append(1) or real(self))
+        real = client.app.state.load_config
+        monkeypatch.setattr(client.app.state, "load_config", lambda: loads.append(1) or real())
         client.get("/settings/radarr/movers/new", headers=auth())
         assert len(loads) == 1
         post(client, "/settings/radarr/movers/new", {"version": version(client), "action": "preview", "path": "/movies/kids", "genres": "Family"})

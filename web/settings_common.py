@@ -12,13 +12,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 import config
 from config.document import RULE_TYPES
-from config.models import ConfigSettings
 from web.config_store import ConfigConflict, ConfigStore
 from web.lookups import (
     Lookups,
 )
 from web.routes import templates
-from web.secret_box import SecretError
 
 
 logger = logging.getLogger(__name__)
@@ -102,19 +100,6 @@ def check_kind(arr: str, kind: str) -> None:
     check_arr(arr)
     if kind not in RULE_TYPES:
         raise HTTPException(status_code=404)
-
-
-def current_settings(request: Request) -> tuple[ConfigSettings | None, str | None]:
-    """the stored config with its secrets, for lookups. None and why when it can't load.
-    Loaded once per request: a rule form's choices, its filter_time and its preview all
-    ask. Pages render it before saving or after a save failed, so it's never stale"""
-    if (cached := getattr(request.state, "settings", None)) is None:
-        try:
-            cached = store(request).load_settings(), None
-        except (ValueError, SecretError) as e:
-            cached = None, str(e)
-        request.state.settings = cached
-    return cached
 
 
 def live_parts(document: dict[str, Any]) -> set[str]:

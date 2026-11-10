@@ -17,11 +17,11 @@ from web.db import ConfigVersion
 from web.lookups import (
     LookupFailed,
 )
+from web.routes import loaded_settings
 from web.settings_common import (
     checked_duration,
     checked_int,
     commit,
-    current_settings,
     dry_run_choice,
     first,
     FormLists,
@@ -133,7 +133,7 @@ def trash(request: Request, values: dict[str, Any] | None = None, errors: list[s
         "max_deleted_items": section.get("max_deleted_items", defaults.max_deleted_items),
         "dry_run": dry_run_choice(section),
     }
-    settings, error = current_settings(request)
+    settings, error = loaded_settings(request)
     plex_libraries: list[str] = []
     problems = [] if settings else [f"Libraries couldn't load: {error}"]
     if settings:

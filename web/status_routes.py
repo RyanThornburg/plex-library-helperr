@@ -27,8 +27,7 @@ from web.health import (
     summary,
 )
 from web.jobs import utc_now
-from web.routes import form_lists, templates
-from web.secret_box import SecretError
+from web.routes import form_lists, loaded_settings, templates
 from web.sync import sync_status
 from web.status import (
     BLOCKLIST,
@@ -71,10 +70,9 @@ def statuses(
 ) -> tuple[list[ServiceStatus], str | None, dict[str, dict[str, str]], list[dict[str, str]]]:
     """every service's status, links to them and to other tools, or none and why the
     settings can't load"""
-    try:
-        settings: ConfigSettings = request.app.state.load_config()
-    except (SecretError, ValueError) as e:
-        return [], str(e), {}, []
+    settings, error = loaded_settings(request)
+    if settings is None:
+        return [], error, {}, []
     others = [{"name": l.name, "local": l.url, "public": l.public_url, "service": l.service} for l in settings.links]
     now = utc_now()
     found = check_all(settings, now)
@@ -237,10 +235,9 @@ class QueueError(Exception):
 def arr_queue(request: Request, service: str) -> ArrQueue:
     if service not in QUEUES:
         raise HTTPException(status_code=404)
-    try:
-        settings: ConfigSettings = request.app.state.load_config()
-    except (SecretError, ValueError) as e:
-        raise QueueError(f"The settings can't be loaded: {e}", 503)
+    settings, error = loaded_settings(request)
+    if settings is None:
+        raise QueueError(f"The settings can't be loaded: {error}", 503)
     arr = getattr(settings, service)
     if arr is None or not arr.baseurl or not arr.apikey:
         raise QueueError(f"{QUEUES[service]} isn't connected.", 409)

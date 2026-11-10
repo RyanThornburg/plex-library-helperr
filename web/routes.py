@@ -147,14 +147,25 @@ def get_run(request: Request, run_id: int) -> JobRun:
 CONNECTION_LABELS = {"seerr": "Seerr", "tautulli": "Tautulli", "radarr": "Radarr", "sonarr": "Sonarr", "plex": "Plex"}
 
 
+def loaded_settings(request: Request) -> tuple[ConfigSettings | None, str | None]:
+    """the settings jobs run with (app.state.load_config), loaded once per request, or
+    None and why they can't load: a secret that can't be decrypted or an invalid
+    config, which pages show (a job would fail the same way). Anything else, such as
+    the database failing, is an error"""
+    if (cached := getattr(request.state, "settings", None)) is None:
+        try:
+            cached = request.app.state.load_config(), None
+        except (SecretError, ValueError) as e:
+            cached = None, str(e)
+        request.state.settings = cached
+    return cached
+
+
 def missing_connections(request: Request, *services: str) -> list[str]:
     """the connections a page needs that aren't set up. [] when the settings can't
     load: the page's sync status says why"""
-    try:
-        settings = request.app.state.load_config()
-    except (SecretError, ValueError):
-        return []
-    return [CONNECTION_LABELS[s] for s in services if getattr(settings, s) is None]
+    settings, _ = loaded_settings(request)
+    return [CONNECTION_LABELS[s] for s in services if settings and getattr(settings, s) is None]
 
 
 def recent_runs(request: Request, limit: int, before: int | None = None) -> list[JobRun]:
@@ -210,10 +221,9 @@ def config_modes(
 ) -> tuple[dict[str, bool | None], str | None, list[RemoverRule | MovieRemoverRule]]:
     """each job's dry run state as configured (None when partly live), any error loading
     the config and the auto-approved removers"""
-    try:
-        settings = request.app.state.load_config()
-    except Exception as e:  # shown on the page, jobs would fail the same way
-        return {}, f"{type(e).__name__}: {e}", []
+    settings, error = loaded_settings(request)
+    if settings is None:
+        return {}, error, []
     modes = {job: config.config_dry_run(job, settings) for job in JOBS}
     auto = auto_approved(request, settings)
     if auto and modes["removers"]:
@@ -476,10 +486,8 @@ def apply_confirm(
         problem = "Select at least one series or movie from the plan."
     # each arr's removals and files, checked against its own max_deletes
     arrs: list[dict[str, Any]] = []
-    try:
-        settings = request.app.state.load_config()
-    except Exception:  # the run would fail the same way, its log will say why
-        settings = None
+    # None: the run would fail the same way, its log will say why
+    settings, _ = loaded_settings(request)
     for service in ("SONARR", "RADARR"):
         removals = [r for r in selected if r["service"] == service]
         if not removals:
@@ -678,10 +686,7 @@ def remover_rules(request: Request) -> tuple[list[RemoverRule | MovieRemoverRule
 
 
 def remover_config(request: Request) -> tuple[ConfigSettings | None, str | None]:
-    try:
-        return request.app.state.load_config(), None
-    except Exception as e:
-        return None, f"{type(e).__name__}: {e}"
+    return loaded_settings(request)
 
 
 def rule_settings(request: Request) -> dict[str, RemoverRuleSetting]:

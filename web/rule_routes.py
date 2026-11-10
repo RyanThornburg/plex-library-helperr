@@ -22,7 +22,7 @@ from web.lookups import (
     preview_mover,
     preview_profiler,
 )
-from web.routes import error_page, templates
+from web.routes import error_page, loaded_settings, templates
 from web.settings_common import (
     ARR_FIELD,
     RULE_NAMES,
@@ -32,7 +32,6 @@ from web.settings_common import (
     checked_duration,
     checked_int,
     commit,
-    current_settings,
     dry_run_choice,
     first,
     FormLists,
@@ -145,7 +144,7 @@ def rule_number(document: dict[str, Any], arr: str, kind: str, number: int) -> d
 
 def choices(request: Request, arr: str, refresh: bool = False) -> tuple[ArrLibrary | None, list[str], list[str]]:
     """(the arr's library, plex libraries, problems loading them) for a rule form"""
-    settings, error = current_settings(request)
+    settings, error = loaded_settings(request)
     if settings is None:
         return None, [], [f"Choices couldn't load: {error}"]
     problems = []
@@ -198,7 +197,7 @@ def rule_form(
     library, plex_libraries, problems = choices(
         request, arr, request.query_params.get("refresh") == "1"
     )
-    settings, _ = current_settings(request)
+    settings, _ = loaded_settings(request)
     # radarr removers remove movies by root folder, a form of their own
     form = "movie_remover" if (arr, kind) == ("radarr", "removers") else RULE_NAMES[kind]
     return page(
@@ -403,7 +402,7 @@ def save_rule(request: Request, arr: str, kind: str, number: int | None, fields:
 def rule_preview(
     request: Request, arr: str, kind: str, number: int | None, rule: Any, rules: list[dict[str, Any]]
 ) -> Preview:
-    settings, error = current_settings(request)
+    settings, error = loaded_settings(request)
     if settings is None:
         return Preview(problem=error)
     try:
