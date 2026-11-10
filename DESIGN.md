@@ -388,7 +388,7 @@ The page's actions, the way the *arrs show them. A strip at least 60px tall on P
 - **Options:** a per-browser view choice (Status: whether service links open public or local addresses) is an Options button in the right-end group, a `<details>` whose panel (Panel, Rule Line, 8px radius, 12px × 14px, a 13px bold legend) opens under the toolbar at the right, or as a sheet at the bottom of the screen on a phone. It closes on a click outside or Escape, and only shows with JavaScript, which remembers the choice.
 
 ### Icons
-A Lucide SVG sprite (ISC), self-hosted, drawn with `<use>`: 18px (20px in the toolbar), 2px stroke, round caps and joins, `currentColor`, no fill. Every icon sits next to a word and is hidden from screen readers. Helperr's own mark is a Gold square with 7px corners and a Chrome "H", 28px in the header.
+A Lucide SVG sprite (ISC), self-hosted, drawn with `<use>`: 18px (20px in the toolbar), 2px stroke, round caps and joins, `currentColor`, no fill. Every icon sits next to a word and is hidden from screen readers. Helperr's own mark is a Gold square with 7px corners and a Chrome "H", 28px in the header. The same mark is the favicon (`static/favicon.svg`), and full-bleed (iOS rounds it) as the 180px home-screen icon (`static/apple-touch-icon.png`).
 
 ### Navigation
 - **Header:** Chrome, 56px, 20px side padding, in both themes. The mark and "Helperr" in bold 16px Gold, linking to Status; at the right a solid state pill (`warning` or `error` fill: "Sonarr needs you", "2 services need you") linking to Status, absent when nothing needs you; then the signed-in email in 13px Chrome Muted. A skip link to the content appears on focus. Focus inside the chrome is a 2px Gold outline.

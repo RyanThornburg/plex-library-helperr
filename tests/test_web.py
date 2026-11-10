@@ -164,6 +164,13 @@ class TestAccessAuth:
         response = client.get("/runs", headers=auth(make_token(email="Me@Example.com")))
         assert response.status_code == 200
 
+    def test_pages_have_a_favicon(self, client):
+        page = client.get("/runs", headers=auth()).text
+        assert '<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">' in page
+        icon = client.get("/static/favicon.svg", headers=auth())
+        assert icon.status_code == 200 and icon.headers["content-type"].startswith("image/svg+xml")
+        assert client.get("/static/apple-touch-icon.png", headers=auth()).headers["content-type"] == "image/png"
+
     def test_static_files_need_a_token(self, client):
         assert client.get("/static/app.css").status_code == 403
         assert client.get("/static/app.css", headers=auth()).status_code == 200
