@@ -9,6 +9,7 @@ be checked gets a "down" incident and its other incidents stay as they were: nob
 knows whether they cleared"""
 
 import logging
+import threading
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -56,8 +57,9 @@ def problem_key(problem: Problem) -> str:
 
 
 def item_key(item: Item) -> str:
-    """a stuck queue record's key"""
-    return f"queue:{item.title}"[:500]
+    """a stuck download's key: its download id, so a season pack is one incident and a
+    title change doesn't start a new one; its title when the arr gives no id"""
+    return f"queue:{item.key or item.title}"[:500]
 
 
 def issues(status: ServiceStatus) -> list[Issue]:
@@ -87,10 +89,15 @@ def _worse(a: str, b: str) -> str:
     return a if LEVELS.get(a, 0) >= LEVELS.get(b, 0) else b
 
 
+# the health check and a Status page view can record at once: one at a time, so both
+# don't open the same new incident
+_recording = threading.Lock()
+
+
 def record(engine: Engine, statuses: Iterable[ServiceStatus], now: datetime) -> int:
     """open, update and close incidents from one round of checks, delete those that
     ended more than KEEP ago. Returns the incidents open now"""
-    with Session(engine) as session:
+    with _recording, Session(engine) as session:
         session.execute(delete(HealthIncident).where(HealthIncident.ended_at < now - KEEP))
         current = {
             (i.service, i.key): i

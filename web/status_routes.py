@@ -22,6 +22,7 @@ from web.health import (
     incidents,
     item_key,
     problem_key,
+    record,
     span,
     summary,
 )
@@ -75,7 +76,15 @@ def statuses(
     except (SecretError, ValueError) as e:
         return [], str(e), {}, []
     others = [{"name": l.name, "local": l.url, "public": l.public_url, "service": l.service} for l in settings.links]
-    return check_all(settings, utc_now()), None, links(settings), others
+    now = utc_now()
+    found = check_all(settings, now)
+    # what the page shows is recorded too, so the header pill and the sidebar badges
+    # (read from the incidents) agree with it instead of with the last background check
+    try:
+        record(request.app.state.engine, found, now)
+    except Exception:
+        logger.exception("WEB\t Couldn't record the status page's checks")
+    return found, None, links(settings), others
 
 
 def links(settings: ConfigSettings) -> dict[str, dict[str, str]]:

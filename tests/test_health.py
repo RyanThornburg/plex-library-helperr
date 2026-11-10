@@ -166,6 +166,15 @@ class TestPages:
         # how long the open problem has lasted, on its card and in the summary line
         assert "Sonarr down, for 2h 0m" in page.text
 
+    def test_the_header_agrees_with_what_the_page_checked(self, client, monkeypatch):
+        """the pill and badges come from incidents; the page's own check is recorded,
+        so a service that recovered since the last background check isn't still shown
+        as needing you"""
+        monkeypatch.setattr("web.status_routes.check_all", lambda settings, now: [service("sonarr")])
+        page = client.get("/status", headers=auth()).text
+        assert "needs you</a>" not in page
+        assert "Sonarr can&#39;t be checked" in page and ">ongoing</span>" not in page
+
     def test_ongoing_incidents_come_first(self, client, monkeypatch):
         monkeypatch.setattr("web.status_routes.check_all", fake_check_all)
         now = utc_now()
