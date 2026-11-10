@@ -1,5 +1,5 @@
-"""playback.py - playback quality: how plex streamed the last few weeks of plays, and why
-it transcoded.
+"""playback.py - playback quality: how plex streamed the plays of the last year (KEEP),
+and why it transcoded.
 
 PlaybackSync reads Tautulli's new plays every INTERVAL and adds each movie/episode play
 with how plex streamed it (get_stream_data) to `playbacks`, kept for KEEP. It's about

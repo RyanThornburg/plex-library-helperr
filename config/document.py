@@ -40,7 +40,7 @@ def rule_class(arr_name: str, rule_type: str) -> type[Rule]:
 
 
 def rule_to_dict(rule: Rule) -> dict[str, Any]:
-    """a rule's fields without defaults/empties, durations as 7d etc, like config.toml"""
+    """a rule's fields without defaults/empties, durations as 7d etc, as a rule form saves them"""
     data: dict[str, Any] = {}
     for f in fields(rule):
         value = getattr(rule, f.name)
@@ -50,17 +50,6 @@ def rule_to_dict(rule: Rule) -> dict[str, Any]:
             continue
         data[f.name] = format_duration(value) if isinstance(value, timedelta) else value
     return data
-
-
-def strip_secrets(document: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str]]:
-    """(the document without secrets, the secrets by SECRET_FIELDS name)"""
-    document = copy.deepcopy(document)
-    secrets: dict[str, str] = {}
-    for name, (section, key) in SECRET_FIELDS.items():
-        value = document.get(section, {}).pop(key, None)
-        if value:
-            secrets[name] = value
-    return document, secrets
 
 
 def secrets_in(document: dict[str, Any]) -> list[str]:

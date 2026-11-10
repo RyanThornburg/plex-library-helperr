@@ -11,7 +11,6 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from web.jobs import utc_now
 from web.playback import (
     BACKFILL,
-    CAUSES,
     DECISIONS,
     DEFAULT_WINDOW,
     FILE_MIN_USERS,
@@ -88,7 +87,6 @@ def playback_page(request: Request) -> HTMLResponse:
             "interval_minutes": int(INTERVAL.total_seconds() // 60),
             "WINDOWS": WINDOWS,
             "DECISIONS": DECISIONS,
-            "CAUSES": CAUSES,
         },
     )
 

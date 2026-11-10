@@ -37,7 +37,7 @@ class AppSetting(Base):
 
 
 class ConfigVersion(Base):
-    """one saved version of the config document (config.toml's shape, no secrets), the
+    """one saved version of the config document (TOML-style sections, no secrets), the
     newest is the config. Restoring an old version saves it again as a new one"""
 
     __tablename__ = "config_versions"
@@ -287,7 +287,7 @@ class HealthIncident(Base):
     __tablename__ = "health_incidents"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    # radarr, sonarr, sabnzbd, seerr, plex
+    # radarr, sonarr, sabnzbd, bazarr, seerr, plex
     service: Mapped[str] = mapped_column(String(16), index=True)
     # the same problem from one check to the next: "down", "disk:/data", a health
     # message, "queue:<title>"...

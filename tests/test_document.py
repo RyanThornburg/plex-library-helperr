@@ -8,27 +8,26 @@ import config
 from config.document import (
     canonical,
     rule_to_dict,
-    strip_secrets,
+    secrets_in,
     with_secrets,
 )
 from config.models import MoverRule, MovieRemoverRule, ProfileRule, RemoverRule
 
+# a stored document: secrets are kept apart, encrypted
 DOCUMENT = {
     "settings": {"dry_run": False, "filter_time": "1d"},
-    "plex": {"baseurl": "http://plex:32400", "token": "plex-token", "empty_trash": {"max_items": 10}},
-    "tautulli": {"url": "http://tautulli:8181", "apikey": "tautulli-key"},
-    "sabnzbd": {"url": "http://sabnzbd:8080", "apikey": "sabnzbd-key"},
-    "autoscan": {"url": "http://autoscan:3030", "username": "me", "password": "autoscan-pass"},
+    "plex": {"baseurl": "http://plex:32400", "empty_trash": {"max_items": 10}},
+    "tautulli": {"url": "http://tautulli:8181"},
+    "sabnzbd": {"url": "http://sabnzbd:8080"},
+    "autoscan": {"url": "http://autoscan:3030", "username": "me"},
     "radarr": {
         "baseurl": "http://radarr:7878",
-        "apikey": "radarr-key",
         "tag": "helperr",
         "movers": [{"path": "/movies/kids", "genres": ["Family"], "genre_match": "any", "exclude_paths": []}],
         "profilers": [{"profile": "NoDownload", "titles": ["Melania"], "monitored": False}],
     },
     "sonarr": {
         "baseurl": "http://sonarr:8989",
-        "apikey": "sonarr-key",
         "remover_settings": {"max_deletes": 100},
         "removers": [{"type": "seasons", "keep": 2, "tags": ["rm-2"], "min_age": "90d", "include_specials": False}],
     },
@@ -44,14 +43,8 @@ SECRETS = {
 
 
 class TestSecrets:
-    def test_secrets_are_split_out(self):
-        document, secrets = strip_secrets(DOCUMENT)
-        assert secrets == SECRETS
-        for value in SECRETS.values():
-            assert value not in repr(document)
-
-    def test_put_back_it_builds_the_same_config(self):
-        settings = config.build_config(with_secrets(*strip_secrets(DOCUMENT)))
+    def test_put_back_it_builds_the_config(self):
+        settings = config.build_config(with_secrets(DOCUMENT, SECRETS))
         assert settings.radarr.apikey == "radarr-key"
         assert settings.plex.token == "plex-token"
         assert settings.autoscan.password == "autoscan-pass"
@@ -59,9 +52,9 @@ class TestSecrets:
         assert settings.radarr.movers[0].genres == ["Family"]
         assert settings.sonarr.remover_settings.max_deletes == 100
 
-    def test_strip_and_put_back(self):
-        document, secrets = strip_secrets(DOCUMENT)
-        assert with_secrets(document, secrets) == DOCUMENT
+    def test_secrets_in_names_the_ones_a_document_holds(self):
+        assert secrets_in(DOCUMENT) == []
+        assert sorted(secrets_in(with_secrets(DOCUMENT, SECRETS))) == sorted(SECRETS)
 
     def test_a_secret_alone_configures_nothing(self):
         document = with_secrets({}, {"tautulli.apikey": "key"})
@@ -71,7 +64,7 @@ class TestSecrets:
 
 class TestCanonical:
     def test_rules_are_canonical(self):
-        document = canonical(strip_secrets(DOCUMENT)[0])
+        document = canonical(DOCUMENT)
         # defaults and empty lists dropped, like a rule saved from the ui
         assert document["radarr"]["movers"] == [{"path": "/movies/kids", "genres": ["Family"]}]
         assert document["radarr"]["profilers"] == [
@@ -87,7 +80,7 @@ class TestCanonical:
 
     def test_input_is_not_changed(self):
         before = repr(DOCUMENT)
-        canonical(strip_secrets(DOCUMENT)[0])
+        canonical(DOCUMENT)
         assert repr(DOCUMENT) == before
 
     @pytest.mark.parametrize(

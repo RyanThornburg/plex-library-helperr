@@ -299,7 +299,7 @@ def requests_page(request: Request) -> HTMLResponse:
 @router.post("/requests/sync")
 def sync_now(request: Request) -> RedirectResponse:
     stats_sync(request).sync_now()
-    return RedirectResponse("/requests?synced=1", status_code=303)
+    return RedirectResponse("/requests", status_code=303)
 
 
 @router.get("/api/requests")

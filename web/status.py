@@ -1,4 +1,4 @@
-"""status.py - what radarr, sonarr, sabnzbd, seerr and plex (through tautulli) are doing
+"""status.py - what radarr, sonarr, sabnzbd, bazarr, seerr and plex (through tautulli) are doing
 right now, for the status page. Read only, except ArrQueue, which removes stuck downloads
 someone selected. Every service is asked at once, and one that is down or slow only marks
 its own card"""
