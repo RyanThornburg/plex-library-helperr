@@ -405,6 +405,16 @@ class TestRules:
         assert "Bluey" in response.text and "Frozen" in response.text and "Heat" not in response.text
         assert "radarr" not in document(client) or "movers" not in document(client)["radarr"]
 
+    def test_a_form_and_its_preview_load_the_settings_once(self, client, monkeypatch):
+        connect_radarr(client)
+        loads = []
+        real = type(store(client)).load_settings
+        monkeypatch.setattr(type(store(client)), "load_settings", lambda self: loads.append(1) or real(self))
+        client.get("/settings/radarr/movers/new", headers=auth())
+        assert len(loads) == 1
+        post(client, "/settings/radarr/movers/new", {"version": version(client), "action": "preview", "path": "/movies/kids", "genres": "Family"})
+        assert len(loads) == 2
+
     def test_preview_counts_earlier_movers_and_filter_time(self, client):
         connect_radarr(client)
         post(client, "/settings/radarr/movers/new", {"version": version(client), "action": "save", "path": "/movies/kids", "genres": "Animation"})

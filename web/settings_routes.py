@@ -143,11 +143,16 @@ def check_kind(arr: str, kind: str) -> None:
 
 
 def current_settings(request: Request) -> tuple[ConfigSettings | None, str | None]:
-    """the stored config with its secrets, for lookups. None and why when it can't load"""
-    try:
-        return store(request).load_settings(), None
-    except (ValueError, SecretError) as e:
-        return None, str(e)
+    """the stored config with its secrets, for lookups. None and why when it can't load.
+    Loaded once per request: a rule form's choices, its filter_time and its preview all
+    ask. Pages render it before saving or after a save failed, so it's never stale"""
+    if (cached := getattr(request.state, "settings", None)) is None:
+        try:
+            cached = store(request).load_settings(), None
+        except (ValueError, SecretError) as e:
+            cached = None, str(e)
+        request.state.settings = cached
+    return cached
 
 
 def live_parts(document: dict[str, Any]) -> set[str]:
@@ -951,7 +956,8 @@ def new_rule_page(request: Request, arr: str, kind: str) -> HTMLResponse:
 def edit_rule_page(request: Request, arr: str, kind: str, number: int) -> HTMLResponse:
     check_kind(arr, kind)
     _, document = store(request).document()
-    return rule_form(request, arr, kind, number, rule_number(document, arr, kind, number))
+    rule = rule_number(document, arr, kind, number)
+    return rule_form(request, arr, kind, number, rule, loaded=fingerprint(rule))
 
 
 @router.post("/settings/{arr}/{kind}/new")
