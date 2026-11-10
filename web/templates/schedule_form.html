@@ -1,6 +1,8 @@
 {% extends "base.html" %}
+{% block toolbar %}
+<div class="group">{{ ui.tool("back", "All schedules", "/schedules") }}</div>
+{% endblock %}
 {% block content %}
-<p><a href="/schedules">← All schedules</a></p>
 <h1>{{ "Edit schedule" if schedule_id else "New schedule" }}</h1>
 
 {% if errors %}

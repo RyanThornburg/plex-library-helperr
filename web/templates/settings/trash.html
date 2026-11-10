@@ -1,10 +1,13 @@
 {% extends "settings/_layout.html" %}
 {% import "settings/_fields.html" as f with context %}
 {% set tab = "trash" %}
+{% block toolbar %}
+<div class="group">{{ ui.tool_submit("save", "Save", "trash-form") }}</div>
+{% endblock %}
 {% block settings %}
 <p class="muted">Empty trash clears what Plex marked deleted: old versions left by upgrades, and items with no file left ("fully deleted", they leave the library with their watch history). It skips a library while it's scanning, or when its trash looks like a missing mount.</p>
 {{ f.choice_problems(choice_problems) }}
-<form method="post" action="/settings/trash" class="form">
+<form method="post" action="/settings/trash" class="form" id="trash-form">
   {{ f.version_field() }}
   {% if plex_libraries %}
   <span class="label">Libraries</span>
@@ -29,7 +32,5 @@
     <p class="hint">Skip a library with more fully deleted items than this, not counting files the removers deleted.</p>
   </div>
   {{ f.dry_run(values.dry_run, global_dry) }}
-  <span></span>
-  <div class="actions"><button type="submit">Save</button></div>
 </form>
 {% endblock %}

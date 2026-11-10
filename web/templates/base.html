@@ -9,22 +9,28 @@
   <script src="/static/app.js" defer></script>
   {% block head %}{% endblock %}
 </head>
-<body>
-  <header class="topbar">
-    <nav class="nav">
-      <a class="brand" href="/status">Helperr</a>
-      <a href="/status">Status</a>
-      <a href="/runs">Runs</a>
-      <a href="/schedules">Schedules</a>
-      <a href="/removers">Removers</a>
-      <a href="/requests">Requests</a>
-      <a href="/playback">Playback</a>
-      <a href="/settings">Settings</a>
-    </nav>
-    <span class="user">{{ user }}</span>
+{% set toolbar = self.toolbar() | trim %}
+<body class="shell">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="appbar">
+    {# on a phone the sidebar folds into this menu; no script needed #}
+    <details class="navmenu">
+      <summary>{{ ui.icon("menu") }}Menu</summary>
+      {{ ui.sidebar(shell) }}
+    </details>
+    <a class="logo" href="/status">{{ ui.icon("mark") }}Helperr</a>
+    <span class="spacer"></span>
+    {% if shell.pill %}<a class="tag tag-solid-{{ shell.pill_level }} state-pill" href="/status">{{ shell.pill }}</a>{% endif %}
+    {% if user %}<span class="user">{{ user }}</span>{% endif %}
   </header>
-  <main>
+  {{ ui.sidebar(shell) }}
+  {% if toolbar %}<section class="toolbar" aria-label="Page actions">{{ toolbar }}</section>{% endif %}
+  <main id="main">
     {% block content %}{% endblock %}
   </main>
 </body>
 </html>
+{# a page's toolbar: groups of ui.tool* buttons in <div class="group">, the last one
+   may be <div class="group end"> to sit on the right. Defined here, never rendered
+   here: the body renders it through self.toolbar() #}
+{% if false %}{% block toolbar %}{% endblock %}{% endif %}

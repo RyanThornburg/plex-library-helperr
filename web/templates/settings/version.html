@@ -4,8 +4,10 @@
 {% macro show_diff(lines) %}
 <pre class="diff">{% for kind, line in lines %}<span class="diff-{{ kind or 'same' }}">{{ line }}</span>{% endfor %}</pre>
 {% endmacro %}
+{% block toolbar %}
+<div class="group">{{ ui.tool("back", "All versions", "/settings/history") }}</div>
+{% endblock %}
 {% block settings %}
-<p><a href="/settings/history">← History</a></p>
 <h2>Version {{ shown.id }}{% if is_current %} <span class="tag">current</span>{% endif %}</h2>
 <dl class="facts">
   <dt>Saved</dt><dd>{{ shown.created_at | localtime }}{% if shown.created_by %} by {{ shown.created_by }}{% endif %}</dd>

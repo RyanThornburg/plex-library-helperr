@@ -13,6 +13,18 @@
   /* behind white text */
   --bad-fill: #c62828;
   --on-accent: #111;
+  /* the primary button: ink, so gold keeps meaning brand, here and warning */
+  --primary: #1c2128;
+  --on-primary: #fff;
+  /* the shell's dark chrome, in both themes, like the *arrs */
+  --chrome: #171b20;
+  --chrome-side: #1f252c;
+  --chrome-hover: #29313a;
+  --chrome-text: #c3cbd4;
+  --chrome-muted: #9aa4af;
+  --gold: #e5a00d;
+  --chrome-strong: #fff;
+  --chrome-badge: #3a434e;
   color-scheme: light dark;
 }
 
@@ -29,6 +41,11 @@
     --ok: #3fb950;
     --bad: #f85149;
     --bad-fill: #da3633;
+    --primary: #e6e9ed;
+    --on-primary: #111418;
+    --chrome: #0b0e11;
+    --chrome-side: #14181d;
+    --chrome-hover: #1f252c;
   }
 }
 
@@ -43,25 +60,140 @@ body {
   font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-.topbar {
+/* ---- the shell: dark header, sidebar, toolbar, then the page ---- */
+body.shell {
+  display: grid;
+  grid-template-columns: 212px minmax(0, 1fr);
+  grid-template-rows: 56px auto 1fr;
+  grid-template-areas: "head head" "side bar" "side main";
+  min-height: 100vh;
+}
+/* anchors (#sonarr, #radarr) land below the sticky header and toolbar */
+html { scroll-padding-top: 132px; }
+
+.skip-link { position: absolute; left: 8px; top: -48px; z-index: 10; padding: 8px 12px; border-radius: 6px; background: var(--surface); color: var(--text); }
+.skip-link:focus { top: 8px; }
+
+.appbar {
+  grid-area: head;
+  position: sticky;
+  top: 0;
+  z-index: 3;
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px 16px;
-  justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  gap: 16px;
+  padding: 0 20px;
+  background: var(--chrome);
+  color: var(--chrome-text);
+}
+.logo { display: flex; align-items: center; gap: 10px; color: var(--gold); font-weight: 700; font-size: 16px; text-decoration: none; }
+.logo .icon { width: 28px; height: 28px; }
+.spacer { flex: 1; }
+.user { color: var(--chrome-muted); font-size: 13px; }
+.state-pill { text-decoration: none; }
+.appbar a:focus-visible, .appbar summary:focus-visible, .sidebar a:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+/* the sidebar's colour runs the page's full height, its links stay in view */
+.sidebar { grid-area: side; background: var(--chrome-side); }
+.sidebar ul { margin: 0; padding: 0; list-style: none; }
+.sidebar > ul { position: sticky; top: 56px; max-height: calc(100vh - 56px); overflow-y: auto; padding: 8px 0; }
+.sidebar a { display: flex; align-items: center; gap: 12px; padding: 9px 16px 9px 20px; color: var(--chrome-text); text-decoration: none; }
+.sidebar a:hover { background: var(--chrome-hover); color: var(--chrome-strong); }
+/* where you are: gold text and a gold wash on the section, gold on the sub page */
+.sidebar .open > a { color: var(--gold); background: color-mix(in srgb, var(--gold) 9%, transparent); }
+.sidebar .sub { padding-bottom: 6px; }
+.sidebar .sub a { padding: 6px 16px 6px 50px; color: var(--chrome-muted); font-size: 13px; }
+.sidebar .sub a:hover { color: var(--chrome-strong); }
+.sidebar .sub a[aria-current] { color: var(--gold); font-weight: 600; }
+.nav-label { flex: 1; }
+
+.badge {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--chrome-badge);
+  color: var(--chrome-strong);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.badge-warn { background: var(--gold); color: #111; }
+.badge-bad { background: var(--bad-fill); color: #fff; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.icon { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* the page's actions, an icon over a word */
+.toolbar {
+  grid-area: bar;
+  position: sticky;
+  top: 56px;
+  z-index: 2;
+  display: flex;
+  align-items: stretch;
+  min-height: 60px;
+  padding: 0 16px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
+  overflow-x: auto;
 }
-
-.brand { color: var(--accent); font-weight: 700; text-decoration: none; }
-.user { color: var(--muted); font-size: 13px; }
+.toolbar .group { display: flex; align-items: center; gap: 2px; }
+.toolbar .group + .group { margin-left: 8px; padding-left: 8px; border-left: 1px solid var(--border); }
+.toolbar .end { margin-left: auto; }
+.toolbar .group + .end { border-left: 0; }
+.tool-form { display: contents; }
+.toolbar .tool {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 64px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 400;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.toolbar .tool .icon { width: 20px; height: 20px; }
+.toolbar .tool:hover { background: color-mix(in srgb, var(--text) 7%, transparent); }
+.toolbar .tool:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; }
+.toolbar .tool:disabled { opacity: 0.4; cursor: default; background: transparent; }
+.toolbar .tool-strong { font-weight: 600; }
 
 /* release names, paths and urls are one long word: they wrap rather than widen the page.
    Table headers, buttons and tags don't, which also keeps columns from being squeezed
    to a letter wide */
-main { max-width: 1100px; margin: 0 auto; padding: 16px; overflow-wrap: anywhere; }
-h1 { font-size: 20px; margin: 8px 0 16px; }
+main { grid-area: main; min-width: 0; max-width: 1600px; padding: 20px 24px 40px; overflow-wrap: anywhere; }
+/* explanations keep a readable measure on a wide screen */
+main > p.muted, .card > p.muted { max-width: 75ch; }
+h1 { font-size: 20px; margin: 0 0 16px; }
+
+/* phone: the sidebar is the header's Menu, the toolbar scrolls with the page */
+.navmenu { display: none; }
+@media (max-width: 768px) {
+  body.shell { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "bar" "main"; }
+  html { scroll-padding-top: 64px; }
+  body > .sidebar { display: none; }
+  .appbar { gap: 10px; padding: 0 12px; }
+  .appbar .user { display: none; }
+  .navmenu { display: block; }
+  .navmenu summary { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 6px; color: var(--chrome-text); font-size: 13px; list-style: none; cursor: pointer; }
+  .navmenu summary::-webkit-details-marker { display: none; }
+  .navmenu[open] summary { background: var(--chrome-hover); }
+  .navmenu .sidebar { position: absolute; top: 56px; left: 0; right: 0; height: auto; max-height: calc(100vh - 56px); }
+  .toolbar { position: static; padding: 0 8px; }
+  .toolbar .tool { min-width: 56px; padding: 6px; }
+  main { padding: 16px; }
+}
 
 table {
   width: 100%;
@@ -94,11 +226,22 @@ h2 { font-size: 16px; margin: 0 0 6px; }
 main > h2 { margin-top: 24px; }
 .muted { color: var(--muted); }
 
-.jobs {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 12px;
-  margin-bottom: 24px;
+/* Runs: the jobs, like the *arrs' System → Tasks */
+.tasks td { vertical-align: middle; }
+.tasks time { white-space: nowrap; }
+.job-name { font-weight: 600; }
+.job-desc { display: block; color: var(--muted); font-size: 13px; }
+.tasks td.row-actions { text-align: right; }
+.tasks td.row-actions form { display: inline; }
+.tasks td.row-actions > * + * { margin-left: 6px; }
+@media (max-width: 700px) {
+  /* a job per block: name, mode, next, last, then its buttons */
+  .tasks, .tasks tbody, .tasks tr, .tasks td { display: block; }
+  .tasks thead { display: none; }
+  .tasks tr { padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .tasks tr:last-child { border-bottom: 0; }
+  .tasks td { padding: 3px 12px; border: 0; }
+  .tasks td.row-actions { padding-top: 8px; text-align: left; }
 }
 
 .card {
@@ -123,10 +266,10 @@ select { max-width: 100%; }
 button, .button {
   display: inline-block;
   padding: 6px 14px;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--primary);
   border-radius: 6px;
-  background: var(--accent);
-  color: var(--on-accent);
+  background: var(--primary);
+  color: var(--on-primary);
   font: inherit;
   font-weight: 600;
   text-decoration: none;
@@ -192,12 +335,8 @@ summary { cursor: pointer; }
   table { display: block; overflow-x: auto; }
 }
 
-.nav { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: center; }
-.nav a:not(.brand) { color: var(--text); text-decoration: none; }
-.nav a:not(.brand):hover { color: var(--accent); }
-
 .heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.heading h1 { margin: 8px 0; }
+.heading h1 { margin: 0 0 16px; }
 code { font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 td form { margin: 0; }
 
@@ -240,10 +379,6 @@ input:not([type]), select {
 main h2 { margin-top: 24px; }
 
 /* settings */
-.tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 16px; border-bottom: 1px solid var(--border); }
-.tabs a { padding: 6px 12px; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; }
-.tabs a:hover { color: var(--text); }
-.tabs a[aria-current="page"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
 .banner-ok { border-color: var(--ok); }
 main .banner { margin: 0 0 12px; }
 
@@ -255,6 +390,8 @@ main .banner { margin: 0 0 12px; }
 .form > .form-note { grid-column: 1 / -1; margin: -8px 0 0; contain: inline-size; }
 .card h2, .heading h2 { margin: 0; }
 main > .heading { margin-top: 24px; }
+/* the toolbar already separates the page from the chrome */
+main > :first-child { margin-top: 0; }
 .form > .label { font-weight: 600; }
 .check-row { display: flex; margin: 2px 0; }
 
@@ -589,3 +726,6 @@ td.units { min-width: 10rem; }
 .choices { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; border: 0; min-width: 0; }
 .choices legend { padding: 0; margin-bottom: 4px; font-weight: 600; }
 .choice { display: flex; gap: 8px; align-items: baseline; }
+
+/* a file count in a table ("▸ 9") stays on one line */
+td details > summary { white-space: nowrap; }

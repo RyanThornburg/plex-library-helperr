@@ -1,13 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Requests · Helperr{% endblock %}
 {% block head %}{% if syncing %}<meta http-equiv="refresh" content="5">{% endif %}{% endblock %}
+{% block toolbar %}
+<div class="group">{{ ui.tool_post("refresh", "Syncing…" if syncing else "Sync now", "/requests/sync", disabled=syncing or missing) }}</div>
+{% endblock %}
 {% block content %}
-<div class="heading">
-  <h1>Requests</h1>
-  <form method="post" action="/requests/sync">
-    <button type="submit" class="button-secondary"{% if syncing or missing %} disabled{% endif %}>{{ "Syncing…" if syncing else "Sync now" }}</button>
-  </form>
-</div>
+<h1>Requests</h1>
 <p class="muted">Seerr requests, and whether the person who asked watched them, from Tautulli's plays. Synced every hour.
 {% if status.finished_at %}Last sync {{ status.finished_at | localtime }}: {{ status.requests }} requests, {{ status.plays_read }} plays read.{% endif %}</p>
 {% if syncing %}<p class="banner">Syncing. The first sync copies all of Tautulli's history and takes a few minutes; this page refreshes until it's done.</p>{% endif %}

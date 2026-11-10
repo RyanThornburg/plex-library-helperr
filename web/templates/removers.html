@@ -31,6 +31,10 @@
   <div class="actions"><button type="submit">Save</button></div>
 </form>
 {% endmacro %}
+{% block title %}Removers · Helperr{% endblock %}
+{% block toolbar %}
+{% if not config_error %}<div class="group">{{ ui.tool("plus", "Add Sonarr remover", "/settings/sonarr/removers/new") }}{{ ui.tool("plus", "Add Radarr remover", "/settings/radarr/removers/new") }}</div>{% endif %}
+{% endblock %}
 {% block content %}
 <h1>Removers</h1>
 <p class="muted">Removers runs only plan: you approve a plan on its run's page. With auto-approve on, a run that isn't forced dry (Run…, or a schedule without "Force dry run") deletes that rule's removals without review, and <code>max_deletes</code> still applies. Other rules' removals wait in the run's plan.</p>
@@ -43,10 +47,7 @@
 <p class="banner banner-bad">The settings can't be loaded: {{ config_error }}</p>
 {% else %}
 
-<div class="heading">
-  <h2>Sonarr</h2>
-  <a class="button" href="/settings/sonarr/removers/new">Add Sonarr remover</a>
-</div>
+<h2>Sonarr</h2>
 <p class="muted">Unmonitor and delete old seasons/episodes of series with a remover's tag.</p>
 {% if not rules %}
 <p class="empty">No Sonarr removers yet.</p>
@@ -71,10 +72,7 @@
 {% endif %}
 {{ max_deletes_form("sonarr", max_deletes, "files") }}
 
-<div class="heading">
-  <h2>Radarr</h2>
-  <a class="button" href="/settings/radarr/removers/new">Add Radarr remover</a>
-</div>
+<h2>Radarr</h2>
 <p class="muted">Delete movies, with their files, from a root folder once they were both added to Radarr and released longer ago than the rule's age.</p>
 {% if not movie_rules %}
 <p class="empty">No Radarr removers yet.</p>

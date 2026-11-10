@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-28T05:06:25+00:00",
+  "generatedAt": "2026-11-10T02:40:11+00:00",
   "title": "Design System: Helperr",
   "extensions": {
     "colorMeta": {
@@ -21,7 +21,7 @@
       },
       "projector-amber-dark": {
         "role": "primary",
-        "displayName": "Projector Amber (dark)",
+        "displayName": "Projector Amber (dark) / Gold",
         "canonical": "oklch(75.4% 0.155 77.3)",
         "tonalRamp": [
           "oklch(15% 0.066 77.3)",
@@ -303,6 +303,126 @@
           "oklch(84% 0.000 0.0)",
           "oklch(95% 0.000 0.0)"
         ]
+      },
+      "chrome": {
+        "role": "neutral",
+        "displayName": "Chrome",
+        "canonical": "oklch(22.0% 0.012 254.1)",
+        "tonalRamp": [
+          "oklch(15% 0.005 254.1)",
+          "oklch(26% 0.009 254.1)",
+          "oklch(38% 0.012 254.1)",
+          "oklch(49% 0.012 254.1)",
+          "oklch(61% 0.012 254.1)",
+          "oklch(72% 0.009 254.1)",
+          "oklch(84% 0.005 254.1)",
+          "oklch(95% 0.002 254.1)"
+        ]
+      },
+      "chrome-dark": {
+        "role": "neutral",
+        "displayName": "Chrome (dark)",
+        "canonical": "oklch(16.2% 0.008 248.3)",
+        "tonalRamp": [
+          "oklch(15% 0.003 248.3)",
+          "oklch(26% 0.006 248.3)",
+          "oklch(38% 0.008 248.3)",
+          "oklch(49% 0.008 248.3)",
+          "oklch(61% 0.008 248.3)",
+          "oklch(72% 0.006 248.3)",
+          "oklch(84% 0.004 248.3)",
+          "oklch(95% 0.001 248.3)"
+        ]
+      },
+      "chrome-side": {
+        "role": "neutral",
+        "displayName": "Chrome Side",
+        "canonical": "oklch(26.2% 0.016 252.4)",
+        "tonalRamp": [
+          "oklch(15% 0.007 252.4)",
+          "oklch(26% 0.012 252.4)",
+          "oklch(38% 0.016 252.4)",
+          "oklch(49% 0.016 252.4)",
+          "oklch(61% 0.016 252.4)",
+          "oklch(72% 0.013 252.4)",
+          "oklch(84% 0.007 252.4)",
+          "oklch(95% 0.002 252.4)"
+        ]
+      },
+      "chrome-side-dark": {
+        "role": "neutral",
+        "displayName": "Chrome Side (dark)",
+        "canonical": "oklch(20.7% 0.012 254.1)",
+        "tonalRamp": [
+          "oklch(15% 0.005 254.1)",
+          "oklch(26% 0.009 254.1)",
+          "oklch(38% 0.012 254.1)",
+          "oklch(49% 0.012 254.1)",
+          "oklch(61% 0.012 254.1)",
+          "oklch(72% 0.009 254.1)",
+          "oklch(84% 0.005 254.1)",
+          "oklch(95% 0.002 254.1)"
+        ]
+      },
+      "chrome-hover": {
+        "role": "neutral",
+        "displayName": "Chrome Hover",
+        "canonical": "oklch(30.9% 0.020 251.5)",
+        "tonalRamp": [
+          "oklch(15% 0.008 251.5)",
+          "oklch(26% 0.015 251.5)",
+          "oklch(38% 0.020 251.5)",
+          "oklch(49% 0.020 251.5)",
+          "oklch(61% 0.020 251.5)",
+          "oklch(72% 0.016 251.5)",
+          "oklch(84% 0.009 251.5)",
+          "oklch(95% 0.003 251.5)"
+        ]
+      },
+      "chrome-hover-dark": {
+        "role": "neutral",
+        "displayName": "Chrome Hover (dark)",
+        "canonical": "oklch(26.2% 0.016 252.4)",
+        "tonalRamp": [
+          "oklch(15% 0.007 252.4)",
+          "oklch(26% 0.012 252.4)",
+          "oklch(38% 0.016 252.4)",
+          "oklch(49% 0.016 252.4)",
+          "oklch(61% 0.016 252.4)",
+          "oklch(72% 0.013 252.4)",
+          "oklch(84% 0.007 252.4)",
+          "oklch(95% 0.002 252.4)"
+        ]
+      },
+      "chrome-text": {
+        "role": "neutral",
+        "displayName": "Chrome Text",
+        "canonical": "oklch(83.9% 0.015 251.2)",
+        "tonalRamp": [
+          "oklch(15% 0.007 251.2)",
+          "oklch(26% 0.011 251.2)",
+          "oklch(38% 0.015 251.2)",
+          "oklch(49% 0.015 251.2)",
+          "oklch(61% 0.015 251.2)",
+          "oklch(72% 0.012 251.2)",
+          "oklch(84% 0.007 251.2)",
+          "oklch(95% 0.002 251.2)"
+        ]
+      },
+      "chrome-muted": {
+        "role": "neutral",
+        "displayName": "Chrome Muted",
+        "canonical": "oklch(71.4% 0.020 250.7)",
+        "tonalRamp": [
+          "oklch(15% 0.008 250.7)",
+          "oklch(26% 0.015 250.7)",
+          "oklch(38% 0.020 250.7)",
+          "oklch(49% 0.020 250.7)",
+          "oklch(61% 0.020 250.7)",
+          "oklch(72% 0.016 250.7)",
+          "oklch(84% 0.009 250.7)",
+          "oklch(95% 0.003 250.7)"
+        ]
       }
     },
     "typographyMeta": {
@@ -331,6 +451,10 @@
     "motion": [],
     "breakpoints": [
       {
+        "name": "phone-shell",
+        "value": "768px"
+      },
+      {
         "name": "narrow",
         "value": "700px"
       }
@@ -341,9 +465,9 @@
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "One filled button per decision: Run, Save, Apply.",
+      "description": "One filled button per decision: Run, Apply, form submits. Ink, never amber.",
       "html": "<button class=\"ds-btn-primary\">Run now</button>",
-      "css": ".ds-btn-primary { font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; display:inline-block; padding:6px 14px; border:1px solid var(--accent, #c7790b); border-radius:6px; background:var(--accent, #c7790b); color:#111; font-weight:600; cursor:pointer; } .ds-btn-primary:focus-visible { outline:2px solid var(--text, #1c2128); outline-offset:2px; } .ds-btn-primary:disabled { opacity:.4; cursor:default; }"
+      "css": ".ds-btn-primary { font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; display:inline-block; padding:6px 14px; border:1px solid var(--primary, #1c2128); border-radius:6px; background:var(--primary, #1c2128); color:var(--on-primary, #fff); font-weight:600; cursor:pointer; } .ds-btn-primary:focus-visible { outline:2px solid var(--text, #1c2128); outline-offset:2px; } .ds-btn-primary:disabled { opacity:.4; cursor:default; }"
     },
     {
       "name": "Secondary Button",
@@ -370,12 +494,36 @@
       "css": ".ds-input { font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; width:100%; max-width:520px; padding:6px 10px; border:1px solid var(--border, #d9dde3); border-radius:6px; background:var(--surface, #fff); color:var(--text, #1c2128); } .ds-input:focus-visible { outline:2px solid var(--accent, #c7790b); outline-offset:-1px; }"
     },
     {
-      "name": "Top Bar",
+      "name": "App Bar",
       "kind": "nav",
-      "refersTo": "topbar",
-      "description": "Brand, page links and the signed-in email.",
-      "html": "<header class=\"ds-topbar\"><nav><a class=\"ds-brand\" href=\"#\">Helperr</a><a href=\"#\">Status</a><a href=\"#\">Runs</a><a href=\"#\">Schedules</a><a href=\"#\">Removers</a><a href=\"#\">Settings</a></nav><span class=\"ds-user\">admin@example.com</span></header>",
-      "css": ".ds-topbar { font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; display:flex; flex-wrap:wrap; gap:4px 16px; justify-content:space-between; align-items:center; padding:12px 16px; background:var(--surface, #fff); border-bottom:1px solid var(--border, #d9dde3); } .ds-topbar nav { display:flex; flex-wrap:wrap; gap:4px 16px; } .ds-topbar a { color:var(--text, #1c2128); text-decoration:none; } .ds-topbar a:hover { color:var(--accent, #c7790b); } .ds-topbar .ds-brand { color:var(--accent, #c7790b); font-weight:700; } .ds-user { color:var(--muted, #5d6673); font-size:13px; }"
+      "refersTo": "appbar",
+      "description": "Dark header in both themes: gold mark and wordmark, state pill to Status, email.",
+      "html": "<header class=\"ds-appbar\"><a class=\"ds-logo\" href=\"#\"><svg class=\"ds-mark\" viewBox=\"0 0 28 28\"><rect x=\"1\" y=\"1\" width=\"26\" height=\"26\" rx=\"7\" fill=\"#e5a00d\"/><path d=\"M9.5 8v12M18.5 8v12M9.5 14h9\" stroke=\"#171b20\" stroke-width=\"3\" fill=\"none\"/></svg>Helperr</a><span class=\"ds-spacer\"></span><a class=\"ds-pill\" href=\"#\">Sonarr needs you</a><span class=\"ds-user\">admin@example.com</span></header>",
+      "css": ".ds-appbar { font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; display:flex; align-items:center; gap:16px; height:56px; padding:0 20px; background:var(--chrome, #171b20); color:var(--chrome-text, #c3cbd4); } .ds-logo { display:flex; align-items:center; gap:10px; color:var(--gold, #e5a00d); font-weight:700; font-size:16px; text-decoration:none; } .ds-mark { width:28px; height:28px; } .ds-spacer { flex:1; } .ds-pill { padding:1px 8px; border-radius:999px; background:var(--accent, #c7790b); color:#111; font-size:12px; font-weight:600; text-decoration:none; } .ds-user { color:var(--chrome-muted, #9aa4af); font-size:13px; } .ds-appbar a:focus-visible { outline:2px solid var(--gold, #e5a00d); outline-offset:2px; }"
+    },
+    {
+      "name": "Sidebar",
+      "kind": "nav",
+      "refersTo": "sidebar-item",
+      "description": "212px dark sidebar; only the open section shows its sub pages, gold wash on it.",
+      "html": "<nav class=\"ds-sidebar\"><ul><li><a href=\"#\"><svg class=\"ds-icon\" viewBox=\"0 0 24 24\"><path d=\"M22 12h-4l-3 9L9 3l-3 9H2\"/></svg><span class=\"ds-label\">Status</span><span class=\"ds-badge ds-badge-warn\">1</span></a></li><li class=\"ds-open\"><a href=\"#\"><svg class=\"ds-icon\" viewBox=\"0 0 24 24\"><path d=\"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8\"/><path d=\"M3 3v5h5\"/><path d=\"M12 7v5l4 2\"/></svg><span class=\"ds-label\">Activity</span><span class=\"ds-badge\">2</span></a><ul class=\"ds-sub\"><li><a href=\"#\" aria-current=\"page\">Runs</a></li><li><a href=\"#\">Schedules</a></li></ul></li></ul></nav>",
+      "css": ".ds-sidebar { font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; width:212px; padding:8px 0; background:var(--chrome-side, #1f252c); } .ds-sidebar ul { margin:0; padding:0; list-style:none; } .ds-sidebar a { display:flex; align-items:center; gap:12px; padding:9px 16px 9px 20px; color:var(--chrome-text, #c3cbd4); text-decoration:none; } .ds-sidebar a:hover { background:var(--chrome-hover, #29313a); color:#fff; } .ds-sidebar a:focus-visible { outline:2px solid var(--gold, #e5a00d); outline-offset:2px; } .ds-open > a { color:var(--gold, #e5a00d); background:color-mix(in srgb, var(--gold, #e5a00d) 9%, transparent); } .ds-sub { padding-bottom:6px; } .ds-sub a { padding:6px 16px 6px 50px; color:var(--chrome-muted, #9aa4af); font-size:13px; } .ds-sub a[aria-current] { color:var(--gold, #e5a00d); font-weight:600; } .ds-label { flex:1; } .ds-icon { width:18px; height:18px; flex:none; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; } .ds-badge { min-width:20px; padding:0 6px; border-radius:999px; background:#3a434e; color:#e6e9ed; font-size:12px; font-weight:600; line-height:20px; text-align:center; font-variant-numeric:tabular-nums; } .ds-badge-warn { background:var(--gold, #e5a00d); color:#111; }"
+    },
+    {
+      "name": "Toolbar Button",
+      "kind": "button",
+      "refersTo": "toolbar-button",
+      "description": "The page's actions: icon over a 12px word, monochrome, groups split by a rule.",
+      "html": "<div class=\"ds-toolbar\"><div class=\"ds-group\"><a class=\"ds-tool\" href=\"#\"><svg class=\"ds-icon\" viewBox=\"0 0 24 24\"><path d=\"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8\"/><path d=\"M21 3v5h-5\"/><path d=\"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16\"/><path d=\"M8 16H3v5\"/></svg>Refresh</a></div><div class=\"ds-group\"><a class=\"ds-tool\" href=\"#\"><svg class=\"ds-icon\" viewBox=\"0 0 24 24\"><path d=\"M5 12h14M12 5v14\"/></svg>New schedule</a></div></div>",
+      "css": ".ds-toolbar { font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; display:flex; align-items:stretch; min-height:60px; padding:0 16px; background:var(--surface, #fff); border-bottom:1px solid var(--border, #d9dde3); } .ds-group { display:flex; align-items:center; gap:2px; } .ds-group + .ds-group { margin-left:8px; padding-left:8px; border-left:1px solid var(--border, #d9dde3); } .ds-tool { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; min-width:64px; padding:6px 10px; border-radius:6px; color:var(--text, #1c2128); font-size:12px; text-decoration:none; white-space:nowrap; } .ds-tool:hover { background:color-mix(in srgb, var(--text, #1c2128) 7%, transparent); } .ds-tool:focus-visible { outline:2px solid var(--text, #1c2128); outline-offset:-2px; } .ds-icon { width:18px; height:18px; flex:none; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; } .ds-tool .ds-icon { width:20px; height:20px; }"
+    },
+    {
+      "name": "Badge",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "A sidebar count: neutral for work, gold for warn, red for bad.",
+      "html": "<span class=\"ds-badge\">2</span> <span class=\"ds-badge ds-badge-warn\">1</span> <span class=\"ds-badge ds-badge-bad\">3</span>",
+      "css": ".ds-badge { display:inline-block; min-width:20px; padding:0 6px; border-radius:999px; background:#3a434e; color:#e6e9ed; font:600 12px/20px system-ui, sans-serif; text-align:center; font-variant-numeric:tabular-nums; } .ds-badge-warn { background:var(--gold, #e5a00d); color:#111; } .ds-badge-bad { background:#da3633; color:#fff; }"
     },
     {
       "name": "State Tags",
@@ -420,9 +568,10 @@
   ],
   "narrative": {
     "northStar": "The Control Room",
-    "overview": "**Creative North Star: \"The Control Room\"**\n\nHelperr is the room you walk into to check that the server is fine. When everything is healthy it is calm: cool grey floors, white (or slate) panels, black ink, thin rule lines. Color is reserved for meaning. Green says a thing worked, amber says look at this, red says something failed or something will be deleted. An operator scanning the screen should be able to find every problem by color alone, and a screen with no problems should have almost no color on it.\n\nIt is a dense, expert surface for one admin at a desktop browser. Information is laid out as tables, fact lists and small cards, not prose; numbers are tabular; logs, paths, release names and cron expressions are monospace. There is no imagery, no illustration, no motion and no shadow. Depth comes from a panel sitting on a slightly darker floor, separated by a 1px rule. Light and dark themes follow the operating system (`prefers-color-scheme`); every color token has a dark counterpart.\n\nThe Status page is the reference for the idea: a one-line verdict first (\"All 5 connected services are OK\", or \"2 services need you: …\" linking to each), then a card for each service that needs you, then every healthy or unconnected service as a single dim line in one panel, opened for its details.\n\nThe look is system-native on purpose: system fonts, native form controls, native `<details>`, `<progress>` and checkboxes, so pages render instantly, work without JavaScript, and satisfy a strict CSP with nothing to load.",
+    "overview": "**Creative North Star: \"The Control Room\"**\n\nHelperr is the room you walk into to check that the server is fine. When everything is healthy it is calm: cool grey floors, white (or slate) panels, black ink, thin rule lines, inside a dark frame. Color is reserved for meaning. Green says a thing worked, amber says look at this, red says something failed or something will be deleted. An operator scanning the screen should be able to find every problem by color alone, and a screen with no problems should have almost no color on it.\n\nIt is a dense, expert surface for one admin at a desktop browser. Information is laid out as tables, fact lists and small cards, not prose; numbers are tabular; logs, paths, release names and cron expressions are monospace. There is no imagery, no illustration, no motion and no shadow; the only pictures are small monochrome line icons, each next to a word. Depth comes from a panel sitting on a slightly darker floor, separated by a 1px rule. Light and dark themes follow the operating system (`prefers-color-scheme`); every color token has a dark counterpart.\n\nThe Status page is the reference for the idea: a one-line verdict first (\"All 5 connected services are OK\", or \"2 services need you: …\" linking to each), then a card for each service that needs you, then every healthy or unconnected service as a single dim line in one panel, opened for its details.\n\nThe shell is modelled on Sonarr and Radarr, so Helperr reads as a sibling *arr: a dark header and a dark sidebar in both themes, and a toolbar of icon-over-label actions above each page. The chrome frames the board; it never carries state color except the badges and pill that say something needs you.\n\nThe look is system-native on purpose: system fonts, native form controls, native `<details>`, `<progress>` and checkboxes, so pages render instantly, work without JavaScript, and satisfy a strict CSP with nothing to load.",
     "keyCharacteristics": [
-      "Neutral at rest; color only marks state (ok / warn / bad) or the one primary action. A healthy service has no state color at all.",
+      "Neutral at rest; color only marks state (ok / warn / bad) and, in gold, the brand and where you are. A healthy service has no state color at all.",
+      "A dark *arr-style frame in both themes: header, 212px sidebar, then a toolbar of the page's actions.",
       "Flat: panels on a floor, 1px rules, no shadows.",
       "System fonts, one body size (15px), a short heading scale (20 / 16 px).",
       "Tables and definition lists over cards; cards group a service or a job, never decorate.",
@@ -431,7 +580,7 @@
     "rules": [
       {
         "name": "The Quiet Board Rule",
-        "body": "A healthy screen is almost colorless. Green, amber and red appear only where a state needs reading; never use them for decoration, section color-coding or emphasis.",
+        "body": "A healthy screen is almost colorless. Green, amber and red appear only where a state needs reading; never use them for decoration, section color-coding or emphasis. Gold in the chrome marks the brand and where you are, nothing else.",
         "section": "colors"
       },
       {
@@ -441,12 +590,12 @@
       },
       {
         "name": "The Amber Contrast Caveat",
-        "body": "Light-mode Projector Amber on white is about 3.4:1, below AA for body-size text. Warning text uses Warning Ink and links Link Ink; Projector Amber stays for fills, borders, focus of chip fields, the brand and checkbox/radio accents.",
+        "body": "Light-mode Projector Amber on white is about 3.4:1, below AA for body-size text. Warning text uses Warning Ink and links Link Ink; Projector Amber stays for fills, borders, focus of chip fields and checkbox/radio accents; Gold sits on the dark chrome, where it reads.",
         "section": "colors"
       },
       {
         "name": "The Two Sizes Rule",
-        "body": "Text is 15px or 13px; headings are the only exceptions. Don't introduce 14px, 17px or 18px.",
+        "body": "Text is 15px or 13px; headings, and 12px tags, badges and toolbar labels, are the only exceptions. Don't introduce 14px, 17px or 18px.",
         "section": "typography"
       },
       {
@@ -461,24 +610,24 @@
       },
       {
         "name": "The Whole Border Rule",
-        "body": "State is an outline, a fill or a wash, never a stripe. The 4px left border was retired in October 2026.",
+        "body": "State is an outline, a fill or a wash, never a stripe. The 4px left border was retired in October 2026. The sidebar's active section is a wash, not a stripe, so the rule holds there with no exception needed.",
         "section": "shapes"
       }
     ],
     "dos": [
       "Do use the CSS custom properties (`--bg`, `--surface`, `--text`, `--muted`, `--border`, `--accent`, `--ok`, `--bad`) and add both a light and a dark value for any new one.",
       "Do keep pages working without JavaScript and within the CSP: one stylesheet, self-hosted assets, no inline styles or scripts.",
-      "Do put the page's primary action in the heading row, right of the `h1`.",
+      "Do put the page's actions in the toolbar as icon-over-label buttons; keep a form's own buttons next to its fields.",
       "Do show dry run vs live with a tag next to the job or run, every time.",
       "Do use tables for any list of more than a few comparable items, with tabular numbers and thousands separators.",
       "Do say every state in a word next to its color, and let long names and paths wrap (`overflow-wrap: anywhere` in cards, `min-width: 0` on grid children); set release names and paths in 12px mono.",
       "Do collapse what's healthy: a healthy thing is one dim line, a thing that needs you is a card."
     ],
     "donts": [
-      "Don't use green, amber or red for anything but state (and amber for the one primary action).",
+      "Don't use green, amber or red for anything but state; gold also marks the brand and where you are. The primary action is Ink, never amber.",
       "Don't add shadows, gradients, background images or decorative illustration.",
       "Don't mark state with a colored side border (`border-left` wider than 1px); use the whole border, a fill or a wash.",
-      "Don't add web fonts or icon fonts; system fonts only.",
+      "Don't add web fonts or icon fonts; system fonts only, and icons from the self-hosted SVG sprite, always next to a word.",
       "Don't set warning text in Projector Amber; use Warning Ink.",
       "Don't reload a page on a timer without a way to pause it (`?refresh=0` on Status).",
       "Don't use the danger button for anything reversible or dry; a dry run's Run button is the plain primary."

@@ -27,11 +27,15 @@
     </ul>
     {% endif %}
 {% endmacro %}
-{% block content %}
-<div class="heading">
-  <h1>Status</h1>
-  <a class="button button-secondary" href="/status{% if not refresh %}?refresh=0{% endif %}">Refresh</a>
+{% block toolbar %}
+<div class="group">
+  {{ ui.tool("refresh", "Refresh", "/status" ~ ("" if refresh else "?refresh=0")) }}
+  {% if refresh %}{{ ui.tool("pause", "Pause auto-refresh", "/status?refresh=0") }}{% else %}{{ ui.tool("play", "Resume auto-refresh", "/status") }}{% endif %}
 </div>
+<div class="group">{{ ui.tool("activity", "Incident history", "/status/history") }}</div>
+{% endblock %}
+{% block content %}
+<h1>Status</h1>
 <p class="muted">Checked {{ checked_at | localtime }}. {% if refresh %}Refreshes every minute, <a href="/status?refresh=0">pause</a>.{% else %}Not refreshing, <a href="/status">resume</a>.{% endif %}</p>
 
 {% set attention = services | selectattr("state", "in", ["warn", "bad"]) | list %}

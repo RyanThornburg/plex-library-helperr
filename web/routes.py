@@ -29,13 +29,17 @@ from web.jobs import (
     utc_now,
 )
 from web.secret_box import SecretError
+from web.shell import shell_context
 from web.scheduler import ZONES, next_run_at, schedule_errors, trash_followup_due
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-templates = Jinja2Templates(directory=pathlib.Path(__file__).parent / "templates")
+# every page gets its shell (sidebar, badges) from web.shell
+templates = Jinja2Templates(
+    directory=pathlib.Path(__file__).parent / "templates", context_processors=[shell_context]
+)
 
 JOB_INFO: dict[str, tuple[str, str]] = {
     "movers": (
@@ -99,6 +103,8 @@ templates.env.globals["run_source"] = run_source
 templates.env.globals["JOB_INFO"] = JOB_INFO
 templates.env.globals["APPROVABLE"] = APPROVABLE
 templates.env.globals["removal_key"] = removal_key
+# the shell's macros (icons, toolbar buttons, sidebar) for every template, as ui.*
+templates.env.globals["ui"] = templates.env.get_template("_shell.html").module
 
 # a schedule form is a few short fields
 MAX_FORM_BYTES = 10_000
@@ -322,6 +328,17 @@ def index(request: Request, before: int | None = Query(default=None, ge=1, le=2*
             next_runs[schedule.job] = (next_run, schedule)
     with Session(request.app.state.engine) as session:
         followup = trash_followup_due(session, now, runner(request).defaults())
+        # each job's newest run, and whether that removers plan is waiting for review
+        last_runs = {
+            job: session.scalars(
+                select(JobRun).where(JobRun.job == job).order_by(JobRun.id.desc()).limit(1)
+            ).first()
+            for job in JOBS
+        }
+        plan = last_runs.get("removers")
+        reviewable = (
+            plan is not None and plan.plan_run_id is None and runner(request).apply_problem(session, plan) is None
+        )
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -338,6 +355,8 @@ def index(request: Request, before: int | None = Query(default=None, ge=1, le=2*
             "active_jobs": {r.job for r in latest if r.status in ACTIVE},
             "next_runs": next_runs,
             "followup": followup,
+            "last_runs": last_runs,
+            "reviewable": reviewable,
         },
     )
 

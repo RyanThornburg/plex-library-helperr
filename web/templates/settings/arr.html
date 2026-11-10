@@ -1,12 +1,16 @@
 {% extends "settings/_layout.html" %}
 {% import "settings/_fields.html" as f with context %}
 {% set tab = arr %}
+{% block toolbar %}
+<div class="group">{{ ui.tool_submit("save", "Save", "arr-form") }}</div>
+<div class="group">{{ ui.tool("plus", "Add mover", "/settings/" ~ arr ~ "/movers/new") }}{{ ui.tool("plus", "Add profiler", "/settings/" ~ arr ~ "/profilers/new") }}</div>
+{% endblock %}
 {% block settings %}
 {% if not connected %}
 <p class="banner banner-warn">{{ label }} isn't connected, its rules don't run. <a href="/settings/connections#{{ arr }}">Connect it</a>.</p>
 {% endif %}
 
-<form method="post" action="/settings/{{ arr }}" class="form">
+<form method="post" action="/settings/{{ arr }}" class="form" id="arr-form">
   {{ f.version_field() }}
   {{ f.dry_run(values.dry_run, global_dry) }}
   <label for="tag">Tag moved {{ "movies" if arr == "radarr" else "series" }}</label>
@@ -14,8 +18,6 @@
     <input id="tag" name="tag" value="{{ values.tag }}" spellcheck="false" placeholder="no tag">
     <p class="hint">Added to everything a mover moves, e.g. <code>helperr</code>.</p>
   </div>
-  <span></span>
-  <div class="actions"><button type="submit">Save</button></div>
 </form>
 
 {% macro rule_actions(kind, number, count) %}
@@ -28,10 +30,7 @@
 </div>
 {% endmacro %}
 
-<div class="heading">
-  <h2>Movers</h2>
-  <a class="button" href="/settings/{{ arr }}/movers/new">Add mover</a>
-</div>
+<h2>Movers</h2>
 <p class="muted">Move matching {{ "movies" if arr == "radarr" else "series" }} to another root folder (with their files). They run in order and the first match wins: a later mover never sees what an earlier one matched.</p>
 {% set movers = section.get("movers", []) %}
 {% if movers %}
@@ -53,10 +52,7 @@
 <p class="empty">No movers.</p>
 {% endif %}
 
-<div class="heading">
-  <h2>Profilers</h2>
-  <a class="button" href="/settings/{{ arr }}/profilers/new">Add profiler</a>
-</div>
+<h2>Profilers</h2>
 <p class="muted">Set the quality profile (and optionally monitoring) of matching {{ "movies" if arr == "radarr" else "series" }}.</p>
 {% set profilers = section.get("profilers", []) %}
 {% if profilers %}

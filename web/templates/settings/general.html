@@ -1,8 +1,11 @@
 {% extends "settings/_layout.html" %}
 {% import "settings/_fields.html" as f with context %}
 {% set tab = "general" %}
+{% block toolbar %}
+<div class="group">{{ ui.tool_submit("save", "Save", "general-form") }}</div>
+{% endblock %}
 {% block settings %}
-<form method="post" action="/settings" class="form">
+<form method="post" action="/settings" class="form" id="general-form">
   {{ f.version_field() }}
   <span></span>
   <div>
@@ -47,7 +50,5 @@
     <p class="hint">A Radarr/Sonarr root folder or SABnzbd download folder with less free space is a problem on Status and in its history. 0 turns it off.</p>
   </div>
 
-  <span></span>
-  <div class="actions"><button type="submit">Save</button></div>
 </form>
 {% endblock %}

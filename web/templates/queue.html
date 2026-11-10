@@ -1,11 +1,10 @@
 {% extends "base.html" %}
 {% block title %}{{ label }} queue · Helperr{% endblock %}
+{% block toolbar %}
+<div class="group">{{ ui.tool("back", "Status", "/status#" ~ service) }}{{ ui.tool("refresh", "Refresh", "/status/" ~ service ~ "/queue") }}</div>
+{% endblock %}
 {% block content %}
-<p><a href="/status#{{ service }}">← Status</a></p>
-<div class="heading">
-  <h1>Stuck in {{ label }}'s queue</h1>
-  <a class="button button-secondary" href="/status/{{ service }}/queue">Refresh</a>
-</div>
+<h1>Stuck in {{ label }}'s queue</h1>
 
 {% if removed is not none %}
 <p class="banner banner-ok">Removed {{ removed }} download{{ "s" if removed != 1 }} from {{ label }}'s queue.{% if gone %} {{ gone }} selected {{ "weren't" if gone != 1 else "wasn't" }} stuck any more, so {{ "they were" if gone != 1 else "it was" }} left alone.{% endif %}</p>

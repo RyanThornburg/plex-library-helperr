@@ -407,8 +407,9 @@ class TestScheduleRoutes:
         assert schedule["next_run_at"]
         page = client.get("/schedules", headers=auth()).text
         assert "Hourly movers" in page and "47 * * * *" in page
-        # the job card shows when it runs next
-        assert "Next:" in client.get("/runs", headers=auth()).text
+        # the jobs table shows when it runs next, and by which schedule
+        runs = client.get("/runs", headers=auth()).text
+        assert f'href="/schedules/{schedule["id"]}">Hourly movers</a>' in runs
 
     def test_invalid_form_shows_errors_and_keeps_values(self, client):
         response = post_form(client, "/schedules", "name=Nightly&job=removers&timezone=UTC&cron=99+*+*+*+*&dry_run=on")
@@ -860,7 +861,7 @@ class TestWebhooks:
         # plex hasn't scanned the upgrade yet, the scheduler empties trash later
         assert client.get("/api/runs", headers=auth()).json() == []
         assert trash_events(client) == [("Download", source)]
-        assert "Follow-up:" in client.get("/runs", headers=auth()).text
+        assert '<span class="muted">Follow-up</span>' in client.get("/runs", headers=auth()).text
 
     def test_old_upgrades_are_dropped(self, client):
         with Session(client.app.state.engine) as session:

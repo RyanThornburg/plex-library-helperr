@@ -1,0 +1,42 @@
+{# the app shell's pieces: icons, the sidebar, toolbar buttons. Import with
+   {% import "_shell.html" as ui %} #}
+
+{% macro icon(name) -%}
+<svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#{{ name }}"/></svg>
+{%- endmacro %}
+
+{% macro badge(b) -%}
+{% if b %}<span class="badge{% if b.level %} badge-{{ b.level }}{% endif %}" title="{{ b.label }}"><span aria-hidden="true">{{ b.count }}</span><span class="visually-hidden">{{ b.label }}</span></span>{% endif %}
+{%- endmacro %}
+
+{% macro sidebar(shell) %}
+<nav class="sidebar" aria-label="Main">
+  <ul>
+    {% for s in shell.sections %}
+    <li class="section{% if s.open %} open{% endif %}">
+      <a href="{{ s.href }}"{% if s.current %} aria-current="page"{% endif %}>{{ icon(s.icon) }}<span class="nav-label">{{ s.label }}</span>{{ badge(s.badge) }}</a>
+      {% if s.children %}
+      <ul class="sub">
+        {% for c in s.children %}<li><a href="{{ c.href }}"{% if c.current %} aria-current="page"{% endif %}>{{ c.label }}</a></li>{% endfor %}
+      </ul>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</nav>
+{% endmacro %}
+
+{# toolbar buttons: an icon over a word, like the *arrs #}
+{% macro tool(icon_name, label, href) -%}
+<a class="tool" href="{{ href }}">{{ icon(icon_name) }}{{ label }}</a>
+{%- endmacro %}
+
+{# submits a form elsewhere on the page (form="id"), so Save can sit in the toolbar #}
+{% macro tool_submit(icon_name, label, form, name=None, value=None) -%}
+<button type="submit" class="tool tool-strong" form="{{ form }}"{% if name %} name="{{ name }}" value="{{ value }}"{% endif %}>{{ icon(icon_name) }}{{ label }}</button>
+{%- endmacro %}
+
+{# a button that posts to its own action #}
+{% macro tool_post(icon_name, label, action, disabled=False) -%}
+<form method="post" action="{{ action }}" class="tool-form"><button type="submit" class="tool"{% if disabled %} disabled{% endif %}>{{ icon(icon_name) }}{{ label }}</button></form>
+{%- endmacro %}

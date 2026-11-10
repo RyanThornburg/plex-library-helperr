@@ -1,9 +1,10 @@
 {% extends "base.html" %}
+{% block title %}Schedules · Helperr{% endblock %}
+{% block toolbar %}
+<div class="group">{{ ui.tool("plus", "New schedule", "/schedules/new") }}</div>
+{% endblock %}
 {% block content %}
-<div class="heading">
-  <h1>Schedules</h1>
-  <a class="button" href="/schedules/new">New schedule</a>
-</div>
+<h1>Schedules</h1>
 <p class="muted">A schedule whose job is still queued or running skips that time. Times missed while the app was down are skipped.</p>
 
 {% if schedules %}

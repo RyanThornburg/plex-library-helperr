@@ -1,21 +1,17 @@
 {% extends "base.html" %}
-{% set tabs = [
-  ("/settings", "General", "general"),
-  ("/settings/connections", "Connections", "connections"),
-  ("/settings/radarr", "Radarr", "radarr"),
-  ("/settings/sonarr", "Sonarr", "sonarr"),
-  ("/settings/trash", "Empty trash", "trash"),
-  ("/settings/webhook", "Webhook", "webhook"),
-  ("/settings/history", "History", "history"),
-] %}
+{# the settings pages are the sidebar's Settings section (web.shell) #}
+{% set titles = {
+  "general": "General settings",
+  "connections": "Connections",
+  "radarr": "Radarr settings",
+  "sonarr": "Sonarr settings",
+  "trash": "Empty trash",
+  "webhook": "Webhook",
+  "history": "Settings history",
+} %}
+{% block title %}{{ titles.get(tab, "Settings") }} · Helperr{% endblock %}
 {% block content %}
-<h1>Settings</h1>
-<nav class="tabs" aria-label="Settings">
-  {% for href, title, key in tabs %}
-  <a href="{{ href }}"{% if key == tab %} aria-current="page"{% endif %}>{{ title }}</a>
-  {% endfor %}
-  <a href="/removers">Removers</a>
-</nav>
+<h1>{% block settings_title %}{{ titles.get(tab, "Settings") }}{% endblock %}</h1>
 {% if saved %}<p class="banner banner-ok">Saved.</p>{% endif %}
 {% if errors %}
 <ul class="banner banner-bad errors-list">

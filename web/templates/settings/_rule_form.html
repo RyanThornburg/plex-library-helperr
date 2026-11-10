@@ -3,9 +3,11 @@
 {% set tab = arr if kind != "removers" else "" %}
 {% set name = {"movers": "mover", "profilers": "profiler", "removers": "remover"}[kind] %}
 {% set action = "/settings/" ~ arr ~ "/" ~ kind ~ "/" ~ (number or "new") %}
+{% block settings_title %}{{ "Edit" if number else "New" }} {{ label }} {{ name }}{% if number %} {{ number }}{% endif %}{% endblock %}
+{% block toolbar %}
+<div class="group">{{ ui.tool("back", "Removers" if kind == "removers" else label ~ " settings", back) }}</div>
+{% endblock %}
 {% block settings %}
-<p><a href="{{ back }}">← {{ "Removers" if kind == "removers" else label }}</a></p>
-<h2>{{ "Edit" if number else "New" }} {{ label }} {{ name }}{% if number %} {{ number }}{% endif %}</h2>
 {{ f.choice_problems(choice_problems) }}
 {% if library %}
 <p class="hint">Choices from {{ label }} as of {{ library.fetched_at | localtime }}. <a href="{{ action }}?refresh=1">Reload</a></p>

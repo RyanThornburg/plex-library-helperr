@@ -7,14 +7,12 @@
 {% macro latest(l) -%}
 {{ decision(l.decision) }}{% if l.cause %} <span class="muted">({{ l.cause }})</span>{% endif %}<br><span class="muted">{{ l.started_at | localtime }}</span>
 {%- endmacro %}
+{% block toolbar %}
+<div class="group">{{ ui.tool_post("refresh", "Syncing…" if syncing else "Sync now", "/playback/sync", disabled=syncing or missing) }}</div>
+{% endblock %}
 {% block content %}
 {% set r = report %}
-<div class="heading">
-  <h1>Playback</h1>
-  <form method="post" action="/playback/sync">
-    <button type="submit" class="button-secondary"{% if syncing or missing %} disabled{% endif %}>{{ "Syncing…" if syncing else "Sync now" }}</button>
-  </form>
-</div>
+<h1>Playback</h1>
 <p class="muted">How Plex streamed movies and episodes once they stopped, and why they transcoded, from Tautulli (what's playing now is on <a href="/status#plex">Status</a>). Synced every {{ interval_minutes }} minutes{% if status.finished_at %}, last {{ status.finished_at | localtime }}{% endif %}; plays are kept {{ keep_days }} days, from {{ backfill_days }} days before the first sync.</p>
 {% if syncing %}<p class="banner">Syncing. The first sync reads {{ backfill_days }} days of plays and takes a minute or two; this page refreshes until it's done.</p>{% endif %}
 {% if missing %}<p class="banner banner-warn">Connect {{ missing | join(" and ") }} on <a href="/settings/connections">Settings → Connections</a> to see how Plex streams plays here.</p>{% endif %}

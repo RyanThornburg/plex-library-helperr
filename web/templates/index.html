@@ -1,51 +1,63 @@
 {% extends "base.html" %}
 {% block head %}{% if active_jobs %}<meta http-equiv="refresh" content="5">{% endif %}{% endblock %}
+{% block title %}Runs · Helperr{% endblock %}
+{% block toolbar %}
+<div class="group">{{ ui.tool("refresh", "Refresh", "/runs") }}</div>
+<div class="group">{{ ui.tool("calendar", "Schedules", "/schedules") }}{{ ui.tool("plus", "New schedule", "/schedules/new") }}</div>
+{% endblock %}
 {% block content %}
+<h1>Runs</h1>
 {% if config_error %}
 <p class="banner banner-bad">The settings can't be loaded, every job will fail until it's fixed: {{ config_error }} <a href="/settings">Settings</a></p>
 {% elif no_arrs %}
 <p class="banner banner-warn">Radarr and Sonarr aren't connected, so movers and removers have nothing to work on. Connect them on <a href="/settings/connections">Settings → Connections</a>.</p>
 {% endif %}
 
-<section class="jobs">
-  {% for job in jobs %}
-  {% set title, description = JOB_INFO[job] %}
-  {% set mode = dry_runs.get(job) %}
-  <article class="card">
-    <h2>{{ title }}</h2>
-    <p class="muted">{{ description }}</p>
-    <p>
-      <a href="/settings">Settings</a>:
-      {% if config_error %}<span class="tag">unknown</span>
-      {% elif mode is none and job == "removers" and auto_rules %}<a class="tag tag-warn" href="/removers">review, auto-approve on for {{ auto_rules | length }}</a>
-      {% elif job == "removers" %}<span class="tag">plan for review</span>
-      {% elif mode is none %}<span class="tag tag-warn">mixed: live for some *arrs</span>
-      {% elif mode %}<span class="tag">dry run</span>
-      {% else %}<span class="tag tag-live">live</span>{% endif %}
-    </p>
-    {% if job == "empty_trash" and followup %}
-    <p class="muted">Follow-up: {{ followup | localtime }}, after moves/removals/upgrades</p>
-    {% endif %}
-    {% if job in next_runs %}
-    {% set next_run, schedule = next_runs[job] %}
-    <p class="muted">Next: {{ next_run | localtime }}, <a href="/schedules/{{ schedule.id }}">{{ schedule.name }}</a>{% if schedule.dry_run %} (dry run){% endif %}</p>
-    {% endif %}
-    {% if job in active_jobs %}
-    <p class="muted">Queued or running…</p>
-    {% else %}
-    <div class="actions">
-      <form method="post" action="/jobs/{{ job }}?dry_run=true">
-        <button type="submit">Dry run</button>
-      </form>
-      <a class="button button-secondary" href="/jobs/{{ job }}/confirm">Run…</a>
-    </div>
-    {% endif %}
-  </article>
-  {% endfor %}
-</section>
+{# older pages are history only #}
+{% if not before %}
+<h2>Jobs</h2>
+<table class="tasks">
+  <thead><tr><th>Job</th><th>Mode</th><th>Next</th><th>Last run</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
+  <tbody>
+    {% for job in jobs %}
+    {% set title, description = JOB_INFO[job] %}
+    {% set mode = dry_runs.get(job) %}
+    {% set last = last_runs.get(job) %}
+    <tr>
+      <td class="long"><span class="job-name">{{ title }}</span><span class="job-desc">{{ description }}</span></td>
+      <td>
+        {% if config_error %}<span class="tag">unknown</span>
+        {% elif mode is none and job == "removers" and auto_rules %}<a class="tag tag-warn" href="/removers">review, auto-approve on for {{ auto_rules | length }}</a>
+        {% elif job == "removers" %}<span class="tag">plan for review</span>
+        {% elif mode is none %}<span class="tag tag-warn">mixed: live for some *arrs</span>
+        {% elif mode %}<span class="tag">dry run</span>
+        {% else %}<span class="tag tag-live">live</span>{% endif %}
+      </td>
+      <td>
+        {% if job in next_runs %}{% set next_run, schedule = next_runs[job] %}{{ next_run | localtime }}<br><a href="/schedules/{{ schedule.id }}">{{ schedule.name }}</a>{% if schedule.dry_run %} <span class="muted">(dry run)</span>{% endif %}{% endif %}
+        {% if job == "empty_trash" and followup %}{% if job in next_runs %}<br>{% endif %}<span class="muted">Follow-up</span> {{ followup | localtime }}{% endif %}
+        {% if job not in next_runs and not (job == "empty_trash" and followup) %}<span class="muted">Not scheduled</span>{% endif %}
+      </td>
+      <td>
+        {% if last %}<a href="/runs/{{ last.id }}">#{{ last.id }}</a> <span class="status status-{{ last.status }}">{{ last.status | replace("_", " ") }}</span>
+        {% if job == "removers" and reviewable %}<br><a href="/runs/{{ last.id }}">Review the plan</a>{% else %}<br>{{ last.started_at | localtime if last.started_at else last.created_at | localtime }}{% endif %}
+        {% else %}<span class="muted">Never run</span>{% endif %}
+      </td>
+      <td class="row-actions">
+        {% if job in active_jobs %}<span class="muted">Queued or running…</span>
+        {% else %}
+        <form method="post" action="/jobs/{{ job }}?dry_run=true"><button type="submit" class="button-secondary">Dry run</button></form>
+        <a class="button button-secondary" href="/jobs/{{ job }}/confirm">Run…</a>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
 
 <div class="heading section-heading">
-  <h1>{{ "Older runs" if before else "Recent runs" }}</h1>
+  <h2>{{ "Older runs" if before else "Recent runs" }}</h2>
   {% if before %}<a href="/runs">Newest runs</a>{% endif %}
 </div>
 {% if runs %}
@@ -72,6 +84,6 @@
 {% elif before %}
 <p class="empty">No runs before #{{ before }}.</p>
 {% else %}
-<p class="empty">No job runs yet. Run one above, or <a href="/schedules/new">schedule it</a>.</p>
+<p class="empty">No job runs yet. Run one from Jobs, or <a href="/schedules/new">schedule it</a>.</p>
 {% endif %}
 {% endblock %}
