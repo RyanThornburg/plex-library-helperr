@@ -13,7 +13,7 @@ from config.models import ArrConfig, ConfigSettings, EmptyTrashSettings, Remover
 from logging_config import hide_secrets
 from results import Change, JobResult, PlannedFile, PlannedRemoval
 from web.db import JobRun, RemoverRuleSetting, make_engine, migrate
-from web.jobs import AlreadyActive, ApplyRefused, JobRunner, utc_now
+from web.jobs import AlreadyActive, ApplyRefused, JobRunner, configured_mode, run_mode, utc_now
 
 logger = logging.getLogger("tests.jobs")
 
@@ -558,3 +558,28 @@ class TestSubmitSoon:
         assert (live.job, live.trigger, live.dry_run, live.requested_by) == ("movers", "webhook", False, "Radarr: A")
         assert live.status == "succeeded"
         runner.stop()
+
+
+class TestModes:
+    def test_configured(self):
+        assert configured_mode("movers", False) == "live"
+        assert configured_mode("empty_trash", True) == "dry_run"
+        assert configured_mode("movers", None) == "mixed"
+        # removers only plan, unless a rule is auto-approved
+        assert configured_mode("removers", True) == "review"
+        assert configured_mode("removers", None, auto_approve=True) == "review_auto"
+
+    def test_a_run_says_what_it_did(self):
+        def run(**kw):
+            return JobRun(**{"job": "movers", "trigger": "manual", "status": "succeeded", "dry_run": False, **kw})
+
+        assert run_mode(run(dry_run=True, result={"mode": "live"})) == "dry_run"
+        assert run_mode(run(job="removers", plan_run_id=3)) == "apply"
+        assert run_mode(run(result={"mode": "mixed", "changes": []})) == "mixed"
+        # runs from before the mode was stored: read from what they changed
+        done = Change("RADARR", "move", "/movies/kids", ["Bluey"], "done")
+        assert run_mode(run(result={"changes": [dataclasses.asdict(done)]})) == "live"
+        dry = dataclasses.replace(done, status="dry_run")
+        assert run_mode(run(result={"changes": [dataclasses.asdict(dry)]})) == "dry_run"
+        assert run_mode(run(job="removers", result={"changes": []})) == "review"
+        assert run_mode(run(result=None)) == "unknown"

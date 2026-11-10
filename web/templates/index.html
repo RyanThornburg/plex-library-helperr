@@ -26,12 +26,9 @@
     <tr>
       <td class="long"><span class="job-name">{{ title }}</span><span class="job-desc">{{ description }}</span></td>
       <td>
-        {% if config_error %}<span class="tag">unknown</span>
-        {% elif mode is none and job == "removers" and auto_rules %}<a class="tag tag-warn" href="/removers">review, auto-approve on for {{ auto_rules | length }}</a>
-        {% elif job == "removers" %}<span class="tag tag-info">plan for review</span>
-        {% elif mode is none %}<span class="tag tag-warn">mixed: live for some *arrs</span>
-        {% elif mode %}<span class="tag">dry run</span>
-        {% else %}<span class="tag tag-live">live</span>{% endif %}
+        {% set key = "unknown" if config_error else configured_mode(job, mode, auto_rules | length > 0) %}
+        {% if key == "review_auto" %}<a class="tag tag-warn" href="/removers">review, auto-approve on for {{ auto_rules | length }}</a>
+        {% else %}{{ ui.mode_tag(key) }}{% endif %}
       </td>
       <td>
         {% if job in next_runs %}{% set next_run, schedule = next_runs[job] %}{{ next_run | localtime }}<br><a href="/schedules/{{ schedule.id }}">{{ schedule.name }}</a>{% if schedule.dry_run %} <span class="muted">(dry run)</span>{% endif %}{% endif %}
@@ -71,7 +68,7 @@
       <td class="first"><a href="/runs/{{ run.id }}">{{ run.id }}</a></td>
       <td class="first lead">{{ JOB_INFO[run.job][0] }}</td>
       <td class="end"><span class="status status-{{ run.status }}">{{ run.status | replace("_", " ") }}</span></td>
-      <td data-label="Mode">{{ "apply plan" if run.plan_run_id else "dry run" if run.dry_run else "settings" }}</td>
+      <td data-label="Mode">{{ ui.mode_tag(run | run_mode) }}</td>
       <td data-label="Changes">{{ run.result.changes | length if run.result else "-" }}</td>
       <td class="row" data-label="Started">{{ run.started_at | localtime }}</td>
       <td data-label="Took">{{ duration(run) }}</td>

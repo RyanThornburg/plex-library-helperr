@@ -316,6 +316,23 @@ class TestJobRoutes:
         page = client.get("/jobs/movers/confirm", headers=auth()).text
         assert "will make changes" in page
         assert 'action="/jobs/movers?dry_run=false"' in page
+        # the button says what it does, and a dry run is one click away
+        assert '<button type="submit" class="button-danger">Run live</button>' in page
+        assert 'action="/jobs/movers?dry_run=true"><button type="submit" class="button-secondary">Dry run instead' in page
+
+    def test_runs_name_their_mode(self, client):
+        client.post("/jobs/movers?dry_run=false", headers={**auth(), **ORIGIN})
+        client.post("/jobs/empty_trash?dry_run=true", headers={**auth(), **ORIGIN})
+        wait(client)
+        runs = client.get("/api/runs", headers=auth()).json()
+        live = next(r for r in runs if r["job"] == "movers")
+        assert live["result"]["mode"] == "live"
+        page = client.get("/runs", headers=auth()).text
+        assert '<td data-label="Mode"><span class="tag tag-live">live</span></td>' in page
+        assert '<td data-label="Mode"><span class="tag">dry run</span></td>' in page
+        assert ">settings<" not in page
+        run_page = client.get(f"/runs/{live['id']}", headers=auth()).text
+        assert '<dd><span class="tag tag-live">live</span></dd>' in run_page
 
     def test_unknown_job_is_404(self, client):
         assert client.post("/jobs/nope", headers={**auth(), **ORIGIN}).status_code == 404
@@ -728,7 +745,7 @@ class TestRemoversPage:
             # every place that says what a config run does says so
             assert "auto-approve on for 1" in c.get("/runs", headers=auth()).text
             assert "will be deleted" in c.get("/jobs/removers/confirm", headers=auth()).text
-            assert "auto-approved removers delete" in c.get("/schedules/new", headers=auth()).text
+            assert "auto-approved removals are deleted" in c.get("/schedules/new", headers=auth()).text
             assert "Turn off" in c.get("/removers", headers=auth()).text
             c.post("/removers/auto-approve?rule=rm-housewives&enabled=false", headers={**auth(), **ORIGIN})
             assert c.app.state.runner.auto_approved_rules() == frozenset()

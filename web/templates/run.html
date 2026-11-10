@@ -16,7 +16,8 @@
   {% if run.plan_run_id %}
   <dt>Mode</dt><dd>applying the series approved from <a href="/runs/{{ run.plan_run_id }}">plan #{{ run.plan_run_id }}</a></dd>
   {% else %}
-  <dt>Mode</dt><dd>{{ "dry run (forced)" if run.dry_run else "settings" }}</dd>
+  {% set mode = run | run_mode %}
+  <dt>Mode</dt><dd>{{ ui.mode_tag(mode, "forced" if run.dry_run else "from the settings" if mode == "dry_run" else "") }}</dd>
   {% endif %}
   {% if run.schedule %}
   <dt>Requested by</dt><dd>schedule <a href="/schedules/{{ run.schedule.id }}">{{ run.schedule.name }}</a></dd>

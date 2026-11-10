@@ -23,9 +23,12 @@ from web.jobs import (
     APPROVABLE,
     AlreadyActive,
     ApplyRefused,
+    MODES,
     JobRunner,
     approvable,
+    configured_mode,
     removal_key,
+    run_mode,
     utc_now,
 )
 from web.secret_box import SecretError
@@ -104,6 +107,10 @@ templates.env.globals["JOB_INFO"] = JOB_INFO
 templates.env.globals["APPROVABLE"] = APPROVABLE
 templates.env.globals["removal_key"] = removal_key
 # the shell's macros (icons, toolbar buttons, sidebar) for every template, as ui.*
+# before ui: _shell.html's module keeps the globals it was built with
+templates.env.globals["MODES"] = MODES
+templates.env.globals["configured_mode"] = configured_mode
+templates.env.filters["run_mode"] = run_mode
 templates.env.globals["ui"] = templates.env.get_template("_shell.html").module
 
 # a schedule form is a few short fields
@@ -367,16 +374,16 @@ def confirm_page(request: Request, job: str) -> HTMLResponse:
     they're live"""
     check_job(job)
     dry_runs, config_error, auto_rules = config_modes(request)
-    mode = dry_runs.get(job)
+    auto_rules = auto_rules if job == "removers" else []
     return templates.TemplateResponse(
         request,
         "confirm.html",
         {
             "user": request.state.user,
             "job": job,
-            "mode": mode,
+            "mode": "unknown" if config_error else configured_mode(job, dry_runs.get(job), bool(auto_rules)),
             "config_error": config_error,
-            "auto_rules": auto_rules if job == "removers" else [],
+            "auto_rules": auto_rules,
         },
     )
 
@@ -573,12 +580,18 @@ def schedule_values(schedule: Schedule) -> dict[str, Any]:
 def schedules_page(request: Request) -> HTMLResponse:
     now = utc_now()
     schedules = all_schedules(request)
+    dry_runs, config_error, auto_rules = config_modes(request)
     return templates.TemplateResponse(
         request,
         "schedules.html",
         {
             "user": request.state.user,
             "schedules": schedules,
+            # what a schedule that isn't forced dry does now
+            "modes": {
+                job: "unknown" if config_error else configured_mode(job, dry_runs.get(job), bool(auto_rules))
+                for job in JOBS
+            },
             "next_runs": {s.id: next_run_at(s, now) for s in schedules},
             "last_runs": last_runs(request),
         },

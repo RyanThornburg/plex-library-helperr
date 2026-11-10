@@ -1,16 +1,24 @@
 {% extends "base.html" %}
+{% block title %}Make {{ "these jobs" if jobs | length > 1 else "this job" }} live? · Helperr{% endblock %}
 {% block content %}
-<h1>Make {{ "these jobs" if jobs | length > 1 else "this job" }} live?</h1>
-<p class="banner banner-warn">With this change, dry run is <strong>off</strong> for:</p>
-<ul>
-  {% for job in jobs %}
-  <li><strong>{{ JOB_INFO[job][0] }}</strong>: {{ {"movers": "runs that aren't forced dry, including schedules and webhooks, will move files and change quality profiles.", "empty_trash": "runs that aren't forced dry, including follow-ups, will empty Plex's trash. Fully deleted items leave the library with their watch history."}[job] }}</li>
-  {% endfor %}
-</ul>
-<form method="post" action="{{ action }}" class="actions">
+<form method="post" action="{{ action }}" class="dialog" aria-labelledby="dialog-title">
   {% for name, value in fields %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
   <input type="hidden" name="confirm_live" value="1">
-  <button type="submit" class="button-danger">Save and go live</button>
-  <a class="button button-secondary" href="{{ back }}">Cancel</a>
+  <header class="dialog-head">
+    <h1 id="dialog-title">Make {{ "these jobs" if jobs | length > 1 else "this job" }} live?</h1>
+    {{ ui.mode_tag("live") }}
+  </header>
+  <div class="dialog-body">
+    <p class="banner banner-warn">With this change, dry run is <strong>off</strong> for:</p>
+    <ul>
+      {% for job in jobs %}
+      <li><strong>{{ JOB_INFO[job][0] }}</strong>: {{ {"movers": "runs that aren't forced dry, including schedules and webhooks, will move files and change quality profiles.", "empty_trash": "runs that aren't forced dry, including follow-ups, will empty Plex's trash. Fully deleted items leave the library with their watch history."}[job] }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  <footer class="dialog-foot">
+    <a class="button button-secondary" href="{{ back }}">Cancel</a>
+    <button type="submit" class="button-danger">Save and go live</button>
+  </footer>
 </form>
 {% endblock %}

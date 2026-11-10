@@ -1,7 +1,12 @@
 {% extends "base.html" %}
+{% block title %}Apply plan #{{ run.id }}? · Helperr{% endblock %}
 {% block content %}
-<p><a href="/runs/{{ run.id }}">← Plan #{{ run.id }}</a></p>
-<h1>Apply plan #{{ run.id }}?</h1>
+<section class="dialog dialog-wide" aria-labelledby="dialog-title">
+<header class="dialog-head">
+  <h1 id="dialog-title">Apply plan #{{ run.id }}?</h1>
+  {{ ui.mode_tag("apply") }}
+</header>
+<div class="dialog-body">
 
 {% if problem %}
 <p class="banner banner-bad">{{ problem }}</p>
@@ -20,14 +25,14 @@
 {% endif %}
 
 {% if selected %}
-<table>
+<table class="stack">
   <thead><tr><th>Series / movie</th><th>Remove</th><th>Files</th></tr></thead>
   <tbody>
     {% for removal in selected %}
     <tr>
-      <td class="long">{{ removal.title }}{% if removal.service == "RADARR" %} <span class="tag">movie</span>{% endif %}</td>
-      <td class="units">{{ removal.labels | join(", ") }}</td>
-      <td>
+      <td class="long first lead">{{ removal.title }}{% if removal.service == "RADARR" %} <span class="tag">movie</span>{% endif %}</td>
+      <td class="units row" data-label="Remove">{{ removal.labels | join(", ") }}</td>
+      <td data-label="Files">
         <details>
           <summary>{{ removal.files | length }}</summary>
           <ul class="items files">{% for file in removal.files %}<li>{{ file.path }}</li>{% endfor %}</ul>
@@ -39,12 +44,12 @@
 </table>
 {% endif %}
 
-<div class="actions table-actions">
-  {% if not problem and not over_max %}
-  <form method="post" action="/runs/{{ run.id }}/apply?{{ query }}">
-    <button type="submit" class="button-danger">Delete {{ total }} files</button>
-  </form>
-  {% endif %}
-  <a class="button button-secondary" href="/runs/{{ run.id }}">Cancel</a>
 </div>
+<footer class="dialog-foot">
+  <a class="button button-secondary" href="/runs/{{ run.id }}">{{ "Back to the plan" if problem or over_max else "Cancel" }}</a>
+  {% if not problem and not over_max %}
+  <form method="post" action="/runs/{{ run.id }}/apply?{{ query }}"><button type="submit" class="button-danger">Delete {{ total }} file{{ "s" if total != 1 }}</button></form>
+  {% endif %}
+</footer>
+</section>
 {% endblock %}

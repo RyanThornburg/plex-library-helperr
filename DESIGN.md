@@ -338,6 +338,12 @@ Runs lists its jobs the way the *arrs' System → Tasks does: a "Jobs" table wit
 ### Share Bars
 A number's share drawn after it: a native `<meter>` (the CSP allows no inline widths), 56px × 6px, a pill track of 12% Ink, hidden from screen readers since the number beside it says it. Signal Blue is data (finished requests); a rate you want low (transcoded plays, `low=25 high=50 optimum=0`) turns Projector Amber past half. Used in the Requests users table and Playback's transcode columns, never as decoration or alone without the number.
 
+### Dialogs
+Every confirmation (run a job, apply a plan, turn on auto-approve, make a job live) is a page laid out like an *arr dialog, not a modal: no script, and Back works. A Panel up to 680px wide (960px when it lists a plan), centered in the page, 8px radius. The head holds the question as the `h1` ("Run Movers & profilers?") with the mode tag at the right; the body says what will happen in a banner; the foot, on Console Floor behind a 1px rule, holds the buttons at the right: Cancel, then any safer alternative ("Dry run instead"), then the decision last. The decision's label names its consequence ("Run live", "Plan removals", "Delete 13 files", "Delete without review", "Save and go live"), never "OK" or "Run with the settings"; it's Danger when it changes or deletes things. On a phone the buttons stack full width, the decision on top.
+
+### Mode Tags
+A job's or run's mode has one name and one tag everywhere (Runs, a run's page, Schedules, dialogs): dry run (neutral), live (Alarm Red), live for some *arrs (amber), plan for review (Signal Blue), review, auto-approve on (amber), apply plan (Alarm Red). A dry run says why in Dim Ink after it ("forced", "from the settings"). "settings" is never a mode.
+
 ### Banners
 A full-width notice under the page heading: 1px border, 6px radius, 10px × 14px padding. A warning or error banner takes the state color on its whole border over a 7–8% wash of it; a success banner has a green border on Panel.
 

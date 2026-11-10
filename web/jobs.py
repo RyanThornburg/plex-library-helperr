@@ -52,6 +52,48 @@ class ApplyRefused(Exception):
     """a plan can't be applied, the message says why and is shown to the user"""
 
 
+# what a run does, named the same on Runs, a run's page, Schedules and the confirm
+# page: (label, tag level). "live" in red, since it changes or deletes things
+MODES = {
+    "dry_run": ("dry run", ""),
+    "live": ("live", "live"),
+    "mixed": ("live for some *arrs", "warn"),
+    "review": ("plan for review", "info"),
+    "review_auto": ("review, auto-approve on", "warn"),
+    "apply": ("apply plan", "live"),
+    "unknown": ("unknown", ""),
+}
+
+
+def configured_mode(job: str, dry_run: bool | None, auto_approve: bool = False) -> str:
+    """a job's mode as configured: config.config_dry_run()'s answer, and for removers
+    whether any rule is auto-approved"""
+    if job == "removers":
+        return "review_auto" if auto_approve else "review"
+    return "mixed" if dry_run is None else "dry_run" if dry_run else "live"
+
+
+def run_mode(run: JobRun) -> str:
+    """what a run did: forced dry, applying a plan, or the mode it was configured with
+    when it ran (stored with its result). Runs from before that was stored are read from
+    their changes"""
+    if run.plan_run_id is not None:
+        return "apply"
+    if run.dry_run:
+        return "dry_run"
+    result = run.result or {}
+    if result.get("mode") in MODES:
+        return result["mode"]
+    if run.job == "removers":
+        return "review"
+    statuses = {c.get("status") for c in result.get("changes", [])}
+    if "done" in statuses:
+        return "live"
+    if statuses and statuses <= {"dry_run"}:
+        return "dry_run"
+    return "unknown"
+
+
 def removal_key(removal: dict[str, Any]) -> str:
     """how a planned removal is selected for approval: sonarr:<series id> or
     radarr:<movie id>"""
@@ -372,6 +414,7 @@ class JobRunner:
         root = logging.getLogger()
         root.addHandler(capture)
         result: JobResult | None = None
+        mode: str | None = None
         try:
             logger.info("WEB\t Starting %s run %s (dry_run forced: %s)", job, run_id, dry_run)
             settings = self.load_config()
@@ -398,6 +441,12 @@ class JobRunner:
                 kwargs["movie_plays"] = self.movie_plays(settings)
             if job == "empty_trash" and (removed := self.removed_files()):
                 kwargs["removed_files"] = removed
+            if dry_run:
+                mode = "dry_run"
+            elif approved is not None:
+                mode = "apply"
+            else:
+                mode = configured_mode(job, config.config_dry_run(job, settings), bool(kwargs.get("auto_approve")))
             result = self.run_job(job, settings, **kwargs)
             result.log_summary()
         except Exception:
@@ -410,7 +459,7 @@ class JobRunner:
             run = session.get_one(JobRun, run_id)
             run.status = "succeeded" if result is not None and not result.failed else "failed"
             run.finished_at = utc_now()
-            run.result = hide_in(result.to_dict()) if result is not None else None
+            run.result = hide_in({**result.to_dict(), "mode": mode}) if result is not None else None
             run.log = capture.text()
             session.commit()
         return job

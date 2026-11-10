@@ -1,25 +1,48 @@
 {% extends "base.html" %}
+{% block title %}Run {{ JOB_INFO[job][0] }}? · Helperr{% endblock %}
 {% block content %}
 {% set title, description = JOB_INFO[job] %}
-<h1>Run {{ title }}?</h1>
-<p>{{ description }}</p>
-{% if config_error %}
-<p class="banner banner-bad">The settings can't be loaded, so this run will fail: {{ config_error }}</p>
-{% elif mode is none and auto_rules %}
-<p class="banner banner-warn">Removers plan for review, but <strong>auto-approve is on</strong> for {{ auto_rules | length }} remover{{ "s" if auto_rules | length != 1 }} ({% for rule in auto_rules %}{{ rule.label }}{{ "; " if not loop.last }}{% endfor %}). Their removals <strong>will be deleted</strong> without review, the rest are planned for review.</p>
-{% elif mode is none %}
-<p class="banner banner-warn">The settings are <strong>live for some *arrs</strong> and dry run for others. Changes will be made where it's live.</p>
-{% elif mode and job == "removers" %}
-<p class="banner">Removers only plan: nothing is deleted until you approve the plan on the run's page.</p>
-{% elif mode %}
-<p class="banner">The settings have <strong>dry run</strong> on for this job, so nothing will be changed.</p>
-{% else %}
-<p class="banner banner-warn">The settings have dry run <strong>off</strong> for this job. This run <strong>will make changes</strong>.</p>
-{% endif %}
-<div class="actions">
-  <form method="post" action="/jobs/{{ job }}?dry_run=false">
-    <button type="submit" class="{{ 'button-danger' if mode is not true }}">Run with the settings</button>
-  </form>
-  <a class="button button-secondary" href="/runs">Cancel</a>
-</div>
+{# what a run that isn't forced dry would change, for each job that can go live #}
+{% set changes = {
+  "movers": "move files to other root folders and change quality profiles",
+  "empty_trash": "empty Plex's trash; fully deleted items leave the library with their watch history",
+} %}
+{% set buttons = {
+  "dry_run": ("Start dry run", ""),
+  "live": ("Run live", "button-danger"),
+  "mixed": ("Run partly live", "button-danger"),
+  "review": ("Plan removals", ""),
+  "review_auto": ("Run and delete auto-approved", "button-danger"),
+  "unknown": ("Run anyway", "button-secondary"),
+} %}
+{% set label, button_class = buttons[mode] %}
+<section class="dialog" aria-labelledby="dialog-title">
+  <header class="dialog-head">
+    <h1 id="dialog-title">Run {{ title }}?</h1>
+    {{ ui.mode_tag(mode) }}
+  </header>
+  <div class="dialog-body">
+    <p class="muted">{{ description }}</p>
+    {% if mode == "unknown" %}
+    <p class="banner banner-bad">The settings can't be loaded, so this run will fail: {{ config_error }}</p>
+    {% elif mode == "review_auto" %}
+    <p class="banner banner-warn"><strong>Auto-approve is on</strong> for {{ auto_rules | length }} remover{{ "s" if auto_rules | length != 1 }} ({% for rule in auto_rules %}{{ rule.label }}{{ "; " if not loop.last }}{% endfor %}): their removals <strong>will be deleted</strong> without review. Other rules' removals are planned for review.</p>
+    {% elif mode == "review" %}
+    <p class="banner">This only plans: nothing is deleted until you approve the plan on the run's page.</p>
+    {% elif mode == "mixed" %}
+    <p class="banner banner-warn">Dry run is off for some *arrs: this run <strong>will make changes</strong> there ({{ changes[job] }}) and only list what it would do for the others.</p>
+    {% elif mode == "live" %}
+    <p class="banner banner-warn">Dry run is off for this job, so this run <strong>will make changes</strong>: it will {{ changes[job] }}.</p>
+    {% else %}
+    <p class="banner">Dry run is on for this job, so nothing will change. The run lists what it would do.</p>
+    {% endif %}
+  </div>
+  <footer class="dialog-foot">
+    <a class="button button-secondary" href="/runs">Cancel</a>
+    {% if mode in ("live", "mixed", "review_auto") %}
+    <form method="post" action="/jobs/{{ job }}?dry_run=true"><button type="submit" class="button-secondary">Dry run instead</button></form>
+    {% endif %}
+    <form method="post" action="/jobs/{{ job }}?dry_run=false"><button type="submit"{% if button_class %} class="{{ button_class }}"{% endif %}>{{ label }}</button></form>
+  </footer>
+</section>
 {% endblock %}

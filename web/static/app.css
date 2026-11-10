@@ -796,3 +796,48 @@ meter.share:-moz-meter-sub-sub-optimum::-moz-meter-bar { background: var(--accen
   /* a file count stays next to its label */
   table.stack td > details { display: inline-block; vertical-align: top; }
 }
+
+/* confirmation pages read like the *arrs' dialogs: a panel with the question and the
+   mode in its head, what will happen in its body, and the buttons at the bottom right,
+   the decision last. A page, not a modal: no script, and the back button works */
+.dialog {
+  max-width: 680px;
+  margin: 8px auto 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.dialog-wide { max-width: 960px; }
+.dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.dialog-head h1 { margin: 0; }
+.dialog-body { display: flex; flex-direction: column; gap: 12px; padding: 16px 20px 20px; }
+.dialog-body > * { margin: 0; }
+.dialog-body table { border-radius: 0; }
+.dialog-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 0 0 8px 8px;
+}
+.dialog-foot form { margin: 0; }
+@media (max-width: 700px) {
+  .dialog { margin-top: 0; }
+  .dialog-head, .dialog-body, .dialog-foot { padding-left: 16px; padding-right: 16px; }
+  .dialog-head { flex-wrap: wrap; }
+  /* full-width buttons, the decision on top and Cancel last */
+  .dialog-foot { flex-direction: column-reverse; align-items: stretch; }
+  .dialog-foot form { display: flex; flex-direction: column; }
+  .dialog-foot .button { text-align: center; }
+}

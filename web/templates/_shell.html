@@ -46,3 +46,8 @@
 {% macro share(percent, rate=False) -%}
 <meter class="share" min="0" max="100" value="{{ percent }}"{% if rate %} low="25" high="50" optimum="0"{% endif %} aria-hidden="true"></meter>
 {%- endmacro %}
+
+{# a job's or run's mode (web.jobs.MODES), the same tag everywhere; note says why, in dim ink #}
+{% macro mode_tag(key, note="") -%}
+{% set label, level = MODES.get(key, MODES["unknown"]) %}<span class="tag{% if level %} tag-{{ level }}{% endif %}">{{ label }}</span>{% if note %} <span class="muted">{{ note }}</span>{% endif %}
+{%- endmacro %}

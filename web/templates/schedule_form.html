@@ -40,10 +40,10 @@
   <div>
     <label class="check"><input type="checkbox" name="dry_run"{% if values.dry_run %} checked{% endif %}> Force dry run</label>
     <p class="hint">
-      Unchecked, runs use the dry run <a href="/settings">settings</a>, which are now:
+      Unchecked, runs follow each job's dry run <a href="/settings">setting</a>, now:
       {% if config_error %}unknown, the settings can't be loaded ({{ config_error }})
       {% else %}
-      {% for job in jobs %}{{ JOB_INFO[job][0] }} <strong>{% if dry_runs[job] is none and job == "removers" and auto_rules %}dry run, but auto-approved removers delete{% elif dry_runs[job] is none %}mixed{% elif job == "removers" %}plan for review{% elif dry_runs[job] %}dry run{% else %}live{% endif %}</strong>{{ ", " if not loop.last }}{% endfor %}.
+      {% for job in jobs %}{% set key = configured_mode(job, dry_runs[job], auto_rules | length > 0) %}{{ JOB_INFO[job][0] }} <strong>{{ MODES[key][0] }}</strong>{% if key == "review_auto" %} (auto-approved removals are deleted){% endif %}{{ ", " if not loop.last }}{% endfor %}.
       {% endif %}
     </p>
   </div>
