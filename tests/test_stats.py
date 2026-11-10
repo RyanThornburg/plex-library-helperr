@@ -20,6 +20,8 @@ from web.app import create_app
 from web.db import MediaRequest, Play, make_engine, migrate
 from web.jobs import utc_now
 from web.stats import (
+    EpisodeRef,
+    PlexIndex,
     StatsSync,
     PlayFact,
     StatsError,
@@ -338,11 +340,17 @@ class TestFindPlays:
 
 
 class FakeSection:
-    def __init__(self, type, items):
+    def __init__(self, type, items, key=1, episodes=()):
         self.type = type
+        self.key = key
         self._items = items
+        self._episodes = list(episodes)
+        self.pages = []
 
-    def search(self, includeGuids):
+    def search(self, includeGuids=False, libtype=None, container_start=0, container_size=None, maxresults=None):
+        if libtype == "episode":
+            self.pages.append(container_start)
+            return self._episodes[container_start:container_start + maxresults]
         assert includeGuids
         return self._items
 
@@ -353,6 +361,35 @@ def plex_item(title, guid, ids, **kwargs):
 
 def fake_plex(*sections):
     return SimpleNamespace(library=SimpleNamespace(sections=lambda: list(sections)))
+
+
+class TestLoadEpisodes:
+    """a requested show's episodes come from its own list or its library's, whichever
+    is fewer requests"""
+
+    def shows(self, n, leaves):
+        return [plex_item(f"S{k}", f"plex://show/{k}", [f"tvdb://{k}"], ratingKey=k, leafCount=leaves,
+                          episodes=lambda k=k: [episode(1, 1, f"plex://episode/{k}")]) for k in range(1, n + 1)]
+
+    def test_few_shows_read_their_own_lists(self):
+        shows = self.shows(30, 10)
+        section = FakeSection("show", shows)
+        index = PlexIndex(fake_plex(section))
+        index.load_episodes(shows[:1])
+        assert section.pages == []
+        assert index.episodes(shows[0]) == [EpisodeRef(1, 1, "plex://episode/1")]
+
+    def test_many_shows_read_the_library_a_page_at_a_time(self, monkeypatch):
+        monkeypatch.setattr(stats, "SECTION_PAGE", 4)
+        shows = self.shows(5, 2)
+        library = [SimpleNamespace(grandparentRatingKey=k, parentIndex=1, index=i, guid=f"plex://episode/{k}-{i}") for k in range(1, 6) for i in (1, 2)]
+        section = FakeSection("show", shows, episodes=library)
+        index = PlexIndex(fake_plex(section))
+        index.load_episodes(shows)
+        assert section.pages == [0, 4, 8]
+        for s in shows:
+            s.episodes = None  # never read one show at a time now
+        assert index.episodes(shows[2]) == [EpisodeRef(1, 1, "plex://episode/3-1"), EpisodeRef(1, 2, "plex://episode/3-2")]
 
 
 class TestSyncRequests:

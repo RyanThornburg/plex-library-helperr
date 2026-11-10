@@ -311,19 +311,47 @@ def match_user(requester: Requester, users: Iterable[Mapping[str, Any]]) -> int 
 # ---------------------------------------------------------------------------
 
 
+# episodes plex lists per request: a show's own list (show.episodes(), plexapi's page
+# size), and a whole library's, read when that's fewer requests
+SHOW_PAGE = 100
+SECTION_PAGE = 1000
+
+
+@dataclass(frozen=True)
+class EpisodeRef:
+    """what wanted() reads of an episode, kept instead of plexapi's objects (which hold
+    their page's xml): a sync can read every episode of a library"""
+
+    parentIndex: int | None
+    index: int | None
+    guid: str | None
+
+
+def _ref(episode: Any) -> EpisodeRef:
+    return EpisodeRef(episode.parentIndex, episode.index, episode.guid)
+
+
 class PlexIndex:
     """plex's movies and shows by tmdb/tvdb guid, read once per sync"""
 
     def __init__(self, plex: Any, types: tuple[str, ...] = ("movie", "show")):
-        self.plex = plex
         self.by_guid: dict[tuple[str, str], list[Any]] = defaultdict(list)
+        # show sections, and each show's section and episode count, to choose how
+        # load_episodes() reads them
+        self._sections: dict[Any, Any] = {}
+        self._show_section: dict[Any, Any] = {}
+        self._leaves: dict[Any, int] = {}
         for section in plex.library.sections():
             if section.type not in types:
                 continue
             for item in section.search(includeGuids=True):
                 for guid in item.guids:
                     self.by_guid[(section.type, guid.id)].append(item)
-        self._episodes: dict[Any, list[Any]] = {}
+                if section.type == "show":
+                    self._sections[section.key] = section
+                    self._show_section[item.ratingKey] = section.key
+                    self._leaves[item.ratingKey] = getattr(item, "leafCount", None) or 0
+        self._episodes: dict[Any, list[EpisodeRef]] = {}
 
     def items(self, request: ParsedRequest) -> list[Any]:
         if request.media_type == "movie":
@@ -339,9 +367,40 @@ class PlexIndex:
                 return found
         return []
 
-    def episodes(self, show: Any) -> list[Any]:
+    def load_episodes(self, shows: Iterable[Any]) -> None:
+        """read these shows' episodes in as few requests as plex allows: each show's
+        own list is a request per SHOW_PAGE episodes, its library's whole list one per
+        SECTION_PAGE episodes of every show in it. The cheaper wins per library; shows
+        left out are read one at a time by episodes()"""
+        by_section: dict[Any, set[Any]] = defaultdict(set)
+        for show in shows:
+            if show.ratingKey not in self._episodes and show.ratingKey in self._show_section:
+                by_section[self._show_section[show.ratingKey]].add(show.ratingKey)
+        for key, wanted_keys in by_section.items():
+            own = sum(-(-max(self._leaves[k], 1) // SHOW_PAGE) for k in wanted_keys)
+            in_section = [k for k, s in self._show_section.items() if s == key]
+            whole = -(-max(sum(self._leaves[k] for k in in_section), 1) // SECTION_PAGE)
+            if whole < own:
+                self._read_section(self._sections[key], in_section)
+
+    def _read_section(self, section: Any, show_keys: list[Any]) -> None:
+        found: dict[Any, list[EpisodeRef]] = {k: [] for k in show_keys}
+        start = 0
+        while True:
+            page = section.search(
+                libtype="episode", container_start=start, container_size=SECTION_PAGE,
+                maxresults=SECTION_PAGE,
+            )
+            for episode in page:
+                found.setdefault(episode.grandparentRatingKey, []).append(_ref(episode))
+            if len(page) < SECTION_PAGE:
+                break
+            start += SECTION_PAGE
+        self._episodes.update(found)
+
+    def episodes(self, show: Any) -> list[EpisodeRef]:
         if show.ratingKey not in self._episodes:
-            self._episodes[show.ratingKey] = show.episodes()
+            self._episodes[show.ratingKey] = [_ref(e) for e in show.episodes()]
         return self._episodes[show.ratingKey]
 
 
@@ -551,12 +610,18 @@ def sync_requests(
     with Session(engine) as session:
         known = {r.id: (r.title, r.year) for r in session.scalars(select(MediaRequest))}
 
-    found: list[tuple[ParsedRequest, int | None, Wanted, str, int | None]] = []
+    parsed: list[ParsedRequest] = []
     for item in raw:
         request = parse_request(item)
         if request is None:
             logger.warning("STATS\t Skipping a Seerr request it can't read (id %s)", item.get("id"))
             continue
+        parsed.append(request)
+    # every requested show's episodes at once, a library at a time when that's cheaper
+    index.load_episodes(item for r in parsed if r.media_type == "tv" for item in index.items(r))
+
+    found: list[tuple[ParsedRequest, int | None, Wanted, str, int | None]] = []
+    for request in parsed:
         items = index.items(request)
         if items:
             title, year = items[0].title, items[0].year
