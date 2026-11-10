@@ -57,21 +57,21 @@
   <summary>Requests made {{ filters.period_label() }}{% if filters.type %}, {{ TYPES[filters.type] | lower }} only{% endif %}; declined ones are left out.</summary>
   <p>Finished: watched the movie, or every episode Plex has of the requested seasons. Started: played any of it, including episodes Plex no longer has. Not started {{ stale_days }}d+: in Plex for {{ stale_days }} days or more, and they haven't played any of it.</p>
 </details>
-<table>
+<table class="stack">
   <thead>
     <tr><th>Requester</th><th>Requests</th><th>Last request</th><th>In Plex</th><th>Finished</th><th>Started</th><th>Not started</th><th>Not started {{ stale_days }}d+</th></tr>
   </thead>
   <tbody>
     {% for u in users %}
     <tr>
-      <td class="long"><a href="/requests?{{ filters.query(user=u.id) | urlencode }}">{{ u.name }}</a>{% if u.plex_user_id is none %}<br><span class="muted">no Plex user matched</span>{% endif %}</td>
-      <td>{{ u.requests }}</td>
-      <td class="date"><time datetime="{{ u.last_requested_at }}Z" data-date>{{ u.last_requested_at[:10] }}</time></td>
-      <td>{{ u.available }}</td>
-      <td class="with-share"><a href="/requests?{{ filters.query(user=u.id, progress='finished', min_days=none) | urlencode }}">{{ u.finished }}</a>{% if u.finished_percent is not none %} <span class="muted">({{ u.finished_percent }}%)</span>{{ ui.share(u.finished_percent) }}{% endif %}</td>
-      <td><a href="/requests?{{ filters.query(user=u.id, progress='started', min_days=none) | urlencode }}">{{ u.started }}</a></td>
-      <td><a href="/requests?{{ filters.query(user=u.id, progress='not_started', min_days=none) | urlencode }}">{{ u.not_started }}</a></td>
-      <td><a href="/requests?{{ filters.query(user=u.id, progress='not_started', min_days=stale_days) | urlencode }}">{{ u.stale }}</a></td>
+      <td class="long first lead"><a href="/requests?{{ filters.query(user=u.id) | urlencode }}">{{ u.name }}</a>{% if u.plex_user_id is none %}<br><span class="muted">no Plex user matched</span>{% endif %}</td>
+      <td data-label="Requests">{{ u.requests }}</td>
+      <td class="date" data-label="Last request"><time datetime="{{ u.last_requested_at }}Z" data-date>{{ u.last_requested_at[:10] }}</time></td>
+      <td data-label="In Plex">{{ u.available }}</td>
+      <td class="with-share row" data-label="Finished"><a href="/requests?{{ filters.query(user=u.id, progress='finished', min_days=none) | urlencode }}">{{ u.finished }}</a>{% if u.finished_percent is not none %} <span class="muted">({{ u.finished_percent }}%)</span>{{ ui.share(u.finished_percent) }}{% endif %}</td>
+      <td data-label="Started"><a href="/requests?{{ filters.query(user=u.id, progress='started', min_days=none) | urlencode }}">{{ u.started }}</a></td>
+      <td data-label="Not started"><a href="/requests?{{ filters.query(user=u.id, progress='not_started', min_days=none) | urlencode }}">{{ u.not_started }}</a></td>
+      <td data-label="Not started {{ stale_days }}d+"><a href="/requests?{{ filters.query(user=u.id, progress='not_started', min_days=stale_days) | urlencode }}">{{ u.stale }}</a></td>
     </tr>
     {% endfor %}
   </tbody>
@@ -88,7 +88,7 @@
 <p class="empty">No requests match.</p>
 {% else %}
 <p class="muted">{{ requests | length }} of {{ total }} requests (made {{ filters.period_label() }}){% if limit and requests | length > limit %}, the first {{ limit }} shown. <a href="/requests?{{ filters.query() | urlencode }}&amp;all=1">Show all {{ requests | length }}</a>{% endif %}.</p>
-<table>
+<table class="stack">
   <thead>
     <tr><th>Title</th><th>Requester</th><th>Requested</th><th>In Plex since</th><th>Requester's progress</th><th>Last played</th><th>Others</th></tr>
   </thead>
@@ -96,22 +96,22 @@
     {% for r in (requests[:limit] if limit else requests) %}
     {% set state = progress(r) %}
     <tr>
-      <td class="long">
+      <td class="long first lead">
         {{ r.title }}{% if r.year %} ({{ r.year }}){% endif %}
         <br><span class="muted">{{ TYPES[r.media_type] }}{% if r.media_type == "tv" and r.seasons %}, season{{ "s" if r.seasons | length > 1 }} {{ r.seasons | join(", ") }}{% endif %}{% if r.is_4k %}, 4K{% endif %}{% if r.status not in ("approved", "completed") %}, {{ r.status }}{% endif %}</span>
       </td>
-      <td class="long">{{ r.requester }}</td>
-      <td class="date">{{ r.requested_at | localdate }}</td>
-      <td class="date">{% if r.available_at %}{{ r.available_at | localdate }}<br><span class="muted">{{ days_available(r, now) }} days</span>{% else %}-{% endif %}</td>
-      <td class="progress-cell">
+      <td class="long" data-label="Requester">{{ r.requester }}</td>
+      <td class="date" data-label="Requested">{{ r.requested_at | localdate }}</td>
+      <td class="date" data-label="In Plex since">{% if r.available_at %}{{ r.available_at | localdate }}<br><span class="muted">{{ days_available(r, now) }} days</span>{% else %}-{% endif %}</td>
+      <td class="progress-cell end">
         <span class="progress progress-{{ state }}">{{ PROGRESS[state] }}</span>
         {%- set facts = [] %}
         {%- if r.media_type == "tv" and state in ("started", "finished", "not_started") %}{% set _ = facts.append(r.watched ~ " of " ~ r.items ~ " episodes" ~ (", " ~ (r.started - r.watched) ~ " part watched" if r.started > r.watched else "")) %}{% endif %}
         {%- if r.requester_plays %}{% set _ = facts.append(r.requester_plays ~ " play" ~ ("s" if r.requester_plays != 1 else "")) %}{% endif %}
         {%- if facts %}<br><span class="muted">{{ facts | join(" · ") }}</span>{% endif %}
       </td>
-      <td class="date">{{ r.last_played_at | localdate }}</td>
-      <td>{{ r.other_viewers or "-" }}</td>
+      <td class="date" data-label="Last played">{{ r.last_played_at | localdate }}</td>
+      <td data-label="Others">{{ r.other_viewers or "-" }}</td>
     </tr>
     {% endfor %}
   </tbody>

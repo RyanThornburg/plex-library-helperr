@@ -627,9 +627,6 @@ summary.line:focus-visible { outline: 2px solid var(--text); outline-offset: -2p
 .line-state { color: var(--muted); font-size: 13px; }
 .line-facts {
   color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   font-variant-numeric: tabular-nums;
 }
 .line-link { display: inline-flex; gap: 12px; font-size: 13px; white-space: nowrap; }
@@ -639,7 +636,8 @@ summary.line:focus-visible { outline: 2px solid var(--text); outline-offset: -2p
 @media (max-width: 700px) {
   .status-board { grid-template-columns: 1fr; }
   .line { grid-template-columns: 8px minmax(0, 1fr) auto auto; row-gap: 2px; }
-  .line-facts { grid-column: 2 / -1; grid-row: 2; white-space: normal; }
+  .line-facts { grid-column: 2 / -1; grid-row: 2; }
+  .line-name { white-space: normal; }
   .line-body { padding-left: 36px; }
 }
 
@@ -691,7 +689,10 @@ summary.line:focus-visible { outline: 2px solid var(--text); outline-offset: -2p
 .decision-direct_play { color: var(--ok); }
 .decision-transcode { color: var(--warn-text); }
 .decision-unknown { color: var(--muted); }
-.hint-cell { color: var(--muted); font-size: 13px; max-width: 60ch; }
+/* hints keep a readable measure: a td ignores max-width, so the column gets a width and
+   the table stops at its content instead of stretching every column */
+.causes { width: auto; }
+.hint-cell { color: var(--muted); font-size: 13px; width: 60ch; min-width: 20rem; }
 .table-scroll { overflow-x: auto; }
 
 /* health history */
@@ -761,3 +762,37 @@ meter.share::-webkit-meter-suboptimum-value { border-radius: 999px; background: 
 meter.share::-webkit-meter-even-less-good-value { border-radius: 999px; background: var(--accent); }
 meter.share::-moz-meter-bar { border-radius: 999px; background: var(--info); }
 meter.share:-moz-meter-sub-sub-optimum::-moz-meter-bar { background: var(--accent); }
+
+/* wide tables on a phone (table.stack): each row stacks instead of scrolling sideways.
+   The row's name (.lead, after any .first cells such as a checkbox or #) leads with its
+   status (.end) on the right; the other cells follow with their column's name
+   (data-label), a .row cell on a line of its own */
+.stack-only { display: none; }
+@media (max-width: 700px) {
+  table.stack, table.stack tbody { display: block; }
+  table.stack thead { display: none; }
+  table.stack thead:has(th.keep) { display: block; }
+  table.stack thead tr { display: flex; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  table.stack thead th { display: none; padding: 0; border: 0; }
+  table.stack thead th.keep { display: block; }
+  table.stack .stack-only { display: inline; }
+  table.stack tbody tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 12px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  table.stack tbody tr:last-child { border-bottom: 0; }
+  table.stack td { order: 2; min-width: 0; padding: 0; border: 0; font-size: 13px; }
+  table.stack td.first { order: 0; font-size: 15px; }
+  table.stack td.lead { flex: 1 1 0; min-width: 50%; font-weight: 600; }
+  table.stack td.end { order: 1; font-size: 15px; }
+  table.stack td.row { flex-basis: 100%; }
+  table.stack td:empty { display: none; }
+  table.stack td[data-label]::before { content: attr(data-label) " "; color: var(--muted); }
+  table.stack td.lead .muted { font-weight: 400; }
+  /* a file count stays next to its label */
+  table.stack td > details { display: inline-block; vertical-align: top; }
+}

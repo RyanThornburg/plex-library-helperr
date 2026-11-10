@@ -61,21 +61,21 @@
   {% if before %}<a href="/runs">Newest runs</a>{% endif %}
 </div>
 {% if runs %}
-<table>
+<table class="stack">
   <thead>
     <tr><th>#</th><th>Job</th><th>Status</th><th>Mode</th><th>Changes</th><th>Started</th><th>Took</th><th>By</th></tr>
   </thead>
   <tbody>
     {% for run in runs %}
     <tr>
-      <td><a href="/runs/{{ run.id }}">{{ run.id }}</a></td>
-      <td>{{ JOB_INFO[run.job][0] }}</td>
-      <td><span class="status status-{{ run.status }}">{{ run.status | replace("_", " ") }}</span></td>
-      <td>{{ "apply plan" if run.plan_run_id else "dry run" if run.dry_run else "settings" }}</td>
-      <td>{{ run.result.changes | length if run.result else "-" }}</td>
-      <td>{{ run.started_at | localtime }}</td>
-      <td>{{ duration(run) }}</td>
-      <td class="long muted">{{ run_source(run) }}</td>
+      <td class="first"><a href="/runs/{{ run.id }}">{{ run.id }}</a></td>
+      <td class="first lead">{{ JOB_INFO[run.job][0] }}</td>
+      <td class="end"><span class="status status-{{ run.status }}">{{ run.status | replace("_", " ") }}</span></td>
+      <td data-label="Mode">{{ "apply plan" if run.plan_run_id else "dry run" if run.dry_run else "settings" }}</td>
+      <td data-label="Changes">{{ run.result.changes | length if run.result else "-" }}</td>
+      <td class="row" data-label="Started">{{ run.started_at | localtime }}</td>
+      <td data-label="Took">{{ duration(run) }}</td>
+      <td class="long muted" data-label="By">{{ run_source(run) }}</td>
     </tr>
     {% endfor %}
   </tbody>

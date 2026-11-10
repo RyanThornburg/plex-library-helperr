@@ -262,7 +262,7 @@ An app shell: a 56px header across the top, a 212px sidebar down the left, then 
 
 Groups of cards use auto-fit grids, each with its own minimum: job cards 260px, status cards 340px, connection forms 420px, all with a 12px gap. Forms are a two-column grid (labels at max-content, fields up to 520px) with 12px × 16px gaps. Fact lists use the same two-column `dt`/`dd` grid.
 
-Spacing steps are 4, 8, 12, 16 and 24px. At 768px and below the sidebar becomes the header's Menu, the toolbar scrolls with the page, the email is hidden and the page padding is 16px. At 700px and below, card grids collapse to one column, forms stack labels over fields, and wide tables scroll sideways inside their own box instead of the page.
+Spacing steps are 4, 8, 12, 16 and 24px. At 768px and below the sidebar becomes the header's Menu, the toolbar scrolls with the page, the email is hidden and the page padding is 16px. At 700px and below, card grids collapse to one column, forms stack labels over fields, and wide tables either stack their rows (`table.stack`) or scroll sideways inside their own box, never the page.
 
 ## Elevation & Depth
 
@@ -319,7 +319,7 @@ A count on a sidebar section, from the database only. A 20px pill, 12px 600 tabu
 - **Internal Padding:** 14px × 16px, children 8px apart; card actions pin to the bottom.
 
 ### Tables
-The main way data is shown. Panel background, 1px outer border and row rules, 8px × 12px cells, left-aligned. Headers are Label type in Dim Ink and never wrap. Row actions sit right-aligned and never wrap. Status words in cells are 600 weight in their state color, written as words ("dry run", not `dry_run`). Cells keep their words whole; a cell that can hold a long name, path or text is `.long` (breaks anywhere, at least 8rem), so a release name never widens the page and never squeezes an id or count. Below 700px a table scrolls inside its own box.
+The main way data is shown. Panel background, 1px outer border and row rules, 8px × 12px cells, left-aligned. Headers are Label type in Dim Ink and never wrap. Row actions sit right-aligned and never wrap. Status words in cells are 600 weight in their state color, written as words ("dry run", not `dry_run`). Cells keep their words whole; a cell that can hold a long name, path or text is `.long` (breaks anywhere, at least 8rem), so a release name never widens the page and never squeezes an id or count. Below 700px a table scrolls inside its own box, except the ones you read on a phone (`table.stack`: Recent runs, a removers plan, both Requests tables), whose rows stack: the name leads in 600 with its status at the right, then the other cells in 13px with their column's name before them in Dim Ink. The Jobs, Fix these and incidents tables have their own stacked layouts.
 
 ### Inputs / Fields
 - **Style:** Panel fill, 1px Rule Line border, 6px radius, 6px × 10px padding, body font; number inputs max 160px.
@@ -345,7 +345,7 @@ A full-width notice under the page heading: 1px border, 6px radius, 10px × 14px
 The first thing on the Status page: a Panel box, 16px text, one sentence. Healthy: "All N connected services are OK." on a neutral border. Otherwise: "N services need you:" in bold, then one link per service ("Sonarr: 2 warnings, 3 stuck, for 2d 4h") in Ink, 600 weight, underlined, with the border in the worst state's color. Nothing connected: a sentence linking to Connections.
 
 ### Service Lines
-Healthy and unconnected services, as rows of one Panel with 1px rules between them. Each row is a grid (disclosure chevron 8px, name and version 14rem, state 7rem, facts): name 600 in Ink, version, state and facts in Dim Ink, facts on one line with an ellipsis. A healthy row is a `<details>` that opens to its facts, items and notes; its chevron is drawn in CSS. An unconnected row says "not connected" and links to its Connections form. Below 700px the facts wrap under the name.
+Healthy and unconnected services, as rows of one Panel with 1px rules between them. Each row is a grid (disclosure chevron 8px, name and version 14rem, state 7rem, facts): name 600 in Ink, version, state and facts in Dim Ink, facts wrapping to a second line when long, never clipped. A healthy row is a `<details>` that opens to its facts, items and notes; its chevron is drawn in CSS. An unconnected row says "not connected" and links to its Connections form. Below 700px the facts sit under the name.
 
 ### State Cards
 A service that needs you: a card with its whole border in the state color, a filled state tag in the header, then the problem block (problems with state words and how long each has lasted), then its facts and items. A down card's block says why and links to that service's connection form. Cards sit in an auto-fit grid (340px minimum), aligned to the top, never stretched to equal height.

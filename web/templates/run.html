@@ -51,10 +51,10 @@
 <p class="muted">Select what to remove, then review. Applying plans each selected series or movie again from fresh Sonarr/Radarr data and only removes what was approved and is still eligible.</p>
 {% endif %}
 {% if selectable %}<form method="get" action="/runs/{{ run.id }}/apply">{% endif %}
-<table>
+<table class="stack">
   <thead>
     <tr>
-      {% if selectable %}<th><input type="checkbox" data-select-all="item" aria-label="Select all"></th>{% endif %}
+      {% if selectable %}<th class="keep"><input type="checkbox" data-select-all="item" aria-label="Select all"><span class="stack-only" aria-hidden="true"> Select all</span></th>{% endif %}
       <th>Series / movie</th><th>Rule</th><th>Remove</th><th>Files</th><th>Status</th><th>Detail</th>
     </tr>
   </thead>
@@ -62,19 +62,19 @@
     {% for removal in removals %}
     <tr>
       {% if selectable %}
-      <td>{% if removal.status in APPROVABLE %}<input type="checkbox" name="item" value="{{ removal_key(removal) }}" aria-label="Remove {{ removal.title }}">{% endif %}</td>
+      <td class="first">{% if removal.status in APPROVABLE %}<input type="checkbox" name="item" value="{{ removal_key(removal) }}" aria-label="Remove {{ removal.title }}">{% endif %}</td>
       {% endif %}
-      <td class="long">{{ removal.title }}{% if removal.service == "RADARR" %} <span class="tag">movie</span>{% endif %}</td>
-      <td class="long muted">{{ removal.rule }}</td>
-      <td class="units">{{ removal.labels | join(", ") }}</td>
-      <td>
+      <td class="long first lead">{{ removal.title }}{% if removal.service == "RADARR" %} <span class="tag">movie</span>{% endif %}</td>
+      <td class="long muted" data-label="Rule">{{ removal.rule }}</td>
+      <td class="units row" data-label="Remove">{{ removal.labels | join(", ") }}</td>
+      <td data-label="Files">
         <details>
           <summary>{{ removal.files | length }}</summary>
           <ul class="items files">{% for file in removal.files %}<li>{{ file.path }}</li>{% endfor %}</ul>
         </details>
       </td>
-      <td><span class="status status-{{ removal.status }}">{{ removal.status | replace("_", " ") }}</span></td>
-      <td class="long muted">{{ removal.detail }}</td>
+      <td class="end"><span class="status status-{{ removal.status }}">{{ removal.status | replace("_", " ") }}</span></td>
+      <td class="long muted row">{{ removal.detail }}</td>
     </tr>
     {% endfor %}
   </tbody>
