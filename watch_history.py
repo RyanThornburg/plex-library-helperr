@@ -12,6 +12,7 @@ from plexapi import exceptions as plexapi_exceptions
 
 from config.models import PlexConfig, TautulliConfig
 from plex import setup_plex_server
+from tautulli import TautulliRefused, tautulli_get
 
 logger = logging.getLogger(__name__)
 
@@ -48,16 +49,7 @@ def _from_timestamp(ts: object) -> datetime | None:
 
 
 def _tautulli(config: TautulliConfig, cmd: str, **params: object) -> object:
-    response = requests.get(
-        f"{config.url.rstrip('/')}/api/v2",
-        params={"apikey": config.apikey, "cmd": cmd, **params},
-        timeout=60,
-    )
-    response.raise_for_status()
-    body = response.json()["response"]
-    if body.get("result") != "success":
-        raise ValueError(body.get("message") or f"tautulli {cmd} failed")
-    return body["data"]
+    return tautulli_get(config.url, config.apikey, cmd, **params)
 
 
 def _tautulli_show_tvdb_id(config: TautulliConfig, rating_key: object) -> int | None:
@@ -153,7 +145,7 @@ def get_tautulli_watches(
                     watched_at=watched_at,
                 )
             )
-    except (requests.exceptions.RequestException, KeyError, ValueError) as e:
+    except (requests.exceptions.RequestException, TautulliRefused, KeyError, ValueError) as e:
         # requests errors include the url, and tautulli's apikey is a query param
         message = str(e).replace(config.apikey, "***") if config.apikey else str(e)
         logger.error("TAUTULLI\t Failed to read watch history: %s", message)

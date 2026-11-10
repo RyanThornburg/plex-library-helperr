@@ -14,7 +14,9 @@ import requests
 
 from config.models import ArrConfig, BazarrConfig, ConfigSettings, SabnzbdConfig, SeerrConfig, TautulliConfig
 from logging_config import failure_text, url_hosts
+from tautulli import TautulliRefused, tautulli_get
 from web.lookups import BAZARR_NOT_API, redact
+from web.seerr import SeerrRefused, seerr_get
 
 logger = logging.getLogger(__name__)
 
@@ -482,7 +484,7 @@ def seerr_status(seerr: SeerrConfig | None) -> ServiceStatus:
     base, key = seerr.url.rstrip("/"), seerr.apikey
 
     def get(path: str) -> Any:
-        return _get_json(f"{base}/api/v1/{path}", "Seerr", headers={"X-Api-Key": key})
+        return seerr_get(base, key, path, timeout=TIMEOUT)
 
     about = get("status")
     status.version = about.get("version")
@@ -603,11 +605,7 @@ def plex_status(tautulli: TautulliConfig | None) -> ServiceStatus:
     base, key = tautulli.url.rstrip("/"), tautulli.apikey
 
     def cmd(name: str) -> Any:
-        body = _get_json(f"{base}/api/v2", "Tautulli", params={"apikey": key, "cmd": name})
-        response = body.get("response", {})
-        if response.get("result") != "success":
-            raise Refused(f"Tautulli refused: {response.get('message') or 'unknown error'}")
-        return response.get("data") or {}
+        return tautulli_get(base, key, name, timeout=TIMEOUT) or {}
 
     if not cmd("server_status").get("connected"):
         status.problem("bad", "Tautulli can't reach the Plex server")
@@ -645,7 +643,7 @@ def plex_status(tautulli: TautulliConfig | None) -> ServiceStatus:
 
 def failure(e: Exception, label: str, *secrets: str | None) -> str:
     """why a request to a service failed, secrets redacted"""
-    if isinstance(e, Refused):
+    if isinstance(e, (Refused, TautulliRefused, SeerrRefused)):
         return redact(str(e), *secrets)
     if isinstance(e, requests.exceptions.ConnectionError):
         return "Couldn't connect"

@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from config.models import ConfigSettings, TautulliConfig
 from watch_history import history_rows, tautulli_after
 from web.db import Playback
+from tautulli import TautulliRefused
 from web.jobs import utc_now
 from web.lookups import redact
 from web.stats import (
@@ -186,7 +187,7 @@ def stream_data(config: TautulliConfig, history_id: int) -> dict[str, Any] | Non
     """how plex streamed a play, None when tautulli has nothing for it (it answers 400)"""
     try:
         data = _tautulli(config, "get_stream_data", row_id=history_id)
-    except StatsError:
+    except TautulliRefused:
         return None
     except requests.HTTPError as e:
         if e.response is not None and e.response.status_code == 400:
@@ -266,7 +267,7 @@ def sync(engine: Engine, settings: ConfigSettings) -> SyncStatus:
         status.plays_read = sync_playbacks(engine, settings.tautulli, status.started_at)  # type: ignore[arg-type]
         if status.plays_read:
             logger.info("PLAYBACK\t Added %s plays", status.plays_read)
-    except StatsError as e:
+    except (StatsError, TautulliRefused) as e:
         status.error = str(e)
         logger.info("PLAYBACK\t Not synced: %s", e)
     except Exception as e:

@@ -23,10 +23,12 @@ from sqlalchemy.orm import Session
 from config.models import ConfigSettings, PlexConfig, SeerrConfig, TautulliConfig
 from logging_config import redacted
 from movie_remover import PlayLookup, RadarrMovie
+from tautulli import TautulliRefused, tautulli_get
 from watch_history import history_rows, tautulli_after
 from web.db import AppSetting, MediaRequest, Play
 from web.jobs import utc_now
 from web.lookups import redact
+from web.seerr import SeerrRefused, seerr_get
 
 logger = logging.getLogger(__name__)
 
@@ -80,16 +82,7 @@ def _text(value: object, length: int) -> str | None:
 
 
 def _tautulli(config: TautulliConfig, cmd: str, **params: object) -> Any:
-    response = requests.get(
-        f"{config.url.rstrip('/')}/api/v2",
-        params={"apikey": config.apikey, "cmd": cmd, **params},
-        timeout=TIMEOUT,
-    )
-    response.raise_for_status()
-    body = response.json()["response"]
-    if body.get("result") != "success":
-        raise StatsError(f"Tautulli {cmd} failed: {body.get('message') or 'unknown error'}")
-    return body["data"]
+    return tautulli_get(config.url, config.apikey, cmd, timeout=TIMEOUT, **params)
 
 
 # plex's agents before late 2021: com.plexapp.agents.thetvdb://121361/6/1?lang=en
@@ -182,14 +175,7 @@ def sync_plays(engine: Engine, config: TautulliConfig) -> int:
 
 
 def _seerr(config: SeerrConfig, path: str, **params: object) -> Any:
-    response = requests.get(
-        f"{config.url.rstrip('/')}/api/v1/{path}",
-        params=params,
-        headers={"X-Api-Key": config.apikey},
-        timeout=TIMEOUT,
-    )
-    response.raise_for_status()
-    return response.json()
+    return seerr_get(config.url, config.apikey, path, timeout=TIMEOUT, **params)
 
 
 def seerr_requests(config: SeerrConfig) -> list[dict[str, Any]]:
@@ -593,7 +579,7 @@ def _seerr_title(config: SeerrConfig, request: ParsedRequest) -> tuple[str, int 
         return f"TVDB {request.tvdb_id}", None
     try:
         details = _seerr(config, f"{request.media_type}/{request.tmdb_id}")
-    except requests.exceptions.RequestException, ValueError:
+    except requests.exceptions.RequestException, SeerrRefused, ValueError:
         return f"TMDB {request.tmdb_id}", None
     title = details.get("title") or details.get("name") or f"TMDB {request.tmdb_id}"
     date = details.get("releaseDate") or details.get("firstAirDate") or ""
@@ -756,7 +742,7 @@ def sync(engine: Engine, settings: ConfigSettings) -> SyncStatus:
         logger.info(
             "STATS\t Synced %s plays and %s requests", status.plays_read, status.requests
         )
-    except StatsError as e:
+    except (StatsError, TautulliRefused, SeerrRefused) as e:
         status.error = str(e)
         logger.info("STATS\t Not synced: %s", e)
     except Exception as e:

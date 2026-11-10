@@ -16,8 +16,10 @@ from arrapi import Movie, QualityProfile, RadarrAPI, RootFolder, Series, SonarrA
 from plexapi.server import PlexServer
 
 from arr_client import arr_api, read_media
+from tautulli import TautulliRefused, tautulli_get
 from config.models import ArrConfig, MoverRule, PlexConfig, ProfileRule
 from web.jobs import utc_now
+from web.seerr import SeerrRefused, seerr_get
 
 logger = logging.getLogger(__name__)
 
@@ -283,26 +285,12 @@ def check_connection(service: str, values: dict[str, str]) -> str:
             server = PlexServer(url, secret, timeout=TIMEOUT)
             return f"Plex {server.friendlyName} {server.version}"
         if service == "tautulli":
-            response = requests.get(
-                f"{url}/api/v2",
-                params={"apikey": secret, "cmd": "get_tautulli_info"},
-                timeout=TIMEOUT,
-            )
-            response.raise_for_status()
-            body = response.json().get("response", {})
-            if body.get("result") != "success":
-                raise LookupFailed(f"Tautulli refused: {body.get('message') or 'unknown error'}")
-            return f"Tautulli {body.get('data', {}).get('tautulli_version', '')}"
+            info = tautulli_get(url, secret, "get_tautulli_info", timeout=TIMEOUT) or {}
+            return f"Tautulli {info.get('tautulli_version', '')}"
         if service == "seerr":
             # status answers without a key, requests need it
-            headers = {"X-Api-Key": secret}
-            response = requests.get(f"{url}/api/v1/request", params={"take": 1}, headers=headers, timeout=TIMEOUT)
-            if response.status_code in (401, 403):
-                raise LookupFailed(f"Seerr refused the API key (HTTP {response.status_code})")
-            response.raise_for_status()
-            status = requests.get(f"{url}/api/v1/status", headers=headers, timeout=TIMEOUT)
-            status.raise_for_status()
-            return f"Seerr {status.json().get('version', '')}"
+            seerr_get(url, secret, "request", timeout=TIMEOUT, take=1)
+            return f"Seerr {seerr_get(url, secret, 'status', timeout=TIMEOUT).get('version', '')}"
         if service == "sabnzbd":
             # version answers without a key, the queue needs it. The key is a query param
             response = requests.get(
@@ -339,7 +327,7 @@ def check_connection(service: str, values: dict[str, str]) -> str:
                 raise LookupFailed("Autoscan refused the username/password (HTTP 401)")
             response.raise_for_status()
             return "Autoscan's manual trigger"
-    except LookupFailed as e:
+    except (LookupFailed, TautulliRefused, SeerrRefused) as e:
         raise LookupFailed(redact(str(e), secret)) from None
     except requests.exceptions.JSONDecodeError:
         raise LookupFailed(NOT_API.format(SERVICE_LABELS.get(service, service))) from None

@@ -139,7 +139,7 @@ class TestCheckConnection:
     def test_tautulli_refusal_is_redacted(self):
         body = {"response": {"result": "error", "message": "Invalid apikey secret"}}
         with patch("web.lookups.requests.get", return_value=response(body=body)):
-            with pytest.raises(LookupFailed, match=r"Tautulli refused: Invalid apikey \*\*\*"):
+            with pytest.raises(LookupFailed, match=r"Tautulli get_tautulli_info failed: Invalid apikey \*\*\*"):
                 check_connection("tautulli", {"url": "http://t:8181", "secret": "secret"})
 
     def test_http_error_is_redacted(self):

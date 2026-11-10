@@ -19,6 +19,7 @@ from web import stats
 from web.app import create_app
 from web.db import MediaRequest, Play, make_engine, migrate
 from web.jobs import utc_now
+from tautulli import TautulliRefused
 from web.stats import (
     EpisodeRef,
     PlexIndex,
@@ -142,7 +143,7 @@ class TestPlays:
 
     def test_a_tautulli_error_stops_it(self, engine):
         with patch.object(stats.requests, "get", return_value=response({"response": {"result": "error", "message": "bad key"}})):
-            with pytest.raises(stats.StatsError, match="bad key"):
+            with pytest.raises(TautulliRefused, match="Tautulli get_history failed: bad key"):
                 sync_plays(engine, TAUTULLI)
 
 
