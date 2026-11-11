@@ -318,7 +318,7 @@ To make a release:
 
 1. Set the new version in `pyproject.toml` and run `uv lock`.
 2. Add a `## 2.1.0 (date)` section to the top of `CHANGELOG.md`.
-3. Commit, push, then tag and push the tag: `git tag -a v2.1.0 -m v2.1.0 && git push origin v2.1.0`.
+3. Commit, tag, and push the commit and the tag together: `git tag -a v2.1.0 -m v2.1.0 && git push origin mainline v2.1.0`. Pushing them at once means the `edge` build reads 2.1.0 too.
 
 CI checks the tag matches `pyproject.toml`, publishes the image tags and makes a GitHub release from the changelog section.
 
