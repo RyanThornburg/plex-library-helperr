@@ -2,6 +2,12 @@
 
 What changed in each release. Versions are `MAJOR.MINOR.PATCH`: the major number goes up when upgrading needs you to do something (a new required setting, a removed feature, a change that breaks the API), the minor number for new features, the patch number for fixes.
 
+## 2.0.1 (2026-11-10)
+
+### Fixed
+
+- Playback: for plays where only the audio was converted, the advice now points at the Plex app's audio passthrough setting. Passthrough on only helps when a receiver or soundbar takes the format. With it off, a player that can decode the format plays it itself. The old text suggested turning passthrough on or adding an AC3/AAC track.
+
 ## 2.0.0 (2026-11-10)
 
 Version 2 is a web app. Version 1 was a command line script that read `config.toml`. It isn't maintained anymore: its last commit is tagged `v1`, and its image is `ghcr.io/ryanthornburg/plex-library-helperr:sha-b421917`.

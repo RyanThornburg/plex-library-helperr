@@ -70,8 +70,9 @@ CAUSES = {
     "audio": (
         "Audio format",
         "Only the audio is converted: the player can't play the file's audio (often "
-        "DTS, TrueHD or EAC3). Light on the server; an AC3/AAC track or audio "
-        "passthrough to a receiver avoids it.",
+        "DTS, TrueHD or EAC3). Light on the server. Check the Plex app's audio "
+        "passthrough: off lets a player that decodes the format play it itself, on "
+        "only helps when the receiver or soundbar takes that format.",
     ),
     "unknown": (
         "Not recorded",
@@ -100,7 +101,7 @@ CHANGES = {
     "hdr": "an SDR version, or an HDR player",
     "video_codec": "an H.264 version, or a newer player",
     "resolution": "a 1080p version",
-    "audio": "audio passthrough, or an AC3/AAC track",
+    "audio": "the Plex app's audio passthrough setting",
     "unknown": "check their connection",
 }
 # the fix list stops at FIXES devices, once it covers FIXES_COVER of the transcodes, or at

@@ -368,7 +368,7 @@ class TestReport:
             ("Plex for LG", 4, "4 Mbps 720p"),
             ("Plex for Roku", 3, "can't play EAC3 5.1"),
         ]
-        assert fx["devices"][1]["change"] == "audio passthrough, or an AC3/AAC track"
+        assert fx["devices"][1]["change"] == "the Plex app's audio passthrough setting"
 
     def test_fix_list_stops_once_it_covers_most_transcodes(self):
         plays = [play(i, user_id=10) for i in range(1, 11)]
