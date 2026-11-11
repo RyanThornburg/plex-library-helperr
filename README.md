@@ -333,3 +333,7 @@ This is a personal project built around my own setup, but bug reports, ideas and
 Before you paste logs or settings, check them for API keys, tokens and URLs you don't want public. The app redacts the keys it knows about, but not everything.
 
 Pull requests are welcome too. For anything bigger than a small fix, open an issue first so we can agree on the approach. Please make sure `uv run pytest tests/` passes.
+
+## License
+
+[GPL-3.0 or later](LICENSE). You can use, change and share it; if you distribute a modified version, its source has to be available under the same license. The icons in `web/static/icons.svg` are from [Lucide](https://lucide.dev) (ISC).

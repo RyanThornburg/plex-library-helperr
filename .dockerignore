@@ -4,6 +4,7 @@
 *
 !pyproject.toml
 !uv.lock
+!LICENSE
 !*.py
 !config/__init__.py
 !config/models.py

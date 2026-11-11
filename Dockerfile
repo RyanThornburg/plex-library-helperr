@@ -24,7 +24,7 @@ ENV PATH=/app/.venv/bin:$PATH \
 WORKDIR /app
 # app files stay root-owned so the app can't modify its own code
 COPY --from=build /app/.venv /app/.venv
-COPY pyproject.toml *.py ./
+COPY pyproject.toml LICENSE *.py ./
 COPY config/__init__.py config/models.py config/document.py ./config/
 COPY web ./web
 # unraid's nobody:users, so files written to /config match other appdata.
