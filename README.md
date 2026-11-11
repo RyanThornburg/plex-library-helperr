@@ -2,6 +2,8 @@
 
 This started as a script to move documentaries in Radarr to their own folder and library. It grew from there. Version 2 adds a web app, so I can keep an eye on my Plex setup and run jobs from one place instead of logging into Radarr, Sonarr, Seerr and SABnzbd one by one.
 
+There are likely services out there that do some of this ([Kometa](https://github.com/Kometa-Team/Kometa), [Maintainerr](https://github.com/Maintainerr/Maintainerr)) if not all of it, but I couldn't find one that fits my needs.
+
 It does four kinds of jobs against Radarr and Sonarr:
 
 - **Movers** move movies or series to a different root folder based on genre, tag, studio, network or certification. I use these to split things like documentaries, kids shows and holiday movies into their own Plex libraries.
@@ -323,3 +325,11 @@ To make a release:
 CI checks the tag matches `pyproject.toml`, publishes the image tags and makes a GitHub release from the changelog section.
 
 I used Claude for help writing the tests in v1 (command line version) and heavily to migrate to the web ui version (v2)
+
+## Feedback and contributions
+
+This is a personal project built around my own setup, but bug reports, ideas and questions are welcome. Open an [issue](https://github.com/RyanThornburg/plex-library-helperr/issues) and include your version (bottom of the sidebar) and what you expected to happen.
+
+Before you paste logs or settings, check them for API keys, tokens and URLs you don't want public. The app redacts the keys it knows about, but not everything.
+
+Pull requests are welcome too. For anything bigger than a small fix, open an issue first so we can agree on the approach. Please make sure `uv run pytest tests/` passes.
