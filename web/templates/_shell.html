@@ -11,6 +11,7 @@
 
 {% macro sidebar(shell) %}
 <nav class="sidebar" aria-label="Main">
+  <div class="sidebar-fixed">
   <ul>
     {% for s in shell.sections %}
     <li class="section{% if s.open %} open{% endif %}">
@@ -24,6 +25,7 @@
     {% endfor %}
   </ul>
   <p class="version" title="Helperr version">Helperr {{ APP_VERSION }}</p>
+  </div>
 </nav>
 {% endmacro %}
 

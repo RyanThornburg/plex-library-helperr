@@ -109,7 +109,9 @@ html { scroll-padding-top: 132px; }
 /* the sidebar's colour runs the page's full height, its links stay in view */
 .sidebar { grid-area: side; background: var(--chrome-side); }
 .sidebar ul { margin: 0; padding: 0; list-style: none; }
-.sidebar > ul { position: sticky; top: 56px; max-height: calc(100vh - 56px); overflow-y: auto; padding: 8px 0; }
+/* the links and the version stay together in view; a long list scrolls, the version stays under it */
+.sidebar-fixed { position: sticky; top: 56px; display: flex; flex-direction: column; max-height: calc(100vh - 56px); }
+.sidebar-fixed > ul { min-height: 0; overflow-y: auto; padding: 8px 0; }
 .sidebar a { display: flex; align-items: center; gap: 12px; padding: 9px 16px 9px 20px; color: var(--chrome-text); text-decoration: none; }
 .sidebar a:hover { background: var(--chrome-hover); color: var(--chrome-strong); }
 /* where you are: gold text and a gold wash on the section, gold on the sub page */
@@ -228,6 +230,7 @@ h1 { font-size: 20px; margin: 0 0 16px; }
   .navmenu summary::-webkit-details-marker { display: none; }
   .navmenu[open] summary { background: var(--chrome-hover); }
   .navmenu .sidebar { position: absolute; top: 56px; left: 0; right: 0; height: auto; max-height: calc(100vh - 56px); }
+  .navmenu .sidebar-fixed { position: static; }
   .toolbar { position: static; padding: 0 8px; }
   /* the toolbar scrolls away here: a menu opens as a sheet at the bottom */
   .menu-panel { top: auto; bottom: 16px; left: 16px; right: 16px; }
