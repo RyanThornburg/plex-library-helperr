@@ -14,10 +14,12 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from web.auth import AccessMiddleware, AccessVerifier, SigningKeyClient
+from web.auth import AccessMiddleware, AccessVerifier, PasswordMiddleware, SigningKeyClient
 from web.config_store import ConfigStore
 from web.db import make_engine, migrate
 from web.jobs import JobRunner, LoadConfig, RunJob
+from web.login import LoginThrottle, announce_setup_token
+from web.login_routes import router as login_router
 from web.health import HealthMonitor
 from web.logs_routes import router as logs_router
 from web.lookups import Lookups
@@ -105,16 +107,21 @@ def create_app(
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         migrate(engine)
         api_key(engine)  # generated on the first start, like the *arrs
+        if settings.auth_mode == "password":
+            announce_setup_token(engine)  # until there's a login
         runner.start()
         if run_scheduler:
             scheduler.start()
             stats.start()
             playback.start()
             health.start()
+        if settings.auth_mode == "password":
+            sign_in = "sign-in with the app's password"
+        else:
+            sign_in = f"access team {settings.team_domain}, {len(settings.allowed_emails)} allowed emails"
         logger.info(
-            "WEB\t Started, access team %s, %s allowed emails, applying remover plans %s",
-            settings.team_domain,
-            len(settings.allowed_emails),
+            "WEB\t Started, %s, applying remover plans %s",
+            sign_in,
             "allowed" if settings.allow_remover_apply else "off",
         )
         yield
@@ -137,11 +144,14 @@ def create_app(
     app.state.load_config = load_config
     app.state.store = store
     app.state.lookups = lookups or Lookups()
+    app.state.auth_mode = settings.auth_mode
+    app.state.login_throttle = LoginThrottle()
     app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
     app.include_router(router)
     app.include_router(settings_router)
     app.include_router(connection_router)
     app.include_router(config_api_router)
+    app.include_router(login_router)
     # last of the settings pages: /settings/{arr} would catch /settings/trash
     app.include_router(rule_router)
     app.include_router(webhook_router)
@@ -151,7 +161,10 @@ def create_app(
     app.include_router(logs_router)
     add_error_pages(app)
     # added last runs first: security headers wrap the access check, so 403s get them too
-    app.add_middleware(AccessMiddleware, verifier=AccessVerifier(settings, keys))
+    if settings.auth_mode == "password":
+        app.add_middleware(PasswordMiddleware, engine=engine)
+    else:
+        app.add_middleware(AccessMiddleware, verifier=AccessVerifier(settings, keys))
     app.add_middleware(SecurityMiddleware)
 
     @app.get("/healthz")

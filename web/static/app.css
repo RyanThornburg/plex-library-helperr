@@ -75,6 +75,9 @@ body.shell {
   grid-template-areas: "head head" "side bar" "side main";
   min-height: 100vh;
 }
+/* the sign-in pages: the header and the page, no sidebar */
+body.shell.bare { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "bar" "main"; }
+body.shell.bare main { padding-top: 48px; }
 /* anchors (#sonarr, #radarr) land below the sticky header and toolbar */
 html { scroll-padding-top: 132px; }
 
@@ -97,6 +100,9 @@ html { scroll-padding-top: 132px; }
 .logo .icon { width: 28px; height: 28px; }
 .spacer { flex: 1; }
 .user { color: var(--chrome-muted); font-size: 13px; }
+.signout { margin: 0; }
+.signout button { padding: 3px 10px; border: 1px solid var(--chrome-muted); border-radius: 6px; background: transparent; color: var(--chrome-text); font-size: 13px; font-weight: 400; }
+.signout button:hover { color: var(--chrome-strong); border-color: var(--chrome-text); }
 .state-pill { text-decoration: none; }
 .appbar a:focus-visible, .appbar summary:focus-visible, .sidebar a:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
@@ -860,6 +866,11 @@ svg.share {
   border-radius: 8px;
 }
 .dialog-wide { max-width: 960px; }
+.dialog-narrow { max-width: 420px; }
+.dialog form { margin: 0; }
+.auth-fields label { font-weight: 600; margin-bottom: -8px; }
+.auth-fields .errors-list { margin: 0; }
+.auth-fields details p { margin: 6px 0 0; }
 .dialog-head {
   display: flex;
   align-items: center;

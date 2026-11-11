@@ -2,7 +2,7 @@
 {% set tab = "webhook" %}
 {% block settings %}
 <h2>API key</h2>
-<p class="muted">Radarr and Sonarr send this with their webhooks. It's only accepted on the webhook, which starts movers; everything else needs your Cloudflare Access sign-in.</p>
+<p class="muted">Radarr and Sonarr send this with their webhooks. It's only accepted on the webhook, which starts movers; everything else needs you to sign in.</p>
 <div class="key-row">
   <input id="api-key" value="{{ api_key }}" readonly spellcheck="false" aria-label="API key">
   <button type="button" class="button-secondary" data-copy="api-key">Copy</button>

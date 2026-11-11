@@ -300,6 +300,20 @@ class HealthIncident(Base):
     last_seen_at: Mapped[datetime]
     ended_at: Mapped[datetime | None] = mapped_column(index=True)
 
+
+class LoginSession(Base):
+    """a browser signed in with the password (AUTH_MODE=password, web.login). The cookie
+    holds a random token, only its sha256 is stored, so the database can't sign anyone in"""
+
+    __tablename__ = "login_sessions"
+
+    # sha256 hex of the cookie's token
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    username: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime]  # naive utc
+    last_seen_at: Mapped[datetime]
+
+
 def make_engine(path: pathlib.Path) -> Engine:
     engine = create_engine(f"sqlite:///{path}")
 

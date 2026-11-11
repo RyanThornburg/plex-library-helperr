@@ -45,9 +45,10 @@ All of the data in these is made up.
 - **Webhooks:** point Radarr's and Sonarr's webhook at the app and movers run as soon as something is added, before it downloads. File upgrades queue a trash empty a little later.
 - **Requests:** every Seerr request, who made it, when it reached Plex and how much of it they watched. Uses Tautulli's history.
 - **Playback:** how each play was streamed and why it transcoded (quality setting, audio format, subtitles, HDR and so on), grouped by person and device with what to change.
+- **Sign-in:** a username and password, or Cloudflare Access if you already use it. Every page needs it.
 - **Settings:** everything is set up in the app, including connections (with a Test button) and rules (with a Preview button that shows what a rule would match before you save it). Every save is kept as a version you can compare and restore.
 - **Events and logs:** the app's log, viewable and downloadable from the app.
-- **JSON API:** most pages have a matching `/api/...` endpoint (runs, schedules, config, status, requests, playback).
+- **JSON API:** most pages have a matching `/api/...` endpoint (runs, schedules, config, status, requests, playback). It needs the same sign-in as the pages.
 
 ## Upgrading from version 1
 
@@ -57,37 +58,24 @@ Version 1 read `config.toml`. Version 2 doesn't. Settings live in the app's data
 
 The image is `ghcr.io/ryanthornburg/plex-library-helperr:latest`. Every push to `mainline` runs the tests and publishes it, along with a `sha-<commit>` tag you can pin or roll back to.
 
-The web app only accepts requests that come through [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/). It checks every request for a valid Access token and your email, and it won't start without those settings. It's reached through a Cloudflare Tunnel, so the container publishes no port and nothing on your router points at it.
+The app always needs a sign-in. There are two ways to do it, set with `AUTH_MODE`:
 
-### 1. Cloudflare
+- **`password`** (the default): a username and password, like Sonarr and Radarr. This is the simple one.
+- **`cloudflare`**: [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/) signs you in, and the app checks every request for a valid Access token and your email. Use this if you already use Cloudflare Zero Trust.
 
-1. **Tunnel:** Zero Trust > Networks > Tunnels > Create a tunnel (Cloudflared). Pick Docker and copy the token from the command it shows.
-2. **cloudflared container** on the Docker tab:
+The app won't start unless the mode you picked is fully set up, so there's no way to run it with no login.
 
-    | Field | Value |
-    |---|---|
-    | Repository | `cloudflare/cloudflared:2026.10.1` (pin a version) |
-    | Network Type | A custom Docker network, the same one the web app will use |
-    | Post Arguments | `tunnel --no-autoupdate run` |
-    | Variable | `TUNNEL_TOKEN` = the token from step 1 |
-
-3. **Public hostname** on the tunnel, e.g. `helperr.example.com`, pointing at `http://plex-library-helperr:8080`.
-4. **Access application:** Zero Trust > Access > Applications > Add > Self-hosted, for the same hostname. Add an Allow policy with only your email. Copy the **Audience (AUD) tag** from its overview.
-
-### 2. Web container
+### Web container
 
 | Field | Value |
 | --- | --- |
-| Name | `plex-library-helperr` (the tunnel points at this name) |
+| Name | `plex-library-helperr` |
 | Repository | `ghcr.io/ryanthornburg/plex-library-helperr:latest` |
-| Network Type | The same network as cloudflared |
+| Network Type | The custom Docker network your *arr containers are on |
 | Extra Parameters | `--read-only --cap-drop ALL --security-opt no-new-privileges` |
 | Post Arguments | `--serve` |
 | Path | `/config` > `/mnt/user/appdata/plex-library-helperr/config` |
-| Ports | none |
-| Variable `CF_ACCESS_TEAM_DOMAIN` | `<team>.cloudflareaccess.com` |
-| Variable `CF_ACCESS_AUD` | The AUD tag from step 4 |
-| Variable `ALLOWED_EMAILS` | Your Access email (comma separated for more than one) |
+| Port | Container port `8080` to a free host port, e.g. `8780` (password mode only, see below) |
 | Variable `HELPERR_SECRET_KEY` | 32 or more random characters, e.g. `openssl rand -hex 32`. Encrypts the API keys in the database. Keep a copy, without it you have to enter the keys again. Mark it masked. |
 | Variable `REMOVERS_ALLOW_APPLY` | `true` to allow removers to delete anything. Off by default. It's an environment variable so nothing in the app can turn it on. |
 
@@ -95,12 +83,63 @@ The database (`helperr.db`) and logs go in `/config`. Keep it on a cache pool, n
 
 Service URLs can't use `localhost` (inside the container that's the container itself). Use the server's IP, or the container name (e.g. `http://sonarr:8989`) if Helperr is on the same Docker network.
 
-### 3. In the app
+### Signing in with a password
+
+1. Start the container and open its log (the Docker tab's log icon). It has a line like this:
+
+    ```text
+    WEB  No password is set yet. Open the app and enter this setup token to create the login: abc123...
+    ```
+
+2. Open `http://<server>:8780` and enter the setup token, a username and a password (12 characters or more).
+
+The token is there so whoever opens the page first can't take over the app. Only someone who can see the server's logs can create the login. Restarting the container before then writes a new token.
+
+After that, you change the password under **Settings > Login**, where you can also sign out every other browser. Five wrong passwords within 15 minutes lock sign-in for a while. Behind a proxy that counts for everyone coming through it, but browsers already signed in carry on. Browsers stay signed in for 30 days after you last used them, and 90 days at most.
+
+To use it away from home, put it behind a reverse proxy with HTTPS (Nginx Proxy Manager, SWAG, Traefik, a Cloudflare Tunnel) rather than opening the port on your router. When the proxy says the connection is HTTPS (the `X-Forwarded-Proto` header, which those all send), the sign-in cookie is marked HTTPS only.
+
+**Forgot your password?** Run this on the server:
+
+```bash
+docker exec plex-library-helperr python main.py --reset-login
+```
+
+On Unraid you can also open the container's **Console** from the Docker tab and run `python main.py --reset-login`. It deletes the password, signs every browser out and prints a new setup token. Open the app and create the login again. Your settings, rules and history aren't touched. There's no reset on the web page on purpose: anything reachable from the browser could be used by someone who isn't you.
+
+### Signing in with Cloudflare Access
+
+With Access the container publishes **no port**. Cloudflare reaches it through a tunnel, so nothing on your network or router points at it.
+
+1. **Tunnel:** Zero Trust > Networks > Tunnels > Create a tunnel (Cloudflared). Pick Docker and copy the token from the command it shows.
+2. **cloudflared container** on the Docker tab:
+
+    | Field | Value |
+    | --- | --- |
+    | Repository | `cloudflare/cloudflared:2026.10.1` (pin a version) |
+    | Network Type | The same network as the web container |
+    | Post Arguments | `tunnel --no-autoupdate run` |
+    | Variable | `TUNNEL_TOKEN` = the token from step 1 |
+
+3. **Public hostname** on the tunnel, e.g. `helperr.example.com`, pointing at `http://plex-library-helperr:8080`.
+4. **Access application:** Zero Trust > Access > Applications > Add > Self-hosted, for the same hostname. Add an Allow policy with only your email. Copy the **Audience (AUD) tag** from its overview.
+5. Add these to the web container (and leave out the port):
+
+    | Variable | Value |
+    | --- | --- |
+    | `AUTH_MODE` | `cloudflare` |
+    | `CF_ACCESS_TEAM_DOMAIN` | `<team>.cloudflareaccess.com` |
+    | `CF_ACCESS_AUD` | The AUD tag from step 4 |
+    | `ALLOWED_EMAILS` | Your Access email (comma separated for more than one) |
+
+If the `CF_ACCESS_*` variables are set and `AUTH_MODE` isn't, the app uses Cloudflare, so containers set up before password mode existed keep working as they are.
+
+### In the app
 
 1. **Settings > Connections:** add Radarr, Sonarr, Plex and whatever else you use (Tautulli, Seerr, SABnzbd, Bazarr, Autoscan) and hit Test on each.
 2. **Movers** and **Removers:** add your rules. Use Preview to see what a rule matches.
 3. **Activity > Schedules:** add schedules. New ones force dry run until you turn that off.
-4. **Settings > Webhook** (optional): shows the URL and API key to put in Radarr's and Sonarr's Connect > Webhook. Turn on *On Movie Added* / *On Series Add*, and *On File Upgrade* if you want trash emptied after upgrades. Put the key in an `X-Api-Key` header.
+4. **Settings > Webhook** (optional): shows the URL and API key to put in Radarr's and Sonarr's Connect > Webhook. Turn on *On Movie Added* / *On Series Add*, and *On File Upgrade* if you want trash emptied after upgrades. Put the key in an `X-Api-Key` header. The webhook is the one address that takes the API key instead of a sign-in, and all it can do is start movers.
 5. When the dry runs look right, turn dry run off in Settings. The app asks you to confirm anything that makes a job live.
 
 ## Removers and deleting files
@@ -148,6 +187,7 @@ uv run main.py                  # movers and profilers
 uv run main.py --remove         # removers (plans only, never deletes from here)
 uv run main.py --empty-trash    # empty Plex trash
 uv run main.py --serve          # the web app
+uv run main.py --reset-login    # forgot the web app's password
 ```
 
 In Docker, run the same image with `--remove` or `--empty-trash` as the Post Arguments, Autostart off, and start it when you want the job to run. Each run ends with a summary and exits with status 1 if anything failed.
@@ -262,4 +302,4 @@ uv run pytest tests/ -v
 docker build -t plex-library-helperr .
 ```
 
-I used Claude to help write the tests.
+I used Claude for help writing the tests in v1 (command line version) and heavily to migrate to the web ui version (v2)

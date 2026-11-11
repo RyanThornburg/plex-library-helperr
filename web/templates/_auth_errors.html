@@ -1,0 +1,5 @@
+{% if errors %}
+<ul class="banner banner-bad errors-list" role="alert">
+  {% for error in errors %}<li>{{ error }}</li>{% endfor %}
+</ul>
+{% endif %}

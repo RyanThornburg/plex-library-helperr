@@ -1,0 +1,38 @@
+{% extends "settings/_layout.html" %}
+{% set tab = "login" %}
+{% block settings %}
+{% if not password_mode %}
+<p>Cloudflare Access signs you in (<code>AUTH_MODE=cloudflare</code>). You're signed in as <strong>{{ user }}</strong>, one of the container's <code>ALLOWED_EMAILS</code>.</p>
+<p class="hint">To use a username and password instead, set <code>AUTH_MODE=password</code> on the container and restart it. Its log then has a setup token for creating the login.</p>
+{% else %}
+{% if changed %}<p class="banner banner-ok">Password changed. Other browsers were signed out.</p>{% endif %}
+{% if signed_out is not none %}<p class="banner banner-ok">Signed out {{ signed_out }} other browser{{ "s" if signed_out != "1" }}.</p>{% endif %}
+<p>Signed in as <strong>{{ user }}</strong>.</p>
+
+<h2>Change password</h2>
+<form method="post" action="/settings/login/password" class="form">
+  <label for="current">Current password</label>
+  <div><input id="current" name="current" type="password" autocomplete="current-password" required></div>
+  <label for="password">New password</label>
+  <div>
+    <input id="password" name="password" type="password" autocomplete="new-password" minlength="{{ min_password }}" required>
+    <p class="hint">At least {{ min_password }} characters. Every other browser is signed out.</p>
+  </div>
+  <label for="confirm">New password again</label>
+  <div><input id="confirm" name="confirm" type="password" autocomplete="new-password" minlength="{{ min_password }}" required></div>
+  <span></span>
+  <div><button type="submit">Change password</button></div>
+</form>
+
+<h2>Signed in browsers</h2>
+<p class="muted">{{ sessions }} signed in, this one included. A browser stays signed in for 30 days after it was last used, and 90 days at most.</p>
+<form method="post" action="/settings/login/sign-out-others">
+  <button type="submit" class="button-secondary">Sign out other browsers</button>
+</form>
+
+<h2>Forgot the password?</h2>
+<p class="muted">Nothing on the web can reset it. On the server, run:</p>
+<p><code>{{ reset_command }}</code></p>
+<p class="hint">It deletes the password, signs every browser out and prints a setup token for creating a new login. Your settings and history stay.</p>
+{% endif %}
+{% endblock %}

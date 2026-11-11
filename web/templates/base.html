@@ -12,20 +12,28 @@
   {% block head %}{% endblock %}
 </head>
 {% set toolbar = self.toolbar() | trim %}
-<body class="shell">
+<body class="shell{% if bare %} bare{% endif %}">
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="appbar">
     {# on a phone the sidebar folds into this menu; no script needed #}
+    {# the sign-in pages show nothing about the setup: no sidebar, badges or pill #}
+    {% if not bare %}
     <details class="navmenu">
       <summary>{{ ui.icon("menu") }}Menu</summary>
       {{ ui.sidebar(shell) }}
     </details>
+    {% endif %}
     <a class="logo" href="/status">{{ ui.icon("mark") }}Helperr</a>
     <span class="spacer"></span>
+    {% if not bare %}
     {% if shell.pill %}<a class="tag tag-solid-{{ shell.pill_level }} state-pill" href="/status">{{ shell.pill }}</a>{% endif %}
     {% if user %}<span class="user">{{ user }}</span>{% endif %}
+    {% if user and request.app.state.auth_mode == "password" %}
+    <form method="post" action="/logout" class="signout"><button type="submit">Sign out</button></form>
+    {% endif %}
+    {% endif %}
   </header>
-  {{ ui.sidebar(shell) }}
+  {% if not bare %}{{ ui.sidebar(shell) }}{% endif %}
   {% if toolbar %}<section class="toolbar" aria-label="Page actions">{{ toolbar }}</section>{% endif %}
   <main id="main">
     {% block content %}{% endblock %}

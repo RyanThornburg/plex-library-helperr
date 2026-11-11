@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Sign in · Helperr{% endblock %}
+{% block content %}
+<section class="dialog dialog-narrow" aria-labelledby="dialog-title">
+  <header class="dialog-head">
+    <h1 id="dialog-title">Sign in</h1>
+  </header>
+  <form method="post" action="/login">
+    <div class="dialog-body auth-fields">
+      {% include "_auth_errors.html" %}
+      {% if signed_out and not errors %}<p class="banner">You're signed out.</p>{% endif %}
+      <input type="hidden" name="next" value="{{ next }}">
+      <label for="username">Username</label>
+      <input id="username" name="username" value="{{ username }}" autocomplete="username" autocapitalize="none" spellcheck="false" required{% if not username %} autofocus{% endif %}>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required{% if username %} autofocus{% endif %}>
+      <details class="hint">
+        <summary>Forgot your password?</summary>
+        <p>Run this on the server, then open the app again and use the setup token it prints:</p>
+        <p><code>{{ reset_command }}</code></p>
+      </details>
+    </div>
+    <footer class="dialog-foot">
+      <button type="submit">Sign in</button>
+    </footer>
+  </form>
+</section>
+{% endblock %}

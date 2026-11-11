@@ -12,12 +12,18 @@ from web.secret_box import MIN_KEY_CHARS
 TEAM_DOMAIN_RE = re.compile(r"^[a-z0-9-]+\.cloudflareaccess\.com$")
 # access application audience tags are 64 hex characters
 AUDIENCE_RE = re.compile(r"^[0-9a-f]{64}$")
+# cloudflare: Cloudflare Access signs people in (web.auth); password: the app's own
+# login (web.login)
+AUTH_MODES = ("cloudflare", "password")
+CLOUDFLARE_VARS = ("CF_ACCESS_TEAM_DOMAIN", "CF_ACCESS_AUD", "ALLOWED_EMAILS")
 
 
 @dataclass(frozen=True)
 class WebSettings:
     """
+    auth_mode: (str) AUTH_MODE, cloudflare or password (AUTH_MODES)
     team_domain: (str) Cloudflare Zero Trust team domain, e.g. rattsnest.cloudflareaccess.com
+        (cloudflare mode only, empty in password mode, like audience and allowed_emails)
     audience: (str) Application Audience (AUD) tag of the Access application
     allowed_emails: (frozenset[str]) Access identities allowed in, checked on top of the
         Access policy
@@ -33,6 +39,7 @@ class WebSettings:
     database_path: pathlib.Path
     allow_remover_apply: bool = False
     secret_key: str = field(default="", repr=False)
+    auth_mode: str = "cloudflare"
 
     @property
     def issuer(self) -> str:
@@ -44,6 +51,44 @@ def load_web_settings(env: Mapping[str, str] = os.environ) -> WebSettings:
     never starts with auth half configured"""
     problems: list[str] = []
 
+    auth_mode = auth_mode_from(env, problems)
+    team_domain, audience, allowed_emails = "", "", frozenset[str]()
+    if auth_mode == "cloudflare":
+        team_domain, audience, allowed_emails = cloudflare_settings(env, problems)
+
+    allow_apply = env.get("REMOVERS_ALLOW_APPLY", "").strip().lower()
+    if allow_apply not in ("", "true", "false"):
+        problems.append("REMOVERS_ALLOW_APPLY must be true or false")
+
+    secret_key = secret_key_problems(env, problems)
+
+    if problems:
+        raise ValueError("Web settings invalid: " + "; ".join(problems))
+
+    return WebSettings(
+        team_domain=team_domain,
+        audience=audience,
+        allowed_emails=allowed_emails,
+        database_path=database_path(env),
+        allow_remover_apply=allow_apply == "true",
+        secret_key=secret_key,
+        auth_mode=auth_mode,
+    )
+
+
+def auth_mode_from(env: Mapping[str, str], problems: list[str]) -> str:
+    """AUTH_MODE, or when it isn't set: cloudflare if any CF_ACCESS_*/ALLOWED_EMAILS is
+    (installs from before password mode keep working), else password. Either way the
+    mode's own settings must be complete, there's no mode without a sign-in"""
+    mode = env.get("AUTH_MODE", "").strip().lower()
+    if not mode:
+        return "cloudflare" if any(env.get(name, "").strip() for name in CLOUDFLARE_VARS) else "password"
+    if mode not in AUTH_MODES:
+        problems.append("AUTH_MODE must be password or cloudflare")
+    return mode
+
+
+def cloudflare_settings(env: Mapping[str, str], problems: list[str]) -> tuple[str, str, frozenset[str]]:
     team_domain = env.get("CF_ACCESS_TEAM_DOMAIN", "").strip().lower()
     team_domain = team_domain.removeprefix("https://").rstrip("/")
     if not TEAM_DOMAIN_RE.match(team_domain):
@@ -62,24 +107,7 @@ def load_web_settings(env: Mapping[str, str] = os.environ) -> WebSettings:
     )
     if not allowed_emails:
         problems.append("ALLOWED_EMAILS must list at least one email")
-
-    allow_apply = env.get("REMOVERS_ALLOW_APPLY", "").strip().lower()
-    if allow_apply not in ("", "true", "false"):
-        problems.append("REMOVERS_ALLOW_APPLY must be true or false")
-
-    secret_key = secret_key_problems(env, problems)
-
-    if problems:
-        raise ValueError("Web settings invalid: " + "; ".join(problems))
-
-    return WebSettings(
-        team_domain=team_domain,
-        audience=audience,
-        allowed_emails=allowed_emails,
-        database_path=database_path(env),
-        allow_remover_apply=allow_apply == "true",
-        secret_key=secret_key,
-    )
+    return team_domain, audience, allowed_emails
 
 
 def database_path(env: Mapping[str, str] = os.environ) -> pathlib.Path:

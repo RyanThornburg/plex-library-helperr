@@ -367,6 +367,12 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         action="store_true",
         help="run the web app instead of a job (port from PORT, default 8080)",
     )
+    jobs.add_argument(
+        "--reset-login",
+        action="store_true",
+        help="forgot the web app's password: delete it, sign every browser out and print "
+        "a setup token for creating a new login",
+    )
     return parser.parse_args(argv)
 
 
@@ -390,6 +396,31 @@ def serve() -> None:
         workers=1,
         log_config=None,
         server_header=False,
+    )
+
+
+def reset_login() -> None:
+    """--reset-login, for a forgotten password. Run in the container, so only someone
+    with access to the server can do it, like editing the *arrs' config.xml. The token
+    is printed for whoever ran it, and the app's own log isn't touched (this process
+    writes log.log, the web app web.log)"""
+    from web.db import make_engine, migrate
+    from web.login import reset_login as forget_login
+    from web.settings import database_path
+
+    engine = make_engine(database_path())
+    try:
+        migrate(engine)
+        token = forget_login(engine)
+    finally:
+        engine.dispose()
+    logger.warning("WEB\t Login reset from the command line, every browser signed out")
+    print(
+        "The password is deleted and every browser is signed out.\n"
+        "Open the web app and create a new login with this setup token:\n\n"
+        f"    {token}\n\n"
+        "Your settings and history are unchanged. With AUTH_MODE=cloudflare the app "
+        "doesn't use this login."
     )
 
 
@@ -522,6 +553,9 @@ def main(argv: list[str] | None = None) -> JobResult | None:
     logging.config.dictConfig(logging_config("web.log" if args.serve else "log.log"))
     if args.serve:
         serve()
+        return None
+    if args.reset_login:
+        reset_login()
         return None
     logger.info("Loading config settings")
     settings = load_settings()

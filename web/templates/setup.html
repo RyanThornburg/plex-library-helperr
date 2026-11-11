@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Create your login · Helperr{% endblock %}
+{% block content %}
+<section class="dialog dialog-narrow" aria-labelledby="dialog-title">
+  <header class="dialog-head">
+    <h1 id="dialog-title">Create your login</h1>
+  </header>
+  <form method="post" action="/setup">
+    <div class="dialog-body auth-fields">
+      <p class="muted">Helperr doesn't have a login yet. To prove you run this server, enter the setup token from the container's log (on Unraid, the Docker tab's log icon). Restarting the app writes a new one.</p>
+      {% include "_auth_errors.html" %}
+      <label for="token">Setup token</label>
+      <input id="token" name="token" autocomplete="off" autocapitalize="none" spellcheck="false" required autofocus>
+      <label for="username">Username</label>
+      <input id="username" name="username" value="{{ username }}" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64" required>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="new-password" minlength="{{ min_password }}" required>
+      <p class="hint">At least {{ min_password }} characters.</p>
+      <label for="confirm">Password again</label>
+      <input id="confirm" name="confirm" type="password" autocomplete="new-password" minlength="{{ min_password }}" required>
+    </div>
+    <footer class="dialog-foot">
+      <button type="submit">Create login</button>
+    </footer>
+  </form>
+</section>
+{% endblock %}
