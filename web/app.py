@@ -102,7 +102,7 @@ def create_app(
     scheduler = Scheduler(engine, runner)
     stats = StatsSync(engine, store.load_settings)
     playback = PlaybackSync(engine, store.load_settings)
-    health = HealthMonitor(engine, store.load_settings)
+    health = HealthMonitor(engine, store.load_settings, runner)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:

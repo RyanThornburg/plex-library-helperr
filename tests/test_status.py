@@ -168,8 +168,8 @@ class TestArrQueue:
         result = ServiceStatus("radarr", "Radarr")
         status.arr_queue(result, records, 3)
         assert result.items == [
-            Item("Fatherland (2026)", "Not a Custom Format upgrade", level="warn"),
-            Item("Survivor S49E03", "Download failed", level="bad"),
+            Item("Fatherland (2026)", "Not a Custom Format upgrade", level="warn", states=["importPending"]),
+            Item("Survivor S49E03", "Download failed", level="bad", states=["failedPending"]),
         ]
         assert result.state == "bad"
         assert dict(result.facts)["Queue"] == "3, 1 downloading, 2 need attention"
@@ -192,7 +192,10 @@ class TestArrQueue:
         result = ServiceStatus("sonarr", "Sonarr")
         status.arr_queue(result, pack + downloading, 7)
         assert result.items == [
-            Item("Big Brother (US) S03E18 and 2 more", "Episode file already imported", level="warn", key="SABnzbd_nzo_pack")
+            Item(
+                "Big Brother (US) S03E18 and 2 more", "Episode file already imported", level="warn",
+                key="SABnzbd_nzo_pack", states=["importPending"],
+            )
         ]
         assert dict(result.facts)["Queue"] == "7, 1 downloading, 1 need attention"
         assert health.item_key(result.items[0]) == "queue:SABnzbd_nzo_pack"
@@ -662,7 +665,7 @@ class TestStuckDownloads:
         first, second = status.stuck_downloads(records)
         assert first == status.StuckDownload(
             "SABnzbd_nzo_1", [1, 2], ["Show S01E01", "Show S01E02"], "Show.S01.1080p", "SABnzbd",
-            "Unable to parse; Sample", "bad",
+            "Unable to parse; Sample", "bad", ["importBlocked"],
         )
         assert (second.key, second.ids, second.titles) == ("SABnzbd_nzo_2", [3], ["Other S01E03"])
 
@@ -772,6 +775,27 @@ class TestQueuePages:
         assert 'data-select-all="download"' in page.text
         assert 'value="SABnzbd_nzo_1"' in page.text
         assert "Show S01E01, Show S01E02" in page.text
+
+    def test_says_whether_auto_remove_is_on(self, queue_client):
+        page = queue_client.get("/status/sonarr/queue", headers=auth()).text
+        assert "Auto-remove is off." in page and 'href="/settings/queue"' in page
+
+    def test_says_when_each_is_auto_removed(self, settings, fake_queue):  # noqa: F811
+        from dataclasses import replace
+
+        from config.models import QueueCleanup
+        from tests.test_queue_cleanup import incident
+        from web.jobs import utc_now
+
+        sonarr = replace(SONARR, queue_cleanup=QueueCleanup(enabled=True, dry_run=True))
+        everything = replace(EVERYTHING, sonarr=sonarr)
+        app = create_app(settings, keys=FakeKeys(), run_job=fake_run_job, load_config=lambda: everything, run_scheduler=False)
+        with TestClient(app) as c:
+            incident(app.state.engine, "SABnzbd_nzo_1", utc_now() - timedelta(hours=2), service="sonarr")
+            page = c.get("/status/sonarr/queue", headers=auth()).text
+        assert "Auto-remove is on: after 6h 0m stuck, remove from the download client, blocklist and search, at most 10 a run (dry run" in page
+        assert "Listed by a dry run in 3h 59m" in page or "Listed by a dry run in 4h 0m" in page
+        assert "Listed by a dry run 6h 0m after the health check first sees it" in page
 
     def test_remove_selected(self, queue_client, fake_queue):
         response = queue_client.post(

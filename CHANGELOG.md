@@ -2,6 +2,16 @@
 
 What changed in each release. Versions are `MAJOR.MINOR.PATCH`: the major number goes up when upgrading needs you to do something (a new required setting, a removed feature, a change that breaks the API), the minor number for new features, the patch number for fixes.
 
+## Unreleased
+
+### New
+
+- Stuck downloads can be removed automatically (Settings → Stuck downloads), separately for Radarr and Sonarr. Pick how long a download has to be stuck, which kinds count (failed, import blocked, import pending), whether to remove it from the download client, whether to blocklist the release, and a max per run. It starts off and in dry run. The health check runs it when a download comes due, and it waits while the arr reports a missing root folder, mount or download client. The queue pages say when each download will go.
+
+### Fixed
+
+- The version at the bottom of the sidebar stays under the menu instead of scrolling with the page.
+
 ## 2.0.1 (2026-11-10)
 
 ### Fixed

@@ -71,6 +71,8 @@ class Item:
     level: str = "ok"
     # a queue download's id in the download client, for its incident ("" when it has none)
     key: str = ""
+    # a stuck download's trackedDownloadStates, for queue cleanup
+    states: list[str] = field(default_factory=list[str])
 
 
 @dataclass
@@ -202,6 +204,8 @@ def arr_queue(status: ServiceStatus, records: list[dict[str, Any]], total: int) 
             )
             if (title := arr_title(record)) not in titles:
                 titles.append(title)
+            if (state := str(record.get("trackedDownloadState") or "")) not in item.states:
+                item.states.append(state)
             messages.extend(m for m in stuck_messages(record) if m not in messages)
             if LEVELS[level] > LEVELS[item.level]:
                 item.level = level
@@ -234,6 +238,8 @@ class StuckDownload:
     client: str
     detail: str
     level: str
+    # each record's trackedDownloadState, once
+    states: list[str] = field(default_factory=list[str])
 
 
 def stuck_downloads(records: list[dict[str, Any]]) -> list[StuckDownload]:
@@ -262,6 +268,9 @@ def stuck_downloads(records: list[dict[str, Any]]) -> list[StuckDownload]:
                 "",
                 level,
             )
+        state = str(record.get("trackedDownloadState") or "")
+        if state not in downloads[key].states:
+            downloads[key].states.append(state)
         messages[key] = list(dict.fromkeys(messages.get(key, []) + stuck_messages(record)))
     for key, download in downloads.items():
         download.detail = "; ".join(messages[key])
@@ -291,6 +300,10 @@ class ArrQueue:
             params={"pageSize": ARR_QUEUE_ALL, **include},
         )
         return stuck_downloads(queue.get("records") or [])
+
+    def health(self) -> list[dict[str, Any]]:
+        """the arr's System → Status health checks"""
+        return _get_json(f"{self.base}/api/v3/health", self.label, headers=self.headers)
 
     def remove(self, ids: list[int], method: str, blocklist: str) -> None:
         """removes the records' downloads. The arr looks every id up first and removes

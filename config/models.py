@@ -315,6 +315,67 @@ class RemoverSettings:
             )
 
 
+# which stuck downloads queue cleanup may remove, each the arrs' trackedDownloadStates
+# it covers. A record that's only flagged warning/error (a download client hiccup can
+# flag the whole queue) is never one of them
+QUEUE_STATES: dict[str, tuple[str, ...]] = {
+    "failed": ("failed", "failedPending"),
+    "import_blocked": ("importBlocked",),
+    "import_pending": ("importPending",),
+}
+# like the arrs' Remove: remove from the download client too, or the queue only
+QUEUE_METHODS = ("client", "ignore")
+# don't blocklist, blocklist and search for a replacement, blocklist only
+QUEUE_BLOCKLIST = ("none", "search", "only")
+# shorter than this and a download the arr is about to sort out itself would be removed
+QUEUE_MIN_STUCK_FOR = timedelta(hours=1)
+
+
+@dataclass
+class QueueCleanup:
+    """
+    [radarr.queue_cleanup] / [sonarr.queue_cleanup]: remove downloads stuck in the
+    queue, after the health checks have seen them stuck for stuck_for.
+    enabled: (bool) Off unless turned on
+    stuck_for: (timedelta) How long a download has to be stuck, at least an hour
+    states: (list[str]) QUEUE_STATES keys it may remove
+    method: (str) QUEUE_METHODS: remove from the download client too, or the queue only
+    blocklist: (str) QUEUE_BLOCKLIST
+    max_per_run: (int) Remove none when more than this are due at once (a missing
+        mount blocks every import), 0 = no limit
+    dry_run: (bool) Starts on, whatever [settings].dry_run says
+    """
+
+    enabled: bool = False
+    stuck_for: timedelta = timedelta(hours=6)
+    states: list[str] = field(default_factory=lambda: ["failed", "import_blocked"])
+    method: str = "client"
+    blocklist: str = "search"
+    max_per_run: int = 10
+    dry_run: bool = True
+
+    def __post_init__(self):
+        check_types(self)
+        if self.stuck_for < QUEUE_MIN_STUCK_FOR:
+            raise ValueError("stuck_for must be at least 1h")
+        if not self.states:
+            raise ValueError("states needs at least one of " + ", ".join(QUEUE_STATES))
+        if unknown := [s for s in self.states if s not in QUEUE_STATES]:
+            raise ValueError(f"unknown states {unknown}, expected {', '.join(QUEUE_STATES)}")
+        if self.method not in QUEUE_METHODS:
+            raise ValueError(f"method must be one of {', '.join(QUEUE_METHODS)}, got '{self.method}'")
+        if self.blocklist not in QUEUE_BLOCKLIST:
+            raise ValueError(
+                f"blocklist must be one of {', '.join(QUEUE_BLOCKLIST)}, got '{self.blocklist}'"
+            )
+        if self.max_per_run < 0:
+            raise ValueError(f"max_per_run must be an integer >= 0, got '{self.max_per_run}'")
+
+    def tracked_states(self) -> set[str]:
+        """the arrs' trackedDownloadStates it removes"""
+        return {state for key in self.states for state in QUEUE_STATES[key]}
+
+
 @dataclass
 class EmptyTrashSettings:
     """
@@ -498,6 +559,7 @@ class ArrConfig:
         default_factory=list[RemoverRule | MovieRemoverRule]
     )
     remover_settings: RemoverSettings = field(default_factory=RemoverSettings)
+    queue_cleanup: QueueCleanup = field(default_factory=QueueCleanup)
     dry_run: bool = False
     # where the status page links to away from home, baseurl is the local one
     public_url: str | None = None
@@ -515,7 +577,8 @@ class ArrConfig:
                 | list[MoverRule]
                 | list[ProfileRule]
                 | list[RemoverRule | MovieRemoverRule]
-                | RemoverSettings,
+                | RemoverSettings
+                | QueueCleanup,
             ]
         ] = [
             ("baseurl", self.baseurl or None),
@@ -525,6 +588,7 @@ class ArrConfig:
             ("profilers", self.profilers or None),
             ("removers", self.removers or None),
             ("remover_settings", self.remover_settings if self.removers else None),
+            ("queue_cleanup", self.queue_cleanup if self.queue_cleanup.enabled else None),
             ("dry_run", self.dry_run),
             ("tag", self.tag or None),
         ]

@@ -58,6 +58,10 @@ JOB_INFO: dict[str, tuple[str, str]] = {
         "Empty Plex trash",
         "Clear trashed items, skipping libraries that are scanning or over max_items.",
     ),
+    "clear_stuck": (
+        "Clear stuck downloads",
+        "Remove downloads stuck in the Radarr/Sonarr queue longer than set in Settings → Stuck downloads. The health check runs it when one comes due.",
+    ),
 }
 
 

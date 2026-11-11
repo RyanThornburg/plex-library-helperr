@@ -12,12 +12,13 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 import config
-from config.models import WebDefaults
+from config.models import QueueCleanup, WebDefaults
 from web.db import ConfigVersion
 from web.lookups import (
     LookupFailed,
 )
 from web.routes import loaded_settings
+from web.status import BLOCKLIST, REMOVAL_METHODS
 from web.settings_common import (
     checked_duration,
     checked_int,
@@ -37,6 +38,19 @@ from web.webhooks import api_key, regenerate_api_key
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# config.models.QUEUE_STATES as the form shows them
+QUEUE_STATE_LABELS = {
+    "failed": ("Failed downloads", "SABnzbd reported the download failed (failed, failedPending)."),
+    "import_blocked": (
+        "Import blocked",
+        "Downloaded, but Radarr/Sonarr won't import it: not an upgrade, a sample, no eligible files, a title it can't match (importBlocked).",
+    ),
+    "import_pending": (
+        "Import pending",
+        "Downloaded and waiting to import. Usually clears by itself; only stuck when it stays (importPending).",
+    ),
+}
 
 # config versions on a page of the history, older ones a page at a time
 HISTORY_PAGE = 100
@@ -187,6 +201,101 @@ def save_trash(request: Request, fields: FormLists) -> Response:
     return commit(
         request, fields, document, "Empty trash settings",
         lambda e: trash(request, values, [e]), "/settings/trash",
+    )
+
+
+# ---------------------------------------------------------------------------
+# stuck downloads (queue cleanup)
+# ---------------------------------------------------------------------------
+
+QUEUE_ARRS = (("radarr", "Radarr"), ("sonarr", "Sonarr"))
+
+
+def queue_values(section: dict[str, Any]) -> dict[str, Any]:
+    """the form's values for an arr's [queue_cleanup] section, defaults filled in"""
+    defaults = QueueCleanup()
+    stuck_for = section.get("stuck_for")
+    try:
+        hours = int(config.parse_duration(stuck_for, "stuck_for").total_seconds() // 3600) if stuck_for else None
+    except ValueError:
+        hours = None
+    return {
+        "enabled": section.get("enabled", defaults.enabled),
+        "hours": hours or int(defaults.stuck_for.total_seconds() // 3600),
+        "states": section.get("states", defaults.states),
+        "method": section.get("method", defaults.method),
+        "blocklist": section.get("blocklist", defaults.blocklist),
+        "max_per_run": section.get("max_per_run", defaults.max_per_run),
+        "dry_run": section.get("dry_run", defaults.dry_run),
+    }
+
+
+def queue(request: Request, values: dict[str, dict[str, Any]] | None = None, errors: list[str] | None = None) -> HTMLResponse:
+    _, document = store(request).document()
+    values = values or {
+        arr: queue_values(document[arr].get("queue_cleanup", {}))
+        for arr, _ in QUEUE_ARRS
+        if isinstance(document.get(arr), dict)
+    }
+    return page(
+        request,
+        "queue",
+        {
+            "arrs": QUEUE_ARRS,
+            "values": values,
+            "states": QUEUE_STATE_LABELS,
+            "methods": REMOVAL_METHODS,
+            "blocklists": BLOCKLIST,
+        },
+        errors,
+    )
+
+
+@router.get("/settings/queue", response_class=HTMLResponse)
+def queue_page(request: Request) -> HTMLResponse:
+    return queue(request)
+
+
+@router.post("/settings/queue")
+def save_queue(request: Request, fields: FormLists) -> Response:
+    _, document = store(request).document()
+    errors: list[str] = []
+    values: dict[str, dict[str, Any]] = {}
+    sections: dict[str, dict[str, Any]] = {}
+    for arr, label in QUEUE_ARRS:
+        # an arr that isn't connected has no section to add this to
+        if not isinstance(document.get(arr), dict):
+            continue
+        values[arr] = {
+            "enabled": bool(first(fields, f"{arr}_enabled")),
+            "hours": first(fields, f"{arr}_hours"),
+            "states": [s for s in fields.get(f"{arr}_states", []) if s],
+            "method": first(fields, f"{arr}_method"),
+            "blocklist": first(fields, f"{arr}_blocklist"),
+            "max_per_run": first(fields, f"{arr}_max_per_run"),
+            "dry_run": first(fields, f"{arr}_dry_run") != "false",
+        }
+        v = values[arr]
+        hours = checked_int(v["hours"], f"{label}: Stuck for", errors, 1)
+        max_per_run = checked_int(v["max_per_run"], f"{label}: Max per run", errors, 0)
+        if not v["states"]:
+            errors.append(f"{label}: check at least one kind of stuck download")
+        sections[arr] = {
+            "enabled": v["enabled"],
+            "stuck_for": f"{hours}h",
+            "states": v["states"],
+            "method": v["method"],
+            "blocklist": v["blocklist"],
+            "max_per_run": max_per_run,
+            "dry_run": v["dry_run"],
+        }
+    if errors:
+        return queue(request, values, errors)
+    for arr, section in sections.items():
+        document[arr]["queue_cleanup"] = section
+    return commit(
+        request, fields, document, "Stuck download settings",
+        lambda e: queue(request, values, [e]), "/settings/queue",
     )
 
 

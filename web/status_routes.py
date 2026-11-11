@@ -27,6 +27,7 @@ from web.health import (
     summary,
 )
 from web.jobs import utc_now
+from web.queue_cleanup import IncidentClock, auto_note, summary as cleanup_summary
 from web.routes import form_lists, loaded_settings, templates
 from web.sync import sync_status
 from web.status import (
@@ -281,6 +282,15 @@ def queue_page(request: Request, service: str, error: str | None = None, status_
             downloads = read_stuck(arr_queue(request, service))
         except QueueError as e:
             error = str(e)
+    # what queue cleanup will do: its settings, and when it gets to each download
+    settings, _ = loaded_settings(request)
+    arr = getattr(settings, service) if settings else None
+    cleanup = arr.queue_cleanup if arr and arr.queue_cleanup.enabled else None
+    notes: dict[str, str] = {}
+    if cleanup and downloads:
+        now = utc_now()
+        since = IncidentClock(request.app.state.engine).since(service, [d.key for d in downloads])
+        notes = {d.key: auto_note(d, cleanup, since.get(d.key), now) for d in downloads}
     params = request.query_params
     return templates.TemplateResponse(
         request,
@@ -295,6 +305,8 @@ def queue_page(request: Request, service: str, error: str | None = None, status_
             "gone": int(params["gone"]) if params.get("gone", "").isdigit() else 0,
             "methods": REMOVAL_METHODS,
             "blocklist": BLOCKLIST,
+            "auto": cleanup_summary(cleanup) if cleanup else None,
+            "notes": notes,
         },
         status_code=status_code,
     )

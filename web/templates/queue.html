@@ -13,6 +13,9 @@
 <p class="banner banner-bad">{{ error }}{% if "isn't connected" in error %} <a href="/settings/connections#{{ service }}">Connections</a>{% endif %}</p>
 {% endif %}
 
+{% if not error %}
+<p class="muted">{% if auto %}Auto-remove is on: {{ auto }}.{% else %}Auto-remove is off.{% endif %} <a href="/settings/queue">Settings</a></p>
+{% endif %}
 {% if downloads %}
 <p class="muted">{{ label }} won't import or retry these on its own. Removing works like Remove in {{ label }}'s queue: each selected download is checked again first, and one that isn't stuck any more is left alone.</p>
 <form method="post" action="/status/{{ service }}/queue/remove">
@@ -36,7 +39,7 @@
         </details>
         {% else %}{{ d.titles | join(", ") }}{% endif %}
       </td>
-      <td class="long"><span class="state-word state-{{ d.level }}">{{ "error" if d.level == "bad" else "warning" }}</span> {{ d.detail }}</td>
+      <td class="long"><span class="state-word state-{{ d.level }}">{{ "error" if d.level == "bad" else "warning" }}</span> {{ d.detail }}{% if notes.get(d.key) %}<br><span class="muted">{{ notes[d.key] }}</span>{% endif %}</td>
       <td class="muted machine">{{ d.release }}{% if d.client %} · {{ d.client }}{% endif %}</td>
     </tr>
     {% endfor %}

@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 import config
-from config.models import ArrConfig, ConfigSettings, EmptyTrashSettings, RemoverSettings
+from config.models import ArrConfig, ConfigSettings, EmptyTrashSettings, QueueCleanup, RemoverSettings
 from logging_config import hide_secrets
 from results import Change, JobResult, PlannedFile, PlannedRemoval
 from web.db import JobRun, RemoverRuleSetting, make_engine, migrate
@@ -25,6 +25,7 @@ def arr(dry_run: bool = False) -> ArrConfig:
         tag=None,
         dry_run=dry_run,
         remover_settings=RemoverSettings(max_deletes=10),
+        queue_cleanup=QueueCleanup(enabled=True, dry_run=False),
     )
 
 
@@ -61,8 +62,8 @@ class TestForceDryRun:
         assert not any(dry_run_fields(settings))
         config.force_dry_run(settings)
         fields = dry_run_fields(settings)
-        # radarr, sonarr and empty_trash
-        assert len(fields) == 3
+        # radarr, sonarr, their queue cleanups and empty_trash
+        assert len(fields) == 5
         assert all(fields)
 
 
@@ -182,8 +183,8 @@ class TestJobRunner:
         runner.submit("movers", True, "manual", None)
         runner.submit("removers", False, "manual", None)
         runner.wait_idle()
-        assert all(seen[:3])
-        assert not any(seen[3:])
+        assert all(seen[:5])
+        assert not any(seen[5:])
         runner.stop()
 
     def test_failed_result_is_failed(self, engine):

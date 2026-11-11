@@ -41,7 +41,7 @@ All of the data in these is made up.
 
 ## What the web app does
 
-- **Status:** what Plex (through Tautulli), Radarr, Sonarr, SABnzbd, Bazarr and Seerr are doing right now. Health warnings, stuck downloads, failed downloads, low disk space, who's streaming. Stuck downloads can be removed from here, the same way you would in Radarr or Sonarr. Health checks run every 5 minutes in the background and keep a history of problems for a year.
+- **Status:** what Plex (through Tautulli), Radarr, Sonarr, SABnzbd, Bazarr and Seerr are doing right now. Health warnings, stuck downloads, failed downloads, low disk space, who's streaming. Stuck downloads can be removed from here, the same way you would in Radarr or Sonarr, or automatically once they've been stuck a while. Health checks run every 5 minutes in the background and keep a history of problems for a year.
 - **Runs and schedules:** run any job by hand (with a **Dry run** button or a **Run...** button that asks first), or on a cron schedule. Every run is kept with what it changed and its log.
 - **Removers:** each run plans what it would delete. You review the plan, tick what to remove, and confirm. Once you trust a rule you can turn on auto-approve for it.
 - **Webhooks:** point Radarr's and Sonarr's webhook at the app and movers run as soon as something is added, before it downloads. File upgrades queue a trash empty a little later.
@@ -191,6 +191,18 @@ Movers and removers only trigger a Plex scan, which puts the old files in the tr
 
 Before emptying it checks each library. It skips one that's scanning, one with more than `max_items` in the trash, or one where more than `max_deleted_items` items are fully gone without Helperr's removers having deleted them. A missing mount makes Plex trash a whole library, and this keeps that from wiping it.
 
+## Stuck downloads
+
+Settings → Stuck downloads can remove downloads stuck in the Radarr or Sonarr queue on its own, set separately for each. The health check (every 5 minutes) notes when a download got stuck. Once one has been stuck for `stuck_for`, it starts a **Clear stuck downloads** run, which removes everything due the way Remove does in Radarr or Sonarr. The run's page lists what was removed, and each queue page under Status says when each download will go.
+
+It's off until you turn it on, and starts in dry run. It removes nothing:
+
+- while Radarr or Sonarr reports a missing root folder or mount, a download client it can't reach, or a wrong remote path mapping. Then every import fails, and the downloads aren't the problem.
+- when more than `max_per_run` downloads are due at once. The run reports them as blocked.
+- for a download that's only flagged with a warning, not failed or blocked, since a download client hiccup can flag the whole queue.
+
+A blocked or failed run is tried again after another `stuck_for`.
+
 ## Running jobs without the web app
 
 `main.py` can still run one job and exit. It uses the web app's database, so it needs the same `/config` folder and `HELPERR_SECRET_KEY`.
@@ -283,6 +295,20 @@ Each *arr also has `max_deletes`: if a run would delete more of its files than t
 | `max_items` | Skip a library with more than this many items in the trash (default `100`) |
 | `max_deleted_items` | Skip a library with more than this many fully deleted items that Helperr's removers didn't delete (default `50`) |
 | `dry_run` | Override the general dry run for this job |
+
+### Stuck download settings
+
+One set for Radarr (`[radarr.queue_cleanup]`), one for Sonarr (`[sonarr.queue_cleanup]`).
+
+| Key | What it does |
+| --- | --- |
+| `enabled` | Remove stuck downloads automatically (default off) |
+| `stuck_for` | How long the health check has seen a download stuck before it's removed, at least `1h` (default `6h`) |
+| `states` | Which stuck downloads to remove: `failed` (the download failed), `import_blocked` (downloaded, but it won't import), `import_pending` (still waiting to import). Default `failed` and `import_blocked` |
+| `method` | `client` removes it from the download client too, deleting the download; `ignore` only removes it from the queue (default `client`) |
+| `blocklist` | `none`, `search` (blocklist the release and search for another) or `only` (blocklist, don't search) (default `search`) |
+| `max_per_run` | Remove none when more than this are due at once. `0` means no limit (default `10`) |
+| `dry_run` | List what would be removed, remove nothing. Starts on, whatever the general dry run says |
 
 ### Autoscan
 

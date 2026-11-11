@@ -17,6 +17,7 @@ from config.models import (
     MovieRemoverRule,
     PlexConfig,
     ProfileRule,
+    QueueCleanup,
     RemoverRule,
     RemoverSettings,
     SabnzbdConfig,
@@ -136,10 +137,21 @@ def _build_arr_config(data: Mapping[str, Any], dry_run: bool, arr_name: str) -> 
             data.get("remover_settings", {}),
             f"[{arr_name}.remover_settings]",
         ),
+        "queue_cleanup": _build_queue_cleanup(data.get("queue_cleanup", {}), arr_name),
         "tag": data.get("tag") or None,
         "public_url": data.get("public_url") or None,
     }
     return _build(ArrConfig, values, f"[{arr_name}]")
+
+
+def _build_queue_cleanup(data: Any, arr_name: str) -> QueueCleanup:
+    label = f"[{arr_name}.queue_cleanup]"
+    if not isinstance(data, Mapping):
+        raise ValueError(f"{label} must be a table")
+    values = dict(data)
+    if "stuck_for" in values:
+        values["stuck_for"] = parse_duration(values["stuck_for"], f"{label} stuck_for")
+    return _build(QueueCleanup, values, label)
 
 
 def _build_empty_trash(data: Mapping[str, Any], dry_run: bool) -> EmptyTrashSettings:
@@ -343,6 +355,7 @@ def force_dry_run(settings: ConfigSettings) -> None:
     for arr in (settings.radarr, settings.sonarr):
         if arr:
             arr.dry_run = True
+            arr.queue_cleanup.dry_run = True
     settings.empty_trash.dry_run = True
 
 
@@ -353,5 +366,13 @@ def config_dry_run(job: str, settings: ConfigSettings) -> bool | None:
         return True
     if job == "empty_trash":
         return settings.empty_trash.dry_run
+    if job == "clear_stuck":
+        # arrs without queue cleanup remove nothing
+        cleanups = {
+            arr.queue_cleanup.dry_run
+            for arr in (settings.radarr, settings.sonarr)
+            if arr and arr.queue_cleanup.enabled
+        }
+        return cleanups.pop() if len(cleanups) == 1 else (None if cleanups else True)
     values = {arr.dry_run for arr in (settings.radarr, settings.sonarr) if arr}
     return values.pop() if len(values) == 1 else (None if values else True)

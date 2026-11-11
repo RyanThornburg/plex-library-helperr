@@ -30,7 +30,8 @@ REMOVED_FILES_MAX_AGE = timedelta(days=90)
 
 # run_job(job, settings), run_job("removers", settings, approved) to apply a plan, or
 # run_job("removers", settings, auto_approve=keys) for removers that skip review. Removers
-# runs also get movie_plays, for radarr removers that check plays
+# runs also get movie_plays, for radarr removers that check plays, and clear_stuck runs
+# stuck_clock (web.queue_cleanup)
 RunJob = Callable[..., JobResult]
 LoadConfig = Callable[[], ConfigSettings]
 LoadDefaults = Callable[[], WebDefaults]
@@ -443,6 +444,10 @@ class JobRunner:
                 kwargs["movie_plays"] = self.movie_plays(settings)
             if job == "empty_trash" and (removed := self.removed_files()):
                 kwargs["removed_files"] = removed
+            if job == "clear_stuck":
+                from web.queue_cleanup import IncidentClock
+
+                kwargs["stuck_clock"] = IncidentClock(self.engine)
             if dry_run:
                 mode = "dry_run"
             elif approved is not None:

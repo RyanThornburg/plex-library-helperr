@@ -27,7 +27,11 @@ ARR_FIELD = {"radarr": "studios", "sonarr": "networks"}
 RULE_NAMES = {"movers": "mover", "profilers": "profiler", "removers": "remover"}
 # the jobs whose dry run settings live in the config (removers only delete approvals),
 # and the live_parts() each covers
-DRY_RUN_JOBS: dict[str, set[str]] = {"movers": set(ARRS), "empty_trash": {"empty_trash"}}
+DRY_RUN_JOBS: dict[str, set[str]] = {
+    "movers": set(ARRS),
+    "empty_trash": {"empty_trash"},
+    "clear_stuck": {f"{arr}:queue" for arr in ARRS},
+}
 
 # the config section of each: label, its secret's label, the url key
 SERVICES: dict[str, tuple[str, str, str]] = {
@@ -104,9 +108,14 @@ def check_kind(arr: str, kind: str) -> None:
 
 def live_parts(document: dict[str, Any]) -> set[str]:
     """the parts of the config that change media as configured: an arr's movers by the
-    arr's name, and empty_trash"""
+    arr's name, its queue cleanup as <arr>:queue, and empty_trash"""
     settings = config.build_config(document)
     parts = {name for name in ARRS if (arr := getattr(settings, name)) and not arr.dry_run}
+    parts |= {
+        f"{name}:queue"
+        for name in ARRS
+        if (arr := getattr(settings, name)) and arr.queue_cleanup.enabled and not arr.queue_cleanup.dry_run
+    }
     if not settings.empty_trash.dry_run:
         parts.add("empty_trash")
     return parts

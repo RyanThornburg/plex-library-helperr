@@ -299,6 +299,11 @@ class HealthIncident(Base):
     started_at: Mapped[datetime] = mapped_column(index=True)  # naive utc
     last_seen_at: Mapped[datetime]
     ended_at: Mapped[datetime | None] = mapped_column(index=True)
+    # a stuck download's: what queue cleanup last did with it (done, dry_run, blocked,
+    # failed) and when, so the health check doesn't queue a run for it every check
+    # (web.queue_cleanup)
+    cleanup: Mapped[str | None] = mapped_column(String(16))
+    cleanup_at: Mapped[datetime | None]
 
 
 class LoginSession(Base):

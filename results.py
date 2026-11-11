@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 # done: applied, dry_run: planned only, blocked: a safety check stopped it, failed: an api call failed
 Status = Literal["done", "dry_run", "blocked", "failed"]
 
-JOBS = ("movers", "removers", "empty_trash")
+JOBS = ("movers", "removers", "empty_trash", "clear_stuck")
 
 
 def utc_now() -> datetime:

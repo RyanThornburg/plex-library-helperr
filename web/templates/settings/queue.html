@@ -1,0 +1,68 @@
+{% extends "settings/_layout.html" %}
+{% import "settings/_fields.html" as f with context %}
+{% set tab = "queue" %}
+{% block toolbar %}
+{% if values %}<div class="group">{{ ui.tool_submit("save", "Save", "queue-form") }}</div>{% endif %}
+{% endblock %}
+{% block settings %}
+<p class="muted">Remove downloads stuck in the Radarr or Sonarr queue, like Remove on the <a href="/status">Status</a> queue pages. The health check (every 5 minutes) starts a <a href="/runs">Clear stuck downloads</a> run once a download has been stuck long enough. Nothing is removed while Radarr/Sonarr report a missing root folder or mount, an unreachable download client or a wrong remote path mapping: then every import fails.</p>
+{% if not values %}
+<p class="empty">Connect Radarr or Sonarr first, on <a href="/settings/connections">Connections</a>.</p>
+{% else %}
+<form method="post" action="/settings/queue" class="form" id="queue-form">
+  {{ f.version_field() }}
+  {% for arr, label in arrs if arr in values %}
+  {% set v = values[arr] %}
+  <h2 class="form-heading">{{ label }}</h2>
+  <span></span>
+  <div>
+    <label class="check"><input type="checkbox" name="{{ arr }}_enabled" value="1"{% if v.enabled %} checked{% endif %}> Remove stuck downloads automatically</label>
+  </div>
+
+  <label for="{{ arr }}_hours">Stuck for</label>
+  <div>
+    <input id="{{ arr }}_hours" name="{{ arr }}_hours" type="number" min="1" value="{{ v.hours }}" class="input-days" required> hours
+    <p class="hint">Counted from when the health check first saw the download stuck.</p>
+  </div>
+
+  <span class="label">Remove</span>
+  <div>
+    {% for key, (name, hint) in states.items() %}
+    <label class="check check-row"><input type="checkbox" name="{{ arr }}_states" value="{{ key }}"{% if key in v.states %} checked{% endif %}> <span>{{ name }} <span class="muted">· {{ hint }}</span></span></label>
+    {% endfor %}
+    <p class="hint">A download that's only flagged with a warning (a download client hiccup can flag the whole queue) is never removed.</p>
+  </div>
+
+  <label for="{{ arr }}_method">Download</label>
+  <div>
+    <select id="{{ arr }}_method" name="{{ arr }}_method">
+      {% for key, name in methods.items() %}<option value="{{ key }}"{% if v.method == key %} selected{% endif %}>{{ name }}</option>{% endfor %}
+    </select>
+  </div>
+
+  <label for="{{ arr }}_blocklist">Release</label>
+  <div>
+    <select id="{{ arr }}_blocklist" name="{{ arr }}_blocklist">
+      {% for key, name in blocklists.items() %}<option value="{{ key }}"{% if v.blocklist == key %} selected{% endif %}>{{ name }}</option>{% endfor %}
+    </select>
+    <p class="hint">Blocklisting stops {{ label }} grabbing the same release again.</p>
+  </div>
+
+  <label for="{{ arr }}_max_per_run">Max per run</label>
+  <div>
+    <input id="{{ arr }}_max_per_run" name="{{ arr }}_max_per_run" type="number" min="0" value="{{ v.max_per_run }}" class="input-days" required>
+    <p class="hint">When more downloads than this are due at once, remove none and report it on the run: many at once usually means something else is wrong. 0 means no limit.</p>
+  </div>
+
+  <label for="{{ arr }}_dry_run">Dry run</label>
+  <div>
+    <select id="{{ arr }}_dry_run" name="{{ arr }}_dry_run">
+      <option value="true"{% if v.dry_run %} selected{% endif %}>On: list what would be removed, remove nothing</option>
+      <option value="false"{% if not v.dry_run %} selected{% endif %}>Off: remove them</option>
+    </select>
+    <p class="hint">Starts on, whatever General's dry run says.</p>
+  </div>
+  {% endfor %}
+</form>
+{% endif %}
+{% endblock %}

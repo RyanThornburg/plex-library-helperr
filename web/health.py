@@ -11,7 +11,7 @@ knows whether they cleared"""
 import logging
 import threading
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from config.models import ConfigSettings
 from logging_config import redacted
 from web.db import HealthIncident
-from web.jobs import utc_now
+from web.jobs import JobRunner, utc_now
 from web.sync import BackgroundSync, SyncStatus, save_status
 from web.status import LEVELS, Item, Problem, ServiceStatus, check_all
 
@@ -147,11 +147,19 @@ def record(engine: Engine, statuses: Iterable[ServiceStatus], now: datetime) -> 
         return sum(i.ended_at is None for i in current.values())
 
 
-def check(engine: Engine, settings: ConfigSettings) -> SyncStatus:
-    """one round of checks, recorded. Never raises: the error is in the status"""
+def check(
+    engine: Engine,
+    settings: ConfigSettings,
+    after: Callable[[list[ServiceStatus], datetime], None] | None = None,
+) -> SyncStatus:
+    """one round of checks, recorded, then `after` (queue cleanup) sees them. Never
+    raises: the error is in the status"""
     status = SyncStatus(started_at=utc_now())
     try:
-        record(engine, check_all(settings, status.started_at), status.started_at)  # type: ignore[arg-type]
+        statuses = check_all(settings, status.started_at)  # type: ignore[arg-type]
+        record(engine, statuses, status.started_at)  # type: ignore[arg-type]
+        if after is not None:
+            after(statuses, status.started_at)  # type: ignore[arg-type]
     except Exception as e:
         # check_all keeps each service's errors (redacted) on its card, this is the db
         status.error = f"{type(e).__name__}: {e}"
@@ -162,14 +170,28 @@ def check(engine: Engine, settings: ConfigSettings) -> SyncStatus:
 
 
 class HealthMonitor(BackgroundSync):
-    """checks at start, every CHECK_INTERVAL, and when sync_now() is called"""
+    """checks at start, every CHECK_INTERVAL, and when sync_now() is called. With a
+    runner, a check that finds a stuck download due for queue cleanup queues a
+    clear_stuck run"""
 
     interval = CHECK_INTERVAL
     status_key = STATUS_SETTING
     thread_name = "health-check"
 
+    def __init__(self, engine: Engine, load_config: Callable[[], ConfigSettings], runner: JobRunner | None = None):
+        super().__init__(engine, load_config)
+        self.runner = runner
+
     def sync(self, settings: ConfigSettings) -> SyncStatus:
-        return check(self.engine, settings)
+        if self.runner is None:
+            return check(self.engine, settings)
+        return check(self.engine, settings, lambda statuses, now: self.queue_cleanup(settings, statuses, now))
+
+    def queue_cleanup(self, settings: ConfigSettings, statuses: list[ServiceStatus], now: datetime) -> None:
+        from web.queue_cleanup import due_services
+
+        if (services := due_services(self.engine, settings, statuses, now)) and self.runner:
+            self.runner.submit_soon("clear_stuck", "health", "health check: stuck in " + ", ".join(services))
 
 
 # ---------------------------------------------------------------------------

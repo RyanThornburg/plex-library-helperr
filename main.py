@@ -9,7 +9,7 @@ import sys
 from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from pathlib import PurePosixPath
-from typing import Callable, Iterable
+from typing import TYPE_CHECKING, Callable, Iterable
 
 import requests
 from arrapi import (
@@ -32,6 +32,9 @@ from movie_remover import PlayLookup, run_movie_removers
 from remover import Approved, run_removers
 from results import JOBS, Change, JobResult
 from version import VERSION
+
+if TYPE_CHECKING:
+    from web.queue_cleanup import StuckClock
 
 MATCH_FN: dict[str, Callable[[Iterable[object]], bool]] = {"any": any, "all": all}
 
@@ -490,13 +493,15 @@ def run_job(
     auto_approve: frozenset[str] = frozenset(),
     removed_files: Mapping[str, int] | None = None,
     movie_plays: PlayLookup | None = None,
+    stuck_clock: "StuckClock | None" = None,
 ) -> JobResult:
-    """run one job (movers, removers or empty_trash) and return what it changed.
+    """run one job (movers, removers, empty_trash or clear_stuck) and return what it changed.
     `approved` applies a reviewed removers plan ({"SONARR"/"RADARR": approved}) and
     `auto_approve` holds the keys of removers that delete without review, see
     remover.run_removers and movie_remover.run_movie_removers, which `movie_plays` tells
     when movies were played. `removed_files` maps file names the removers deleted to
-    their run, see plex.empty_plex_trash"""
+    their run, see plex.empty_plex_trash. `stuck_clock` says how long downloads have been
+    stuck, see web.queue_cleanup"""
     if job not in JOBS:
         raise ValueError(f"unknown job '{job}', expected one of {', '.join(JOBS)}")
     if approved is not None and job != "removers":
@@ -511,6 +516,12 @@ def run_job(
         except Exception as e:
             failed(e, "PLEX\t Emptying the trash failed")
             result.errors.append(f"Emptying the trash failed: {failure_text(e)}")
+        return result
+
+    if job == "clear_stuck":
+        from web.queue_cleanup import run_queue_cleanup
+
+        run_queue_cleanup(settings, result, stuck_clock)
         return result
 
     if job == "removers":

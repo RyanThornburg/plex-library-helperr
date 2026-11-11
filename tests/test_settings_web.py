@@ -630,6 +630,59 @@ class TestTrash:
         assert version(client) == 0
 
 
+class TestQueueCleanup:
+    def fields(self, **overrides):
+        fields = {
+            "version": None,
+            "radarr_enabled": "1", "radarr_hours": "12", "radarr_states": ["failed", "import_blocked"],
+            "radarr_method": "ignore", "radarr_blocklist": "only", "radarr_max_per_run": "5", "radarr_dry_run": "true",
+        }
+        return {**fields, **overrides}
+
+    def test_needs_an_arr(self, client):
+        page = client.get("/settings/queue", headers=auth()).text
+        assert "Connect Radarr or Sonarr first" in page
+
+    def test_page_shows_defaults(self, client):
+        connect_radarr(client)
+        page = client.get("/settings/queue", headers=auth()).text
+        assert 'name="radarr_hours" type="number" min="1" value="6"' in page
+        assert 'name="radarr_states" value="failed" checked' in page
+        assert 'name="radarr_states" value="import_pending">' in page
+        assert 'name="sonarr_hours"' not in page
+        assert '<option value="true" selected>On: list what would be removed' in page
+
+    def test_save(self, client):
+        connect_radarr(client)
+        response = post(client, "/settings/queue", self.fields(version=version(client)))
+        assert response.status_code == 303
+        assert document(client)["radarr"]["queue_cleanup"] == {
+            "enabled": True, "stuck_for": "12h", "states": ["failed", "import_blocked"], "method": "ignore",
+            "blocklist": "only", "max_per_run": 5, "dry_run": True,
+        }
+        assert "sonarr" not in document(client)
+        page = client.get("/settings/queue", headers=auth()).text
+        assert 'value="12"' in page and '<option value="only" selected>' in page
+
+    def test_invalid_keeps_values(self, client):
+        connect_radarr(client)
+        response = post(client, "/settings/queue", self.fields(version=version(client), radarr_hours="0", radarr_states=[]))
+        assert "Radarr: Stuck for must be at least 1" in response.text
+        assert "Radarr: check at least one kind" in response.text
+        assert "queue_cleanup" not in document(client)["radarr"]
+
+    def test_going_live_needs_confirming(self, client):
+        connect_radarr(client)
+        before = version(client)
+        response = post(client, "/settings/queue", self.fields(version=before, radarr_dry_run="false"))
+        assert "Save and go live" in response.text
+        assert "Clear stuck downloads" in response.text
+        assert version(client) == before
+        response = post(client, "/settings/queue", self.fields(version=before, radarr_dry_run="false", confirm_live="1"))
+        assert response.status_code == 303
+        assert document(client)["radarr"]["queue_cleanup"]["dry_run"] is False
+
+
 class TestHistory:
     def test_error_banner_cant_come_from_the_url(self, client):
         post(client, "/settings/sonarr", {"version": 0, "dry_run": "true", "tag": "one"})
@@ -716,7 +769,7 @@ def test_every_settings_page_renders(client):
     connect_radarr(client)
     post(client, "/settings/radarr/movers/new", {"version": version(client), "action": "save", "path": "/movies/kids", "genres": "Family"})
     for url in ("/settings", "/settings/connections", "/settings/radarr", "/settings/sonarr", "/settings/trash",
-                "/settings/webhook", "/settings/history", f"/settings/history/{version(client)}",
+                "/settings/queue", "/settings/webhook", "/settings/history", f"/settings/history/{version(client)}",
                 "/settings/radarr/movers/1", "/settings/radarr/profilers/new", "/settings/sonarr/removers/new", "/removers"):
         response = client.get(url, headers=auth())
         assert response.status_code == 200, url

@@ -76,6 +76,7 @@ SECTIONS = [
         ("general", "General", "/settings", ("/settings",)),
         ("connections", "Connections", "/settings/connections", ("/settings/connections",)),
         ("trash", "Empty trash", "/settings/trash", ("/settings/trash",)),
+        ("queue", "Stuck downloads", "/settings/queue", ("/settings/queue",)),
         ("webhook", "Webhook", "/settings/webhook", ("/settings/webhook", "/settings/api-key")),
         ("login", "Login", "/settings/login", ("/settings/login",)),
         ("history", "History", "/settings/history", ("/settings/history",)),
