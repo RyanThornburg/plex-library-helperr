@@ -530,6 +530,21 @@ def fake_check_all(settings, now):
 
 
 class TestPages:
+    def test_arr_cards_say_whether_auto_remove_is_on(self, settings, monkeypatch):  # noqa: F811
+        from dataclasses import replace
+
+        from config.models import QueueCleanup
+
+        monkeypatch.setattr("web.status_routes.check_all", fake_check_all)
+        radarr = replace(RADARR, queue_cleanup=QueueCleanup(enabled=True, stuck_for=timedelta(hours=12)))
+        everything = replace(EVERYTHING, radarr=radarr)
+        app = create_app(settings, keys=FakeKeys(), run_job=fake_run_job, load_config=lambda: everything, run_scheduler=False)
+        with TestClient(app) as c:
+            page = c.get("/status", headers=auth()).text
+        assert '<dt>Auto-remove</dt><dd>after 12h stuck, dry run · <a href="/settings/queue">Settings</a></dd>' in page
+        # sonarr's card is down, without facts: still says it's off
+        assert '<dt>Auto-remove</dt><dd>off · <a href="/settings/queue">Settings</a></dd>' in page
+
     def test_status_page(self, client, monkeypatch):
         monkeypatch.setattr("web.status_routes.check_all", fake_check_all)
         page = client.get("/status", headers=auth())

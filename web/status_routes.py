@@ -12,6 +12,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
+from config import format_duration
 from config.models import ConfigSettings
 from web.health import (
     CHECK_INTERVAL,
@@ -143,8 +144,26 @@ def status_page(request: Request) -> HTMLResponse:
             "item_key": item_key,
             "health": sync_status(request.app.state.engine, STATUS_SETTING),
             "check_minutes": int(CHECK_INTERVAL.total_seconds() // 60),
+            "auto_remove": auto_remove(request),
         },
     )
+
+
+def auto_remove(request: Request) -> dict[str, str]:
+    """each connected arr's queue cleanup in a few words, for its card"""
+    settings, _ = loaded_settings(request)
+    found = {}
+    for service in QUEUES:
+        arr = getattr(settings, service, None) if settings else None
+        if arr is None or not arr.baseurl or not arr.apikey:
+            continue
+        c = arr.queue_cleanup
+        found[service] = (
+            f"after {format_duration(c.stuck_for)} stuck" + (", dry run" if c.dry_run else "")
+            if c.enabled
+            else "off"
+        )
+    return found
 
 
 @router.get("/api/status")

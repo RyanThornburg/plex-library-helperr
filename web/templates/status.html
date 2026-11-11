@@ -9,9 +9,11 @@
 {% macro open_link(s) %}{% set l = links.get(s.service) %}{% if l %}{{ ext_link(l, "Open " ~ ("Tautulli" if s.service == "plex" else s.label)) }}{% endif %}{% for o in other_links if o.service == s.service %}{{ " " if l or not loop.first }}{{ ext_link(o, ("Open " if not l and loop.first else "") ~ o.name) }}{% endfor %}{% endmacro %}
 {# a card's or line's facts, items and the notes a healthy service can have #}
 {% macro details(s) %}
-    {% if s.facts %}
+    {% set auto = auto_remove.get(s.service) %}
+    {% if s.facts or auto %}
     <dl class="facts">
       {% for label, value in s.facts %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}
+      {% if auto %}<dt>Auto-remove</dt><dd>{{ auto }} · <a href="/settings/queue">Settings</a></dd>{% endif %}
     </dl>
     {% endif %}
     {% if s.items %}
