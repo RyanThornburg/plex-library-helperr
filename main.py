@@ -31,6 +31,7 @@ from plex import empty_plex_trash, refresh_plex_libraries
 from movie_remover import PlayLookup, run_movie_removers
 from remover import Approved, run_removers
 from results import JOBS, Change, JobResult
+from version import VERSION
 
 MATCH_FN: dict[str, Callable[[Iterable[object]], bool]] = {"any": any, "all": all}
 
@@ -557,7 +558,7 @@ def main(argv: list[str] | None = None) -> JobResult | None:
     if args.reset_login:
         reset_login()
         return None
-    logger.info("Loading config settings")
+    logger.info("Helperr %s, loading config settings", VERSION)
     settings = load_settings()
     logger.info(settings)
 

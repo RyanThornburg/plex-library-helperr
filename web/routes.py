@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 import config
 from config.models import ConfigSettings, MovieRemoverRule, RemoverRule
 from results import JOBS
+from version import VERSION
 from web.db import WITHOUT_LOG, JobRun, RemoverRuleSetting, Schedule
 from web.jobs import (
     ACTIVE,
@@ -124,6 +125,7 @@ templates.env.globals["removal_key"] = removal_key
 # the shell's macros (icons, toolbar buttons, sidebar) for every template, as ui.*
 # before ui: _shell.html's module keeps the globals it was built with
 templates.env.globals["MODES"] = MODES
+templates.env.globals["APP_VERSION"] = VERSION
 templates.env.globals["configured_mode"] = configured_mode
 templates.env.filters["run_mode"] = run_mode
 templates.env.globals["ui"] = templates.env.get_template("_shell.html").module

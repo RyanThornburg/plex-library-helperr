@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from version import VERSION
 from web.auth import AccessMiddleware, AccessVerifier, PasswordMiddleware, SigningKeyClient
 from web.config_store import ConfigStore
 from web.db import make_engine, migrate
@@ -120,7 +121,8 @@ def create_app(
         else:
             sign_in = f"access team {settings.team_domain}, {len(settings.allowed_emails)} allowed emails"
         logger.info(
-            "WEB\t Started, %s, applying remover plans %s",
+            "WEB\t Started Helperr %s, %s, applying remover plans %s",
+            VERSION,
             sign_in,
             "allowed" if settings.allow_remover_apply else "off",
         )

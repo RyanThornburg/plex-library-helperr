@@ -54,11 +54,21 @@ All of the data in these is made up.
 
 Version 1 read `config.toml`. Version 2 doesn't. Settings live in the app's database and are edited on the Settings pages, so set up the web app first and enter your connections and rules there. The command line jobs still work, but they read the same database (see [Running jobs without the web app](#running-jobs-without-the-web-app)).
 
-Version 1 isn't maintained anymore. If you need it, its last commit is tagged `v1` and its image is `ghcr.io/ryanthornburg/plex-library-helperr:sha-b421917`.
+Version 1 isn't maintained anymore (see [CHANGELOG.md](CHANGELOG.md) for what changed). If you need it, its last commit is tagged `v1` and its image is `ghcr.io/ryanthornburg/plex-library-helperr:sha-b421917`.
 
 ## Setup (Docker on Unraid)
 
-The image is `ghcr.io/ryanthornburg/plex-library-helperr:latest`. Every push to `mainline` runs the tests and publishes it, along with a `sha-<commit>` tag you can pin or roll back to.
+The image is `ghcr.io/ryanthornburg/plex-library-helperr`. Pick a tag:
+
+| Tag | What you get |
+| --- | --- |
+| `latest` | The newest release. Use this one. |
+| `2` | The newest 2.x release. It never jumps to a 3.0 that needs you to change something. |
+| `2.0.0` | That exact release, if you want to update by hand. |
+| `edge` | Every push to `mainline`, before it's released. |
+| `sha-<commit>` | One exact build, to pin or roll back to. |
+
+What changed in each release is in [CHANGELOG.md](CHANGELOG.md) and on the GitHub releases page. The version you're running is at the bottom of the sidebar and in the log when the app starts.
 
 The app always needs a sign-in. There are two ways to do it, set with `AUTH_MODE`:
 
@@ -303,5 +313,13 @@ uv sync
 uv run pytest tests/ -v
 docker build -t plex-library-helperr .
 ```
+
+To make a release:
+
+1. Set the new version in `pyproject.toml` and run `uv lock`.
+2. Add a `## 2.1.0 (date)` section to the top of `CHANGELOG.md`.
+3. Commit, push, then tag and push the tag: `git tag -a v2.1.0 -m v2.1.0 && git push origin v2.1.0`.
+
+CI checks the tag matches `pyproject.toml`, publishes the image tags and makes a GitHub release from the changelog section.
 
 I used Claude for help writing the tests in v1 (command line version) and heavily to migrate to the web ui version (v2)
