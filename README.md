@@ -54,6 +54,8 @@ All of the data in these is made up.
 
 Version 1 read `config.toml`. Version 2 doesn't. Settings live in the app's database and are edited on the Settings pages, so set up the web app first and enter your connections and rules there. The command line jobs still work, but they read the same database (see [Running jobs without the web app](#running-jobs-without-the-web-app)).
 
+Version 1 isn't maintained anymore. If you need it, its last commit is tagged `v1` and its image is `ghcr.io/ryanthornburg/plex-library-helperr:sha-b421917`.
+
 ## Setup (Docker on Unraid)
 
 The image is `ghcr.io/ryanthornburg/plex-library-helperr:latest`. Every push to `mainline` runs the tests and publishes it, along with a `sha-<commit>` tag you can pin or roll back to.
