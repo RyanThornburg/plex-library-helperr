@@ -37,7 +37,7 @@
       </td>
       <td class="last-run">
         {% if last %}<a href="/runs/{{ last.id }}">#{{ last.id }}</a> <span class="status status-{{ last.status }}">{{ last.status | replace("_", " ") }}</span>
-        {% if job == "removers" and reviewable %}<br><a href="/runs/{{ last.id }}">Review the plan</a>{% else %}<br>{{ last.started_at | relative if last.started_at else last.created_at | relative }}{% endif %}
+        {% if job in reviewable %}<br><a href="/runs/{{ last.id }}">Review the plan</a>{% else %}<br>{{ last.started_at | relative if last.started_at else last.created_at | relative }}{% endif %}
         {% else %}<span class="muted">Never run</span>{% endif %}
       </td>
       <td class="row-actions">

@@ -1,7 +1,7 @@
 """shell.py - the app shell around every page: sidebar sections, where you are, and the
 badges and header pill that say what needs you from any page.
 
-Everything here comes from the database (open health incidents, removers plans, failed
+Everything here comes from the database (open health incidents, removers and duplicates plans, failed
 runs), never from the services, so it's cheap enough for every page and works while a
 service is down. A failing query leaves the shell quiet rather than breaking the page."""
 
@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from web.db import WITHOUT_LOG, HealthIncident, JobRun
 from web.health import LABELS
-from web.jobs import utc_now
+from web.jobs import PLAN_JOBS, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +76,7 @@ SECTIONS = [
         ("general", "General", "/settings", ("/settings",)),
         ("connections", "Connections", "/settings/connections", ("/settings/connections",)),
         ("trash", "Empty trash", "/settings/trash", ("/settings/trash",)),
+        ("duplicates", "Duplicates", "/settings/duplicates", ("/settings/duplicates",)),
         ("queue", "Stuck downloads", "/settings/queue", ("/settings/queue",)),
         ("webhook", "Webhook", "/settings/webhook", ("/settings/webhook", "/settings/api-key")),
         ("login", "Login", "/settings/login", ("/settings/login",)),
@@ -155,17 +156,18 @@ def read_needs(request: Request) -> Needs:
                     JobRun.status == "failed", JobRun.finished_at >= utc_now() - FAILED_WITHIN
                 )
             ) or 0
-            # the newest plan is the one to review: an older one is superseded
-            plan = session.scalars(
-                select(JobRun)
-                .options(WITHOUT_LOG)
-                .where(JobRun.job == "removers", JobRun.plan_run_id.is_(None), JobRun.status == "succeeded")
-                .order_by(JobRun.id.desc())
-                .limit(1)
-            ).first()
+            # each job's newest plan is the one to review: an older one is superseded
             runner = getattr(state, "runner", None)
-            if plan is not None and runner is not None and runner.apply_problem(session, plan) is None:
-                needs.plans = 1
+            for job in PLAN_JOBS:
+                plan = session.scalars(
+                    select(JobRun)
+                    .options(WITHOUT_LOG)
+                    .where(JobRun.job == job, JobRun.plan_run_id.is_(None), JobRun.status == "succeeded")
+                    .order_by(JobRun.id.desc())
+                    .limit(1)
+                ).first()
+                if plan is not None and runner is not None and runner.apply_problem(session, plan) is None:
+                    needs.plans += 1
     except SQLAlchemyError, ValueError:
         logger.warning("WEB\t Couldn't read what needs you for the sidebar", exc_info=True)
         return Needs()

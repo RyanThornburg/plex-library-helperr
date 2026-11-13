@@ -33,7 +33,6 @@ Support for a service comes in three levels, and most only need the first:
 
 ## Other ideas
 
-- [ ] **Orphaned files**: files in root folders that no arr knows about, often left behind after re-downloads, with their sizes. Review before deleting, like removers.
-- [ ] **Duplicate versions in Plex**: items with more than one version where one of them isn't the arr's current file.
+- [ ] **Orphaned files**: files in root folders that neither Plex nor an arr knows about, with their sizes. Review before deleting, like removers. Needs the media mounted in the container, which it has avoided so far (everything goes through the APIs); duplicate versions cover the re-download leftovers Plex sees.
 - [ ] **Stop a Plex stream** from Status (with a message), for a transcode that's eating bandwidth.
 - [ ] **Seerr issues** listed on Status, not just counted.

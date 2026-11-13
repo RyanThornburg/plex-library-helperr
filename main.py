@@ -28,6 +28,7 @@ from autoscan import trigger_autoscan
 from config.models import ArrConfig, ConfigSettings, MoverRule, ProfileRule
 from logging_config import failure_text, logging_config
 from plex import empty_plex_trash, refresh_plex_libraries
+from duplicates import run_duplicates
 from movie_remover import PlayLookup, run_movie_removers
 from remover import Approved, run_removers
 from results import JOBS, Change, JobResult
@@ -362,6 +363,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="run removers (plan removing stale sonarr seasons/episodes and old radarr movies) instead of movers/profilers",
     )
     jobs.add_argument(
+        "--duplicates",
+        action="store_true",
+        help="plan removing the plex versions of movies/episodes that aren't radarr's/sonarr's file (only lists them)",
+    )
+    jobs.add_argument(
         "--empty-trash",
         action="store_true",
         help="empty plex library trash instead of running movers/profilers",
@@ -495,8 +501,9 @@ def run_job(
     movie_plays: PlayLookup | None = None,
     stuck_clock: "StuckClock | None" = None,
 ) -> JobResult:
-    """run one job (movers, removers, empty_trash or clear_stuck) and return what it changed.
-    `approved` applies a reviewed removers plan ({"SONARR"/"RADARR": approved}) and
+    """run one job (movers, removers, duplicates, empty_trash or clear_stuck) and return
+    what it changed. `approved` applies a reviewed removers plan ({"SONARR"/"RADARR":
+    approved}) or duplicates plan ({"PLEX": approved}, see duplicates.run_duplicates) and
     `auto_approve` holds the keys of removers that delete without review, see
     remover.run_removers and movie_remover.run_movie_removers, which `movie_plays` tells
     when movies were played. `removed_files` maps file names the removers deleted to
@@ -504,8 +511,8 @@ def run_job(
     stuck, see web.queue_cleanup"""
     if job not in JOBS:
         raise ValueError(f"unknown job '{job}', expected one of {', '.join(JOBS)}")
-    if approved is not None and job != "removers":
-        raise ValueError("only a removers plan can be approved")
+    if approved is not None and job not in ("removers", "duplicates"):
+        raise ValueError("only a removers or duplicates plan can be approved")
     result = JobResult(job)
 
     if job == "empty_trash":
@@ -516,6 +523,16 @@ def run_job(
         except Exception as e:
             failed(e, "PLEX\t Emptying the trash failed")
             result.errors.append(f"Emptying the trash failed: {failure_text(e)}")
+        return result
+
+    if job == "duplicates":
+        logger.info("-" * 90)
+        logger.info("STARTING PLEX DUPLICATES")
+        try:
+            run_duplicates(settings, result, None if approved is None else approved.get("PLEX", {}))
+        except Exception as e:
+            failed(e, "PLEX\t Duplicates failed")
+            result.errors.append(f"Duplicates failed: {failure_text(e)}")
         return result
 
     if job == "clear_stuck":
@@ -573,7 +590,12 @@ def main(argv: list[str] | None = None) -> JobResult | None:
     settings = load_settings()
     logger.info(settings)
 
-    job = "removers" if args.remove else "empty_trash" if args.empty_trash else "movers"
+    job = (
+        "removers" if args.remove
+        else "duplicates" if args.duplicates
+        else "empty_trash" if args.empty_trash
+        else "movers"
+    )
     result = run_job(job, settings)
 
     logger.info("-" * 90)

@@ -2,6 +2,12 @@
 
 What changed in each release. Versions are `MAJOR.MINOR.PATCH`: the major number goes up when upgrading needs you to do something (a new required setting, a removed feature, a change that breaks the API), the minor number for new features, the patch number for fixes.
 
+## Unreleased
+
+### New
+
+- Duplicate versions (Runs, Settings → Duplicates): finds movies and episodes with more than one version in Plex and plans deleting every version that isn't the file Radarr or Sonarr tracks, for review like removers (approve, then a confirmation naming the files). It skips anything it can't be sure of: a file added in the last few days, a download in progress, a tracked file Plex hasn't scanned, a version much longer or shorter than the tracked one, or a file holding several episodes. Approved versions are deleted through Plex, which needs Allow media deletion on. Applying needs `REMOVERS_ALLOW_APPLY=true` and stops at `max_deletes`.
+
 ## 2.1.0 (2026-11-13)
 
 ### New

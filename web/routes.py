@@ -26,6 +26,7 @@ from web.jobs import (
     ApplyRefused,
     MODES,
     JobRunner,
+    PLAN_JOBS,
     approvable,
     configured_mode,
     removal_key,
@@ -53,6 +54,10 @@ JOB_INFO: dict[str, tuple[str, str]] = {
     "removers": (
         "Removers",
         "Plan deleting old seasons/episodes of tagged series and old movies in root folders.",
+    ),
+    "duplicates": (
+        "Duplicate versions",
+        "Plan deleting the Plex versions of movies and episodes that aren't the file Radarr/Sonarr track.",
     ),
     "empty_trash": (
         "Empty Plex trash",
@@ -366,17 +371,20 @@ def index(request: Request, before: int | None = Query(default=None, ge=1, le=2*
             next_runs[schedule.job] = (next_run, schedule)
     with Session(request.app.state.engine) as session:
         followup = trash_followup_due(session, now, runner(request).defaults())
-        # each job's newest run, and whether that removers plan is waiting for review
+        # each job's newest run, and whether its removers or duplicates plan is waiting for review
         last_runs = {
             job: session.scalars(
                 select(JobRun).options(WITHOUT_LOG).where(JobRun.job == job).order_by(JobRun.id.desc()).limit(1)
             ).first()
             for job in JOBS
         }
-        plan = last_runs.get("removers")
-        reviewable = (
-            plan is not None and plan.plan_run_id is None and runner(request).apply_problem(session, plan) is None
-        )
+        reviewable = {
+            job
+            for job in PLAN_JOBS
+            if (plan := last_runs.get(job)) is not None
+            and plan.plan_run_id is None
+            and runner(request).apply_problem(session, plan) is None
+        }
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -491,17 +499,21 @@ def apply_confirm(
     with Session(request.app.state.engine) as session:
         problem = error or runner(request).apply_problem(session, run)
     if problem is None and (not selected or len(selected) != len(set(items))):
-        problem = "Select at least one series or movie from the plan."
-    # each arr's removals and files, checked against its own max_deletes
+        problem = "Select at least one item from the plan."
+    # each arr's removals and files (plex's: duplicate versions), checked against its own
+    # max_deletes
     arrs: list[dict[str, Any]] = []
     # None: the run would fail the same way, its log will say why
     settings, _ = loaded_settings(request)
-    for service in ("SONARR", "RADARR"):
+    for service in ("SONARR", "RADARR", "PLEX"):
         removals = [r for r in selected if r["service"] == service]
         if not removals:
             continue
-        arr = getattr(settings, service.lower()) if settings else None
-        max_deletes = arr.remover_settings.max_deletes if arr else None
+        if service == "PLEX":
+            max_deletes = settings.duplicates.max_deletes if settings else None
+        else:
+            arr = getattr(settings, service.lower()) if settings else None
+            max_deletes = arr.remover_settings.max_deletes if arr else None
         files = sum(len(r["files"]) for r in removals)
         arrs.append(
             {
@@ -551,7 +563,7 @@ def apply_plan_form(
     except AlreadyActive as e:
         response = apply_confirm(
             request, run_id, item,
-            f"Removers run #{e.run_id} is active, so the plan wasn't applied. Apply it once that run finishes.",
+            f"{JOB_INFO[get_run(request, run_id).job][0]} run #{e.run_id} is active, so the plan wasn't applied. Apply it once that run finishes.",
         )
         response.status_code = 409
         return response
@@ -797,7 +809,8 @@ class ApplyRequest(BaseModel):
 
 @router.post("/api/runs/{run_id}/apply", status_code=202)
 def api_apply_plan(request: Request, run_id: int, body: ApplyRequest) -> JSONResponse:
-    """removes the approved series/movies of a removers run's plan"""
+    """removes the approved series/movies of a removers run's plan, or the approved
+    versions of a duplicates run's"""
     try:
         new_id = runner(request).submit_apply(run_id, body.items, "api", request.state.user)
     except LookupError:

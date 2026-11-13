@@ -1,0 +1,35 @@
+{% extends "settings/_layout.html" %}
+{% import "settings/_fields.html" as f with context %}
+{% set tab = "duplicates" %}
+{% block toolbar %}
+<div class="group">{{ ui.tool_submit("save", "Save", "duplicates-form") }}</div>
+{% endblock %}
+{% block settings %}
+<p class="muted">The Duplicate versions job (<a href="/runs">Runs</a>) finds movies and episodes with more than one version in Plex and plans deleting every version that isn't the file Radarr or Sonarr tracks, for you to review. Deleting goes through Plex, so its Settings → Library → Allow media deletion must be on.</p>
+{{ f.choice_problems(choice_problems) }}
+<form method="post" action="/settings/duplicates" class="form" id="duplicates-form">
+  {{ f.version_field() }}
+  {% if plex_libraries %}
+  <span class="label">Libraries</span>
+  <div>
+    {% for library in plex_libraries | list + (values.libraries | reject("in", plex_libraries) | list) %}
+    <label class="check check-row"><input type="checkbox" name="libraries" value="{{ library }}"{% if library in values.libraries %} checked{% endif %}> {{ library }}{% if library not in plex_libraries %} <span class="muted">(not found in Plex)</span>{% endif %}</label>
+    {% endfor %}
+    <p class="hint">None checked checks every movie and show library.</p>
+  </div>
+  {% else %}
+  {{ f.chips("libraries", "Libraries", values.libraries, [], "Library names, one per line. Empty means every movie and show library.") }}
+  {% endif %}
+
+  <label for="min_age">Skip files added within</label>
+  <div>
+    <input id="min_age" name="min_age" value="{{ values.min_age }}" required spellcheck="false">
+    <p class="hint">An item whose Radarr/Sonarr file is newer than this is skipped: an upgrade or a converter may still be at work. Like 3d or 12h.</p>
+  </div>
+  <label for="max_deletes">Max deletes</label>
+  <div>
+    <input id="max_deletes" name="max_deletes" type="number" min="1" value="{{ values.max_deletes }}" required>
+    <p class="hint">Applying a plan that would delete more files than this deletes none of them.</p>
+  </div>
+</form>
+{% endblock %}

@@ -14,7 +14,7 @@
 
 <dl class="facts">
   {% if run.plan_run_id %}
-  <dt>Mode</dt><dd>applying the series approved from <a href="/runs/{{ run.plan_run_id }}">plan #{{ run.plan_run_id }}</a></dd>
+  <dt>Mode</dt><dd>applying what was approved from <a href="/runs/{{ run.plan_run_id }}">plan #{{ run.plan_run_id }}</a></dd>
   {% else %}
   {% set mode = run | run_mode %}
   <dt>Mode</dt><dd>{{ ui.mode_tag(mode, "forced" if run.dry_run else "from the settings" if mode == "dry_run" else "") }}</dd>
@@ -50,14 +50,18 @@
 {% elif apply_problem %}
 <p class="banner banner-warn">{{ apply_problem }}</p>
 {% elif selectable %}
+{% if run.job == "duplicates" %}
+<p class="muted">Each item keeps the version that is Radarr's or Sonarr's file; the others are listed with their files. Select what to remove, then review. Applying reads each selected item from Plex again and only deletes approved versions that are still duplicates, through Plex (Settings → Library → Allow media deletion must be on).</p>
+{% else %}
 <p class="muted">Select what to remove, then review. Applying plans each selected series or movie again from fresh Sonarr/Radarr data and only removes what was approved and is still eligible.</p>
+{% endif %}
 {% endif %}
 {% if selectable %}<form method="get" action="/runs/{{ run.id }}/apply">{% endif %}
 <table class="stack">
   <thead>
     <tr>
       {% if selectable %}<th class="keep"><input type="checkbox" data-select-all="item" aria-label="Select all"><span class="stack-only" aria-hidden="true"> Select all</span></th>{% endif %}
-      <th>Series / movie</th><th>Rule</th><th>Remove</th><th>Files</th><th>Status</th><th>Detail</th>
+      <th>{{ "Item" if run.job == "duplicates" else "Series / movie" }}</th><th>{{ "Keeps" if run.job == "duplicates" else "Rule" }}</th><th>Remove</th><th>Files</th><th>Status</th><th>Detail</th>
     </tr>
   </thead>
   <tbody>
@@ -67,7 +71,7 @@
       <td class="first">{% if removal.status in APPROVABLE %}<input type="checkbox" name="item" value="{{ removal_key(removal) }}" aria-label="Remove {{ removal.title }}">{% endif %}</td>
       {% endif %}
       <td class="long first lead">{{ removal.title }}{% if removal.service == "RADARR" %} <span class="tag">movie</span>{% endif %}</td>
-      <td class="long muted" data-label="Rule">{{ removal.rule }}</td>
+      <td class="long muted" data-label="{{ 'Keeps' if run.job == 'duplicates' else 'Rule' }}">{{ removal.rule }}</td>
       <td class="units row" data-label="Remove">{{ removal.labels | join(", ") }}</td>
       <td>
         <details>

@@ -294,6 +294,15 @@ class TestConnections:
         # the key is kept out of the document and its history
         assert document(client)["unraid"] == {"url": "http://192.168.1.15", "public_url": "https://unraid.example.com"}
 
+    def test_duplicates_settings(self, client):
+        page = client.get("/settings/duplicates", headers=auth()).text
+        assert 'name="min_age" value="3d"' in page and 'name="max_deletes" type="number" min="1" value="100"' in page
+        response = post(client, "/settings/duplicates", {"version": 0, "min_age": "soon", "max_deletes": "5"})
+        assert "invalid duration" in response.text
+        post(client, "/settings/duplicates", {"version": 0, "min_age": "12h", "max_deletes": "5", "libraries": "TV Shows"})
+        assert document(client)["plex"]["duplicates"] == {"min_age": "12h", "max_deletes": 5, "libraries": ["TV Shows"]}
+        assert store(client).load_settings().duplicates.max_deletes == 5
+
     def test_disconnect_forgets_the_public_url(self, client):
         connect_radarr(client)
         post(client, "/settings/connections/radarr", {"version": version(client), "action": "save", "url": "http://radarr:7878", "public_url": "https://radarr.example.com"})

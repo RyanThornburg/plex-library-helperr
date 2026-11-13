@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 # done: applied, dry_run: planned only, blocked: a safety check stopped it, failed: an api call failed
 Status = Literal["done", "dry_run", "blocked", "failed"]
 
-JOBS = ("movers", "removers", "empty_trash", "clear_stuck")
+JOBS = ("movers", "removers", "duplicates", "empty_trash", "clear_stuck")
 
 
 def utc_now() -> datetime:
@@ -38,18 +38,19 @@ class PlannedFile:
 
 @dataclass
 class PlannedRemoval:
-    """one series' or movie's removal as planned, kept with the run so it can be reviewed
-    and approved (see remover.run_removers' and movie_remover.run_movie_removers'
-    `approved`)"""
+    """one series' or movie's removal as planned, or the duplicate versions of a plex
+    item, kept with the run so it can be reviewed and approved (see remover.run_removers',
+    movie_remover.run_movie_removers' and duplicates.run_duplicates' `approved`). A
+    duplicate's files are its versions' parts, each with the version's media id"""
 
-    media_id: int  # the series id in sonarr, or the movie id in radarr
+    media_id: int  # the series id in sonarr, the movie id in radarr, or plex's rating key
     title: str
     rule: str
     labels: list[str]
     files: list[PlannedFile]
     status: Status
     detail: str = ""
-    service: str = "SONARR"  # SONARR or RADARR
+    service: str = "SONARR"  # SONARR, RADARR, or PLEX for duplicate versions
 
 
 @dataclass

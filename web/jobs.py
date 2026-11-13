@@ -25,6 +25,8 @@ ACTIVE = ("queued", "running")
 MAX_LOG_CHARS = 1_000_000
 # removals a reviewed plan can approve: not already done or failed
 APPROVABLE = ("dry_run", "blocked")
+# jobs whose runs plan deletions for review, applied by a later run of the same job
+PLAN_JOBS = ("removers", "duplicates")
 # removers deletions empty trash recognizes, plex's trash is emptied well before this
 REMOVED_FILES_MAX_AGE = timedelta(days=90)
 
@@ -65,8 +67,8 @@ MODES = {
 def configured_mode(job: str, dry_run: bool | None, auto_approve: bool = False) -> str:
     """a job's mode as configured: config.config_dry_run()'s answer, and for removers
     whether any rule is auto-approved"""
-    if job == "removers":
-        return "review_auto" if auto_approve else "review"
+    if job in PLAN_JOBS:
+        return "review_auto" if auto_approve and job == "removers" else "review"
     return "mixed" if dry_run is None else "dry_run" if dry_run else "live"
 
 
@@ -81,7 +83,7 @@ def run_mode(run: JobRun) -> str:
     result = run.result or {}
     if result.get("mode") in MODES:
         return result["mode"]
-    if run.job == "removers":
+    if run.job in PLAN_JOBS:
         return "review"
     statuses = {c.get("status") for c in result.get("changes", [])}
     if "done" in statuses:
@@ -92,14 +94,14 @@ def run_mode(run: JobRun) -> str:
 
 
 def removal_key(removal: dict[str, Any]) -> str:
-    """how a planned removal is selected for approval: sonarr:<series id> or
-    radarr:<movie id>"""
+    """how a planned removal is selected for approval: sonarr:<series id>,
+    radarr:<movie id> or plex:<rating key> (a duplicate)"""
     return f"{removal['service'].lower()}:{removal['media_id']}"
 
 
 def approvable(run: JobRun) -> list[dict[str, Any]]:
-    """the removals of a finished removers run that can be approved"""
-    if run.job != "removers" or run.plan_run_id is not None or run.status in ACTIVE:
+    """the removals of a finished removers or duplicates run that can be approved"""
+    if run.job not in PLAN_JOBS or run.plan_run_id is not None or run.status in ACTIVE:
         return []
     removals = (run.result or {}).get("removals", [])
     return [r for r in removals if r["status"] in APPROVABLE]
@@ -285,7 +287,7 @@ class JobRunner:
         return run_id
 
     def apply_problem(self, session: Session, plan: JobRun) -> str | None:
-        """why a removers run's plan can't be applied, None when it can"""
+        """why a removers or duplicates run's plan can't be applied, None when it can"""
         if not self.allow_apply:
             return (
                 "Applying plans is turned off. Set REMOVERS_ALLOW_APPLY=true on the "
@@ -297,7 +299,7 @@ class JobRunner:
         if utc_now() - plan.created_at > max_age:
             return (
                 f"This plan is older than {config.format_duration(max_age)} (Settings → "
-                "General). Run removers again for a fresh plan."
+                f"General). Run {plan.job} again for a fresh plan."
             )
         applied = session.scalar(select(JobRun.id).where(JobRun.plan_run_id == plan.id))
         if applied is not None:
@@ -307,8 +309,8 @@ class JobRunner:
     def submit_apply(
         self, plan_run_id: int, keys: list[str], trigger: str, requested_by: str | None
     ) -> int:
-        """queue a live removers run that removes the approved series/movies of a plan,
-        selected by removal_key(). Raises ApplyRefused, AlreadyActive, or LookupError when
+        """queue a live run of the plan's job that removes the approved series/movies (or
+        duplicate versions) of a plan, selected by removal_key(). Raises ApplyRefused, AlreadyActive, or LookupError when
         there's no such run"""
         with self._submit_lock, Session(self.engine) as session:
             plan = session.get(JobRun, plan_run_id)
@@ -319,9 +321,9 @@ class JobRunner:
             removals = {removal_key(r): r for r in approvable(plan)}
             chosen = set(keys)
             if not chosen:
-                raise ApplyRefused("Select at least one series or movie to remove.")
+                raise ApplyRefused("Select at least one item to remove.")
             if chosen - removals.keys():
-                raise ApplyRefused("Some selected series or movies aren't in this plan.")
+                raise ApplyRefused("Some selected items aren't in this plan.")
             approved = [
                 {
                     "service": removals[key]["service"],
@@ -334,7 +336,7 @@ class JobRunner:
             run_id = self._queue_run(
                 session,
                 JobRun(
-                    job="removers",
+                    job=plan.job,
                     trigger=trigger,
                     requested_by=requested_by,
                     dry_run=False,

@@ -44,6 +44,7 @@ All of the data in these is made up.
 - **Status:** what Unraid, Plex (through Tautulli), Radarr, Sonarr, SABnzbd, Bazarr and Seerr are doing right now. Health warnings, stuck downloads, failed downloads, low disk space, who's streaming. For Unraid: the array, each disk's state, errors, temperature and fill level (against the thresholds you set in Unraid), parity checks, containers set to autostart that aren't running, and Unraid's own warnings and alerts (SMART warnings among them). Stuck downloads can be removed from here, the same way you would in Radarr or Sonarr, or automatically once they've been stuck a while. Health checks run every 5 minutes in the background and keep a history of problems for a year.
 - **Runs and schedules:** run any job by hand (with a **Dry run** button or a **Run...** button that asks first), or on a cron schedule. Every run is kept with what it changed and its log.
 - **Removers:** each run plans what it would delete. You review the plan, tick what to remove, and confirm. Once you trust a rule you can turn on auto-approve for it.
+- **Duplicate versions:** finds movies and episodes with more than one version in Plex, for example when Radarr or Sonarr re-downloaded files from a disk that dropped out and the old copies came back. It plans deleting every version that isn't the file Radarr/Sonarr tracks, for you to review the same way as removers. It skips anything it can't be sure of: a file added in the last few days, a download in progress, a version much longer or shorter than the tracked one (it may be another episode or cut), or a file holding several episodes. Deleting goes through Plex, which needs Settings > Library > Allow media deletion turned on.
 - **Webhooks:** point Radarr's and Sonarr's webhook at the app and movers run as soon as something is added, before it downloads. File upgrades queue a trash empty a little later.
 - **Requests:** every Seerr request, who made it, when it reached Plex and how much of it they watched. Uses Tautulli's history.
 - **Playback:** how each play was streamed and why it transcoded (quality setting, audio format, subtitles, HDR and so on), grouped by person and device with what to change.
@@ -211,6 +212,7 @@ A blocked or failed run is tried again after another `stuck_for`.
 uv sync                         # install dependencies
 uv run main.py                  # movers and profilers
 uv run main.py --remove         # removers (plans only, never deletes from here)
+uv run main.py --duplicates     # duplicate versions (plans only)
 uv run main.py --empty-trash    # empty Plex trash
 uv run main.py --serve          # the web app
 uv run main.py --reset-login    # forgot the web app's password
@@ -295,6 +297,16 @@ Each *arr also has `max_deletes`: if a run would delete more of its files than t
 | `max_items` | Skip a library with more than this many items in the trash (default `100`) |
 | `max_deleted_items` | Skip a library with more than this many fully deleted items that Helperr's removers didn't delete (default `50`) |
 | `dry_run` | Override the general dry run for this job |
+
+### Duplicate versions settings
+
+| Key | What it does |
+| --- | --- |
+| `libraries` | Which Plex libraries to check. Empty means every movie and TV library. |
+| `min_age` | Skip an item whose Radarr/Sonarr file was added within this window (default `3d`, at least `1h`) |
+| `max_deletes` | If applying a plan would delete more files than this, it deletes none of them (default `100`) |
+
+Applying a plan needs `REMOVERS_ALLOW_APPLY=true`, like removers.
 
 ### Stuck download settings
 

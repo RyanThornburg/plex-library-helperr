@@ -205,6 +205,67 @@ def save_trash(request: Request, fields: FormLists) -> Response:
 
 
 # ---------------------------------------------------------------------------
+# duplicate versions
+# ---------------------------------------------------------------------------
+
+
+def duplicates(request: Request, values: dict[str, Any] | None = None, errors: list[str] | None = None) -> HTMLResponse:
+    _, document = store(request).document()
+    section = document.get("plex", {}).get("duplicates", {})
+    defaults = config.build_config({}).duplicates
+    values = values or {
+        "libraries": section.get("libraries", []),
+        "min_age": section.get("min_age", config.format_duration(defaults.min_age)),
+        "max_deletes": section.get("max_deletes", defaults.max_deletes),
+    }
+    settings, error = loaded_settings(request)
+    plex_libraries: list[str] = []
+    problems = [] if settings else [f"Libraries couldn't load: {error}"]
+    if settings:
+        try:
+            plex_libraries = [
+                title for title, kind in lookups(request).plex_libraries(settings.plex)
+                if kind in ("movie", "show")
+            ]
+        except LookupFailed as e:
+            problems.append(str(e))
+    return page(
+        request,
+        "duplicates",
+        {"values": values, "plex_libraries": plex_libraries, "choice_problems": problems},
+        errors,
+    )
+
+
+@router.get("/settings/duplicates", response_class=HTMLResponse)
+def duplicates_page(request: Request) -> HTMLResponse:
+    return duplicates(request)
+
+
+@router.post("/settings/duplicates")
+def save_duplicates(request: Request, fields: FormLists) -> Response:
+    errors: list[str] = []
+    values = {
+        "libraries": lines(fields, "libraries"),
+        "min_age": first(fields, "min_age"),
+        "max_deletes": first(fields, "max_deletes"),
+    }
+    checked_duration(values["min_age"], "Skip files added within", errors)
+    max_deletes = checked_int(values["max_deletes"], "Max deletes", errors, 1)
+    if errors:
+        return duplicates(request, values, errors)
+    _, document = store(request).document()
+    section: dict[str, Any] = {"min_age": values["min_age"], "max_deletes": max_deletes}
+    if values["libraries"]:
+        section["libraries"] = values["libraries"]
+    document.setdefault("plex", {})["duplicates"] = section
+    return commit(
+        request, fields, document, "Duplicates settings",
+        lambda e: duplicates(request, values, [e]), "/settings/duplicates",
+    )
+
+
+# ---------------------------------------------------------------------------
 # stuck downloads (queue cleanup)
 # ---------------------------------------------------------------------------
 

@@ -410,6 +410,27 @@ def _positive_span(value: timedelta, name: str) -> None:
 
 
 @dataclass
+class DuplicatesSettings:
+    """
+    libraries: (list[str]) Plex libraries to check, empty means every movie/show library
+    min_age: (timedelta) Skip an item whose Radarr/Sonarr file was added within this long
+        (an upgrade or a converter may still be at work)
+    max_deletes: (int) A run deletes no versions when it would delete more files than this
+    """
+
+    libraries: list[str] = field(default_factory=list[str])
+    min_age: timedelta = timedelta(days=3)
+    max_deletes: int = 100
+
+    def __post_init__(self):
+        check_types(self)
+        if self.min_age < timedelta(hours=1):
+            raise ValueError("plex.duplicates.min_age must be at least 1h")
+        if self.max_deletes < 1:
+            raise ValueError(f"plex.duplicates.max_deletes must be an integer >= 1, got '{self.max_deletes}'")
+
+
+@dataclass
 class WebDefaults:
     """
     followup_delay: (timedelta) Empty trash this long after a live run moved/removed files or an upgrade
@@ -627,7 +648,8 @@ class ConfigSettings:
     unraid: UnraidConfig | None = None
     links: list[LinkConfig] = field(default_factory=list[LinkConfig])
     empty_trash: EmptyTrashSettings = field(default_factory=EmptyTrashSettings)
+    duplicates: DuplicatesSettings = field(default_factory=DuplicatesSettings)
     web: WebDefaults = field(default_factory=WebDefaults)
 
     def __repr__(self):
-        return f"ConfigSettings(filter_time={self.filter_time}, web={self.web}, plex={self.plex}, empty_trash={self.empty_trash}, tautulli={self.tautulli}, seerr={self.seerr}, sabnzbd={self.sabnzbd}, bazarr={self.bazarr}, unraid={self.unraid}, links={self.links}, autoscan={self.autoscan}, sonarr={self.sonarr}, radarr={self.radarr})"
+        return f"ConfigSettings(filter_time={self.filter_time}, web={self.web}, plex={self.plex}, empty_trash={self.empty_trash}, duplicates={self.duplicates}, tautulli={self.tautulli}, seerr={self.seerr}, sabnzbd={self.sabnzbd}, bazarr={self.bazarr}, unraid={self.unraid}, links={self.links}, autoscan={self.autoscan}, sonarr={self.sonarr}, radarr={self.radarr})"

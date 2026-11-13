@@ -584,6 +584,46 @@ def plan_client(settings):
         yield c
 
 
+def duplicates_job(job: str, settings: ConfigSettings, approved=None) -> JobResult:
+    """plans the extra version of one movie, or deletes it when approved"""
+    removals = [
+        PlannedRemoval(200, "Heat (1995)", "Movies: keeps Radarr's file (1080p mkv, 8.0 GB)", ["720p mkv, 4.0 GB"],
+                       [PlannedFile(22, "/mnt/nfs/disk8/movies/Heat (1995)/Heat.mkv")], "dry_run", service="PLEX"),
+    ]
+    if approved is not None:
+        removals = [dataclasses.replace(r, status="done") for r in removals if r.media_id in approved.get("PLEX", {})]
+    return JobResult(job, removals=removals)
+
+
+class TestDuplicatesPlan:
+    @pytest.fixture
+    def dup_client(self, settings):
+        app = create_app(
+            dataclasses.replace(settings, allow_remover_apply=True),
+            keys=FakeKeys(), run_job=duplicates_job, load_config=live_config, run_scheduler=False,
+        )
+        with TestClient(app) as c:
+            c.post("/jobs/duplicates?dry_run=true", headers={**auth(), **ORIGIN})
+            wait(c)
+            yield c
+
+    def test_review_and_apply(self, dup_client):
+        runs = dup_client.get("/runs", headers=auth()).text
+        assert "Duplicate versions" in runs and "Review the plan" in runs
+        page = dup_client.get("/runs/1", headers=auth()).text
+        assert 'name="item" value="plex:200"' in page and "<th>Keeps</th>" in page
+        assert "Allow media deletion" in page
+        confirm = dup_client.get("/runs/1/apply?item=plex:200", headers=auth()).text
+        assert "deletes 1 file from disk</strong> through Plex" in confirm and "Delete 1 file" in confirm
+        response = dup_client.post("/runs/1/apply?item=plex:200", headers={**auth(), **ORIGIN}, follow_redirects=False)
+        assert response.headers["location"] == "/runs/2"
+        wait(dup_client)
+        run = dup_client.get("/api/runs/2", headers=auth()).json()
+        assert (run["job"], run["plan_run_id"]) == ("duplicates", 1)
+        assert run["approved"] == [{"service": "PLEX", "media_id": 200, "title": "Heat (1995)", "file_ids": [22]}]
+        assert [r["status"] for r in run["result"]["removals"]] == ["done"]
+
+
 class TestPlanReview:
     def test_plan_page_lists_series_to_select(self, plan_client):
         page = plan_client.get("/runs/1", headers=auth()).text
@@ -611,7 +651,7 @@ class TestPlanReview:
 
     def test_confirm_page_needs_a_selection(self, plan_client):
         page = plan_client.get("/runs/1/apply", headers=auth()).text
-        assert "Select at least one series" in page
+        assert "Select at least one item" in page
         assert "Delete" not in page
 
     def test_confirm_page_warns_over_max_deletes(self, settings):

@@ -9,6 +9,7 @@ from config.models import (
     ArrConfig,
     AutoscanConfig,
     BazarrConfig,
+    DuplicatesSettings,
     ConfigSettings,
     LINK_SERVICES,
     EmptyTrashSettings,
@@ -159,6 +160,13 @@ def _build_empty_trash(data: Mapping[str, Any], dry_run: bool) -> EmptyTrashSett
     return _build(EmptyTrashSettings, {"dry_run": dry_run, **data}, "[plex.empty_trash]")
 
 
+def _build_duplicates(data: Mapping[str, Any]) -> DuplicatesSettings:
+    values = dict(data)
+    if "min_age" in values:
+        values["min_age"] = parse_duration(values["min_age"], "[plex.duplicates] min_age")
+    return _build(DuplicatesSettings, values, "[plex.duplicates]")
+
+
 def _build_web(data: Mapping[str, Any]) -> WebDefaults:
     values = dict(data)
     for name in ("followup_delay", "followup_lookback", "plan_max_age"):
@@ -277,6 +285,7 @@ def _build_config(data: Mapping[str, Any]) -> ConfigSettings:
         else None
     )
     empty_trash = _build_empty_trash(plex_config.get("empty_trash", {}), dry_run)
+    duplicates = _build_duplicates(plex_config.get("duplicates", {}))
     tautulli = (
         TautulliConfig(
             url=tautulli_config["url"],
@@ -356,6 +365,7 @@ def _build_config(data: Mapping[str, Any]) -> ConfigSettings:
         unraid=unraid,
         links=_build_links(data.get("links", [])),
         empty_trash=empty_trash,
+        duplicates=duplicates,
         web=_build_web(data.get("web", {})),
     )
 
@@ -373,8 +383,9 @@ def force_dry_run(settings: ConfigSettings) -> None:
 
 def config_dry_run(job: str, settings: ConfigSettings) -> bool | None:
     """whether a job run as configured would be a dry run, None when the arrs disagree.
-    Removers only delete approved removals, the web app reports auto-approved ones"""
-    if job == "removers":
+    Removers and duplicates only delete approved removals, the web app reports
+    auto-approved removers"""
+    if job in ("removers", "duplicates"):
         return True
     if job == "empty_trash":
         return settings.empty_trash.dry_run
