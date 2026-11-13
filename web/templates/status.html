@@ -131,7 +131,7 @@
       <summary class="line">
         <span class="line-name">{{ s.label }}{% if s.version %} <span class="version">{{ s.version }}</span>{% endif %}</span>
         <span class="line-state">ok</span>
-        <span class="line-facts">{% for label, value in s.facts %}{{ label }} {{ value }}{% if not loop.last %} · {% endif %}{% endfor %}</span>
+        <span class="line-facts">{% if s.summary %}{{ s.summary }}{% else %}{% for label, value in s.facts %}{{ label }} {{ value }}{% if not loop.last %} · {% endif %}{% endfor %}{% endif %}</span>
         <span class="line-link">{{ open_link(s) }}</span>
       </summary>
       <div class="line-body">

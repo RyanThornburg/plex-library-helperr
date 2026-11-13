@@ -422,6 +422,7 @@ class TestUnraid:
             "Last parity check": "2026-11-02, no errors, took 14h 3m",
             "Containers": "1 running, 1 stopped",
         }
+        assert result.summary == "9.0 TB free of 120.0 TB"
         assert post.call_args.args[0] == "http://unraid/graphql"
         assert post.call_args.kwargs["headers"] == {"x-api-key": "unraid-key"}
         assert post.call_args.kwargs["allow_redirects"] is False
@@ -475,6 +476,7 @@ class TestUnraid:
             "status": "RUNNING", "running": True, "paused": False, "progress": 45, "speed": "150 MB/s", "errors": 3, "correcting": False,
         }))
         assert dict(result.facts)["Parity check"] == "45%, 150 MB/s"
+        assert result.summary == "9.0 TB free of 120.0 TB · Parity check 45%, 150 MB/s"
         assert texts(result) == [("warn", "The parity check running now has found 3 errors so far", "parity")]
         paused, _ = unraid_run(unraid_data(parityCheckStatus={"status": "PAUSED", "running": True, "paused": True, "progress": 60}))
         assert (dict(paused.facts)["Parity check"], paused.state) == ("60%, paused", "ok")
@@ -790,6 +792,17 @@ class TestPages:
         assert ">Open Tautulli</a> <a" in line and ">Tracearr</a>" in line
         also = page[page.index("Also open"):]
         assert ">Unraid</a>" in also and "Tracearr" not in also
+
+    def test_unraid_line_is_its_summary(self, client, monkeypatch):
+        def found(_settings, _now):
+            with patch.object(status.requests, "post", return_value=response({"data": unraid_data()})):
+                return [status.unraid_status(UNRAID)]
+
+        monkeypatch.setattr("web.status_routes.check_all", found)
+        page = client.get("/status", headers=auth()).text
+        assert '<span class="line-facts">9.0 TB free of 120.0 TB</span>' in page
+        # every fact once it's opened
+        assert "<dt>Containers</dt><dd>1 running, 1 stopped</dd>" in page
 
     def test_unraid_card(self, settings, monkeypatch):  # noqa: F811
         def found(_settings, _now):

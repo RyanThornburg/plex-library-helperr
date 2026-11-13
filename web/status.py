@@ -89,6 +89,8 @@ class ServiceStatus:
     items: list[Item] = field(default_factory=list[Item])
     # what the items are, e.g. "Needs attention"
     items_label: str = ""
+    # the folded line of a service that's fine, when its facts are too many for one line
+    summary: str = ""
     error: str | None = None
 
     def problem(self, level: str, text: str, key: str = "") -> None:
@@ -777,9 +779,8 @@ def unraid_answers(status: ServiceStatus, data: dict[str, Any], errors: list[dic
         status.facts.append(("Server", str(about["name"])))
     kilobytes = (array.get("capacity") or {}).get("kilobytes") or {}
     free, total = _float(kilobytes.get("free")), _float(kilobytes.get("total"))
-    status.facts.append(
-        ("Array", ("Started" if started else "Stopped") + (f", {size(free * 1024)} free of {size(total * 1024)}" if free is not None and total else ""))
-    )
+    space = f"{size(free * 1024)} free of {size(total * 1024)}" if free is not None and total else ""
+    status.facts.append(("Array", ("Started" if started else "Stopped") + (f", {space}" if space else "")))
     status.facts.append(("Disks", f"{len(disks)} data, {len(parities)} parity"))
     temps = [(t, d) for d in parities + disks + pools if (t := _float(d.get("temp"))) is not None and t == t]
     if temps:
@@ -794,6 +795,9 @@ def unraid_answers(status: ServiceStatus, data: dict[str, Any], errors: list[dic
     ]:
         status.facts.append(("Pools", ", ".join(pool_space)))
     unraid_parity(status, array.get("parityCheckStatus") or {})
+    # folded: how much room is left, and a parity check while one runs
+    checking = [f"{label} {value}" for label, value in status.facts if label in ("Parity check", "Correcting parity check")]
+    status.summary = " · ".join([space or ("Array started" if started else "Array stopped"), *checking])
     unraid_notifications(status, data.get("notifications"), errors)
     # docker stops with the array
     if started:
