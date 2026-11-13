@@ -215,6 +215,8 @@ html { scroll-padding-top: 132px; }
 main { grid-area: main; min-width: 0; max-width: 1600px; padding: 20px 24px 40px; overflow-wrap: anywhere; }
 /* explanations keep a readable measure on a wide screen */
 main > p.muted, .card > p.muted { max-width: 75ch; }
+/* a one-line caption under a section heading spans with the table under it */
+.section-heading + p.muted { max-width: none; }
 h1 { font-size: 20px; margin: 0 0 16px; }
 
 /* phone: the sidebar is the header's Menu, the toolbar scrolls with the page */
