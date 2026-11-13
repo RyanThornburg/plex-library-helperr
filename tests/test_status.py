@@ -360,7 +360,7 @@ class TestBazarr:
 
 
 def disk(name, kind="DATA", status="DISK_OK", temp=35, errors=0, size_tb=10, free_tb=4.0, warning=None, critical=None, rotational=True):
-    kb = 1024**3  # sizes are in KB
+    kb = 1024**4 / 1000  # sizes are in decimal KB: size_tb is TiB
     return {
         "name": name, "status": status, "type": kind, "rotational": rotational, "temp": temp, "numErrors": str(errors),
         # parity has no file system, a pool's second device has no sizes of its own
@@ -373,7 +373,7 @@ def disk(name, kind="DATA", status="DISK_OK", temp=35, errors=0, size_tb=10, fre
 def unraid_data(**overrides):
     array = {
         "state": "STARTED",
-        "capacity": {"kilobytes": {"free": str(9 * 1024**3), "total": str(120 * 1024**3)}},
+        "capacity": {"kilobytes": {"free": str(9 * 1024**4 // 1000), "total": str(120 * 1024**4 // 1000)}},
         "parityCheckStatus": {
             "status": "COMPLETED", "date": "2026-11-02T06:12:00.000Z", "duration": 50_580, "speed": "75.1 MB/s",
             "errors": 0, "progress": 0, "running": False, "paused": False, "correcting": False,
@@ -426,6 +426,12 @@ class TestUnraid:
         assert post.call_args.args[0] == "http://unraid/graphql"
         assert post.call_args.kwargs["headers"] == {"x-api-key": "unraid-key"}
         assert post.call_args.kwargs["allow_redirects"] is False
+
+    def test_sizes_are_decimal_kb(self):
+        # a real pool: disks.ini says 723368228 KiB free, the api converts it to KB
+        nvme = {**disk("cache_nvme", "CACHE"), "fsSize": "999715459", "fsFree": "740729066"}
+        result, _ = unraid_run(unraid_data(caches=[nvme]))
+        assert dict(result.facts)["Pools"] == "cache_nvme 689.9 GB free"
 
     def test_a_disk_dropping_out_is_the_worst_news(self):
         result, _ = unraid_run(unraid_data(disks=[

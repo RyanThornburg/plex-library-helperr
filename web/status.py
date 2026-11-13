@@ -636,6 +636,8 @@ DISK_STATES = {
 # what a disabled or missing disk means
 DISK_GONE = ("DISK_NP_MISSING", "DISK_DSBL", "DISK_NP_DSBL")
 DISK_EMULATED = {"DATA": ": Unraid is emulating it from parity", "PARITY": ": the array has less protection"}
+# unraid's api gives sizes in decimal KB (it converts disks.ini's KiB)
+UNRAID_KB = 1000
 # unraid's own defaults for SSDs, which its api doesn't give (it gives the hard drives' ones)
 SSD_HOT, SSD_MAX = 60, 70
 
@@ -679,8 +681,7 @@ def unraid_disk(status: ServiceStatus, disk: dict[str, Any], display: dict[str, 
         used = (total - free) / total * 100
         warning = _threshold(disk.get("warning"), display.get("warning"))
         critical = _threshold(disk.get("critical"), display.get("critical"))
-        # sizes are in KB
-        full = f"{label} is {used:.0f}% full, {size(free * 1024)} free"
+        full = f"{label} is {used:.0f}% full, {size(free * UNRAID_KB)} free"
         if critical and used >= critical:
             status.problem("bad", f"{full} (critical at {critical}%)", f"space:{name}")
         elif warning and used >= warning:
@@ -779,7 +780,7 @@ def unraid_answers(status: ServiceStatus, data: dict[str, Any], errors: list[dic
         status.facts.append(("Server", str(about["name"])))
     kilobytes = (array.get("capacity") or {}).get("kilobytes") or {}
     free, total = _float(kilobytes.get("free")), _float(kilobytes.get("total"))
-    space = f"{size(free * 1024)} free of {size(total * 1024)}" if free is not None and total else ""
+    space = f"{size(free * UNRAID_KB)} free of {size(total * UNRAID_KB)}" if free is not None and total else ""
     status.facts.append(("Array", ("Started" if started else "Stopped") + (f", {space}" if space else "")))
     status.facts.append(("Disks", f"{len(disks)} data, {len(parities)} parity"))
     temps = [(t, d) for d in parities + disks + pools if (t := _float(d.get("temp"))) is not None and t == t]
@@ -789,7 +790,7 @@ def unraid_answers(status: ServiceStatus, data: dict[str, Any], errors: list[dic
         status.facts.append(("Hottest disk", f"{disk_label(str(disk.get('name')))}, {hottest:.0f}{unit}"))
     # a pool with more than one device has its size on the first
     if pool_space := [
-        f"{p.get('name')} {size(pool_free * 1024)} free"
+        f"{p.get('name')} {size(pool_free * UNRAID_KB)} free"
         for p in pools
         if _float(p.get("fsSize")) and (pool_free := _float(p.get("fsFree"))) is not None
     ]:
