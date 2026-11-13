@@ -42,6 +42,7 @@ SERVICES: dict[str, tuple[str, str, str]] = {
     "seerr": ("Seerr", "API key", "url"),
     "sabnzbd": ("SABnzbd", "API key", "url"),
     "bazarr": ("Bazarr", "API key", "url"),
+    "unraid": ("Unraid", "API key", "url"),
     "autoscan": ("Autoscan", "Password", "url"),
 }
 def store(request: Request) -> ConfigStore:

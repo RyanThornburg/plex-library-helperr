@@ -41,7 +41,7 @@ All of the data in these is made up.
 
 ## What the web app does
 
-- **Status:** what Plex (through Tautulli), Radarr, Sonarr, SABnzbd, Bazarr and Seerr are doing right now. Health warnings, stuck downloads, failed downloads, low disk space, who's streaming. Stuck downloads can be removed from here, the same way you would in Radarr or Sonarr, or automatically once they've been stuck a while. Health checks run every 5 minutes in the background and keep a history of problems for a year.
+- **Status:** what Unraid, Plex (through Tautulli), Radarr, Sonarr, SABnzbd, Bazarr and Seerr are doing right now. Health warnings, stuck downloads, failed downloads, low disk space, who's streaming. For Unraid: the array, each disk's state, errors, temperature and fill level (against the thresholds you set in Unraid), parity checks, containers set to autostart that aren't running, and Unraid's own warnings and alerts (SMART warnings among them). Stuck downloads can be removed from here, the same way you would in Radarr or Sonarr, or automatically once they've been stuck a while. Health checks run every 5 minutes in the background and keep a history of problems for a year.
 - **Runs and schedules:** run any job by hand (with a **Dry run** button or a **Run...** button that asks first), or on a cron schedule. Every run is kept with what it changed and its log.
 - **Removers:** each run plans what it would delete. You review the plan, tick what to remove, and confirm. Once you trust a rule you can turn on auto-approve for it.
 - **Webhooks:** point Radarr's and Sonarr's webhook at the app and movers run as soon as something is added, before it downloads. File upgrades queue a trash empty a little later.
@@ -150,7 +150,7 @@ If the `CF_ACCESS_*` variables are set and `AUTH_MODE` isn't, the app uses Cloud
 
 ### In the app
 
-1. **Settings > Connections:** add Radarr, Sonarr, Plex and whatever else you use (Tautulli, Seerr, SABnzbd, Bazarr, Autoscan) and hit Test on each.
+1. **Settings > Connections:** add Radarr, Sonarr, Plex and whatever else you use (Tautulli, Seerr, SABnzbd, Bazarr, Unraid, Autoscan) and hit Test on each.
 2. **Movers** and **Removers:** add your rules. Use Preview to see what a rule matches.
 3. **Activity > Schedules:** add schedules. New ones force dry run until you turn that off.
 4. **Settings > Webhook** (optional): shows the URL and API key to put in Radarr's and Sonarr's Connect > Webhook. Turn on *On Movie Added* / *On Series Add*, and *On File Upgrade* if you want trash emptied after upgrades. Put the key in an `X-Api-Key` header. The webhook is the one address that takes the API key instead of a sign-in, and all it can do is start movers.
@@ -327,6 +327,8 @@ targets:
 ### Connections
 
 Radarr, Sonarr, Plex, Tautulli, Seerr, SABnzbd, Bazarr and Autoscan each take a URL and an API key (or token). Most also take a `public_url`, which is what the Status page links to when you're away from home. Bazarr's URL needs its base URL if it has one, e.g. `http://bazarr:6767/subs`.
+
+Unraid needs 7.2 or later, which has the API built in (before that, the Unraid Connect plugin adds it). Create a key under Settings > Management Access > API Keys with the **Viewer** role, which can only read. Its URL is the one you open Unraid's web UI at, e.g. `http://192.168.1.15`. If Unraid redirects http to https, use the https address.
 
 Keys are encrypted with `HELPERR_SECRET_KEY` before they're saved, are never shown again, and are left out of the settings history. Leave a key field empty to keep the saved one.
 

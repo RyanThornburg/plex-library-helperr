@@ -1,4 +1,4 @@
-"""status_routes.py - the status page: radarr, sonarr, sabnzbd, seerr and plex right now,
+"""status_routes.py - the status page: unraid, radarr, sonarr, sabnzbd, seerr and plex right now,
 the history of problems web.health recorded, and removing stuck downloads from the queues"""
 
 import logging
@@ -50,6 +50,7 @@ router = APIRouter()
 REFRESH_SECONDS = 60
 # what an unconnected card says it needs
 NEEDS = {
+    "unraid": ("Unraid", "unraid"),
     "plex": ("Tautulli", "tautulli"),
     "radarr": ("Radarr", "radarr"),
     "sonarr": ("Sonarr", "sonarr"),
@@ -91,6 +92,7 @@ def links(settings: ConfigSettings) -> dict[str, dict[str, str]]:
     """each service's own web ui, {"local", "public"} (plex's is tautulli's)"""
     found = {}
     for service, config in (
+        ("unraid", settings.unraid),
         ("plex", settings.tautulli),
         ("radarr", settings.radarr),
         ("sonarr", settings.sonarr),

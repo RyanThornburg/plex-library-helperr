@@ -36,9 +36,9 @@ SERVICE_SECRETS = {
     service: name for name, (service, _) in SECRET_FIELDS.items()
 }
 # the services the status page links to, which can have a public url too
-PUBLIC_URL_SERVICES = ("radarr", "sonarr", "tautulli", "seerr", "sabnzbd", "bazarr")
+PUBLIC_URL_SERVICES = ("radarr", "sonarr", "tautulli", "seerr", "sabnzbd", "bazarr", "unraid")
 # secrets a service can't work without (autoscan may have no password)
-REQUIRED_SECRETS = ("radarr", "sonarr", "plex", "tautulli", "seerr", "sabnzbd", "bazarr")
+REQUIRED_SECRETS = ("radarr", "sonarr", "plex", "tautulli", "seerr", "sabnzbd", "bazarr", "unraid")
 SERVICE_HINTS = {
     "radarr": "Settings → General → API Key in Radarr.",
     "sonarr": "Settings → General → API Key in Sonarr.",
@@ -47,6 +47,7 @@ SERVICE_HINTS = {
     "seerr": "Settings → General → API Key in Seerr (or Overseerr). Requests and who made them, for the Requests page.",
     "sabnzbd": "Config → General → API Key in SABnzbd (not the NZB key). Queue, speed, warnings and failed downloads, for the Status page.",
     "bazarr": "Settings → General → API Key in Bazarr. Health, throttled providers and wanted subtitles, for the Status page. Include Bazarr's base URL if it has one (e.g. /subs).",
+    "unraid": "Settings → Management Access → API Keys in Unraid 7.2 or later (the Unraid Connect plugin before that): create a key with the Viewer role, which can only read. The array, disks, parity checks, containers and notifications, for the Status page. The URL is the one you open Unraid's web UI at.",
     "autoscan": "Moved folders go to Autoscan's manual trigger instead of refreshing whole Plex libraries. Leave the username empty if Autoscan has no auth.",
 }
 

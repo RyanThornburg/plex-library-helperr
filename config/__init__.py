@@ -23,6 +23,7 @@ from config.models import (
     SabnzbdConfig,
     SeerrConfig,
     TautulliConfig,
+    UnraidConfig,
     WebDefaults,
 )
 
@@ -226,7 +227,7 @@ def _build_links(data: Any) -> list[LinkConfig]:
 
 
 # the document's sections that are tables
-TABLES = ("settings", "web", "plex", "tautulli", "seerr", "sabnzbd", "bazarr", "autoscan", "radarr", "sonarr")
+TABLES = ("settings", "web", "plex", "tautulli", "seerr", "sabnzbd", "bazarr", "unraid", "autoscan", "radarr", "sonarr")
 
 
 def build_config(data: Mapping[str, Any]) -> ConfigSettings:
@@ -250,6 +251,7 @@ def _build_config(data: Mapping[str, Any]) -> ConfigSettings:
     seerr_config = data.get("seerr", {})
     sabnzbd_config = data.get("sabnzbd", {})
     bazarr_config = data.get("bazarr", {})
+    unraid_config = data.get("unraid", {})
     autoscan_config = data.get("autoscan", {})
     radarr_config = data.get("radarr")
     sonarr_config = data.get("sonarr")
@@ -311,6 +313,15 @@ def _build_config(data: Mapping[str, Any]) -> ConfigSettings:
         if bazarr_config.get("url") and bazarr_config.get("apikey")
         else None
     )
+    unraid = (
+        UnraidConfig(
+            url=unraid_config["url"],
+            apikey=unraid_config["apikey"],
+            public_url=unraid_config.get("public_url") or None,
+        )
+        if unraid_config.get("url") and unraid_config.get("apikey")
+        else None
+    )
     autoscan = (
         AutoscanConfig(
             url=autoscan_config["url"],
@@ -342,6 +353,7 @@ def _build_config(data: Mapping[str, Any]) -> ConfigSettings:
         seerr=seerr,
         sabnzbd=sabnzbd,
         bazarr=bazarr,
+        unraid=unraid,
         links=_build_links(data.get("links", [])),
         empty_trash=empty_trash,
         web=_build_web(data.get("web", {})),

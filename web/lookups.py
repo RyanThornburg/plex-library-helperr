@@ -20,6 +20,7 @@ from tautulli import TautulliRefused, tautulli_get
 from config.models import ArrConfig, MoverRule, PlexConfig, ProfileRule
 from web.jobs import utc_now
 from web.seerr import SeerrRefused, seerr_get
+from web.unraid import UnraidRefused, unraid_query
 
 logger = logging.getLogger(__name__)
 
@@ -263,7 +264,7 @@ class Lookups:
 NOT_API = "{} answered with a web page, not its API: check the URL, including any base URL"
 SERVICE_LABELS = {
     "radarr": "Radarr", "sonarr": "Sonarr", "plex": "Plex", "tautulli": "Tautulli",
-    "seerr": "Seerr", "sabnzbd": "SABnzbd", "bazarr": "Bazarr", "autoscan": "Autoscan",
+    "seerr": "Seerr", "sabnzbd": "SABnzbd", "bazarr": "Bazarr", "unraid": "Unraid", "autoscan": "Autoscan",
 }
 # without its base url bazarr redirects the api to its web page
 BAZARR_NOT_API = "Bazarr answered with its web page, not its API: add its base URL, e.g. http://192.168.1.15:6767/subs"
@@ -316,6 +317,10 @@ def check_connection(service: str, values: dict[str, str]) -> str:
             except requests.exceptions.JSONDecodeError:
                 raise LookupFailed(BAZARR_NOT_API)
             return f"Bazarr {about.get('bazarr_version', '')}"
+        if service == "unraid":
+            data, _ = unraid_query(url, secret, "{ vars { version name } }", timeout=TIMEOUT)
+            about = data.get("vars") or {}
+            return f"Unraid {about.get('version') or ''} ({about.get('name') or 'server'})"
         if service == "autoscan":
             username = values.get("username", "")
             response = requests.get(
@@ -327,7 +332,7 @@ def check_connection(service: str, values: dict[str, str]) -> str:
                 raise LookupFailed("Autoscan refused the username/password (HTTP 401)")
             response.raise_for_status()
             return "Autoscan's manual trigger"
-    except (LookupFailed, TautulliRefused, SeerrRefused) as e:
+    except (LookupFailed, TautulliRefused, SeerrRefused, UnraidRefused) as e:
         raise LookupFailed(redact(str(e), secret)) from None
     except requests.exceptions.JSONDecodeError:
         raise LookupFailed(NOT_API.format(SERVICE_LABELS.get(service, service))) from None

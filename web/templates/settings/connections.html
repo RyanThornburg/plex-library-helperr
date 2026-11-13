@@ -31,7 +31,7 @@
   <form method="post" action="/settings/connections/{{ service }}#{{ service }}" class="form form-compact">
     {{ f.version_field() }}
     <label for="{{ service }}-url">URL</label>
-    <input id="{{ service }}-url" name="url" value="{{ values.url }}" placeholder="http://192.168.1.15:{{ {'radarr': 7878, 'sonarr': 8989, 'plex': 32400, 'tautulli': 8181, 'seerr': 5055, 'sabnzbd': 8080, 'bazarr': 6767, 'autoscan': 3030}[service] }}" spellcheck="false" autocomplete="off">
+    <input id="{{ service }}-url" name="url" value="{{ values.url }}" placeholder="http://192.168.1.15{{ {'radarr': ':7878', 'sonarr': ':8989', 'plex': ':32400', 'tautulli': ':8181', 'seerr': ':5055', 'sabnzbd': ':8080', 'bazarr': ':6767', 'unraid': '', 'autoscan': ':3030'}[service] }}" spellcheck="false" autocomplete="off">
     {% if service in public_url_services %}
     <label for="{{ service }}-public-url">Public URL</label>
     <div>
@@ -62,7 +62,7 @@
 </ul>
 <section class="card" id="links">
   <div class="heading"><h2>Other links</h2></div>
-  <p class="hint">Other tools the Status page links to, like Tracearr (next to Plex) or Unraid. Give the local URL, the public one, or both: each browser opens the one chosen on the Status page.</p>
+  <p class="hint">Other tools the Status page links to, like Tracearr (next to Plex) or Uptime Kuma. Give the local URL, the public one, or both: each browser opens the one chosen on the Status page.</p>
   {% if active == "links" %}{% for error in service_errors %}<p class="banner banner-bad">{{ error }}</p>{% endfor %}{% endif %}
   {% if other_links %}
   <ul class="link-list">

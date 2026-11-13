@@ -285,6 +285,15 @@ class TestConnections:
         post(client, "/settings/connections/sabnzbd", {**fields, "version": version(client), "public_url": "", "secret": ""})
         assert store(client).load_settings().sabnzbd.public_url is None
 
+    def test_unraid(self, client):
+        assert 'placeholder="http://192.168.1.15"' in client.get("/settings/connections", headers=auth()).text
+        fields = {"version": 0, "action": "save", "url": "http://192.168.1.15/", "public_url": "https://unraid.example.com", "secret": "viewer-key"}
+        post(client, "/settings/connections/unraid", fields)
+        unraid = store(client).load_settings().unraid
+        assert (unraid.url, unraid.public_url, unraid.apikey) == ("http://192.168.1.15", "https://unraid.example.com", "viewer-key")
+        # the key is kept out of the document and its history
+        assert document(client)["unraid"] == {"url": "http://192.168.1.15", "public_url": "https://unraid.example.com"}
+
     def test_disconnect_forgets_the_public_url(self, client):
         connect_radarr(client)
         post(client, "/settings/connections/radarr", {"version": version(client), "action": "save", "url": "http://radarr:7878", "public_url": "https://radarr.example.com"})

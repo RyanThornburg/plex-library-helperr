@@ -211,6 +211,28 @@ class TestCheckConnection:
             with pytest.raises(LookupFailed, match="add its base URL"):
                 check_connection("bazarr", {"url": "http://bazarr:6767", "secret": "key"})
 
+    def test_unraid(self):
+        answer = response(body={"data": {"vars": {"version": "7.4.0", "name": "Tower"}}})
+        with patch("web.unraid.requests.post", return_value=answer) as post:
+            assert check_connection("unraid", {"url": "http://192.168.1.15/", "secret": "key"}) == "Unraid 7.4.0 (Tower)"
+        assert post.call_args.args[0] == "http://192.168.1.15/graphql"
+        assert post.call_args.kwargs["headers"] == {"x-api-key": "key"}
+
+    def test_unraid_refuses_the_key(self):
+        refused = response(body={"data": None, "errors": [{"message": "Invalid API key s3cret", "extensions": {"code": "UNAUTHENTICATED"}}]})
+        with patch("web.unraid.requests.post", return_value=refused):
+            with pytest.raises(LookupFailed, match="Unraid refused the API key") as e:
+                check_connection("unraid", {"url": "http://192.168.1.15", "secret": "s3cret"})
+        assert "s3cret" not in str(e.value)
+
+    def test_unraid_redirects_to_https(self):
+        moved = response(302)
+        moved.headers = {"location": "https://192-168-1-15.abc.myunraid.net/graphql?token=x"}
+        with patch("web.unraid.requests.post", return_value=moved):
+            with pytest.raises(LookupFailed, match=r"redirected to https://192-168-1-15.abc.myunraid.net\b") as e:
+                check_connection("unraid", {"url": "http://192.168.1.15", "secret": "key"})
+        assert "token" not in str(e.value)
+
     def test_plex(self):
         server = SimpleNamespace(friendlyName="rattplex", version="1.42")
         with patch("web.lookups.PlexServer", return_value=server):

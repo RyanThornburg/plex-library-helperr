@@ -18,6 +18,7 @@ SECRET_FIELDS: dict[str, tuple[str, str]] = {
     "seerr.apikey": ("seerr", "apikey"),
     "sabnzbd.apikey": ("sabnzbd", "apikey"),
     "bazarr.apikey": ("bazarr", "apikey"),
+    "unraid.apikey": ("unraid", "apikey"),
     "autoscan.password": ("autoscan", "password"),
 }
 

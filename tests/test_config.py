@@ -370,6 +370,21 @@ class TestBazarrConfig:
         assert load("[bazarr]\nurl = 'http://bazarr:6767'\n").bazarr is None
 
 
+class TestUnraidConfig:
+    def test_configured(self):
+        settings = load("[unraid]\nurl = 'http://192.168.1.15'\npublic_url = 'https://unraid.example.com'\napikey = 'abc123'\n")
+        assert (settings.unraid.url, settings.unraid.public_url) == ("http://192.168.1.15", "https://unraid.example.com")
+        assert "abc123" not in repr(settings)
+
+    def test_missing_apikey_is_none(self):
+        assert load("[unraid]\nurl = 'http://192.168.1.15'\n").unraid is None
+
+    def test_its_key_is_a_secret(self):
+        from config.document import SECRET_FIELDS
+
+        assert SECRET_FIELDS["unraid.apikey"] == ("unraid", "apikey")
+
+
 class TestLinks:
     def test_links(self):
         settings = load("[[links]]\nname = 'Tracearr'\nurl = 'http://unraid:3000'\n\n[[links]]\nname = 'Unraid'\npublic_url = 'https://unraid.example.com'\n")
@@ -381,7 +396,7 @@ class TestLinks:
         ("[[links]]\nurl = 'http://x'\n", "#1: needs a name"),
         ("[[links]]\nname = 'X'\n", "#1 (X): needs a url or a public_url"),
         ("[[links]]\nname = 'X'\nurl = 'x:3000'\n", "#1 (X): url must start with http"),
-        ("[[links]]\nname = 'X'\nurl = 'http://x'\nservice = 'kometa'\n", "#1 (X): service must be one of plex,"),
+        ("[[links]]\nname = 'X'\nurl = 'http://x'\nservice = 'kometa'\n", "#1 (X): service must be one of unraid, plex,"),
     ])
     def test_invalid(self, toml, error):
         with pytest.raises(ValueError, match=re.escape(error)):

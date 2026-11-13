@@ -6,6 +6,7 @@ What changed in each release. Versions are `MAJOR.MINOR.PATCH`: the major number
 
 ### New
 
+- Unraid on the Status page (Settings → Connections → Unraid, with a read-only Viewer API key, Unraid 7.2 or later). The array, each disk's state, read/write errors, temperature and fill level against your Unraid thresholds, the running or last parity check, containers set to autostart that aren't running, and Unraid's unread warnings and alerts. Each disk's problems are their own incidents in the health history, and a disabled or missing disk puts the card at the top of the page as an error.
 - Stuck downloads can be removed automatically (Settings → Stuck downloads), separately for Radarr and Sonarr. Pick how long a download has to be stuck, which kinds count (failed, import blocked, import pending), whether to remove it from the download client, whether to blocklist the release, and a max per run. It starts off and in dry run. The health check runs it when a download comes due, and it waits while the arr reports a missing root folder, mount or download client. The queue pages say when each download will go.
 
 ### Fixed

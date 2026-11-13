@@ -8,7 +8,7 @@ import pytest
 import requests
 from fastapi.testclient import TestClient
 
-from config.models import ArrConfig, BazarrConfig, ConfigSettings, LinkConfig, SabnzbdConfig, SeerrConfig, TautulliConfig
+from config.models import ArrConfig, BazarrConfig, ConfigSettings, LinkConfig, SabnzbdConfig, SeerrConfig, TautulliConfig, UnraidConfig
 from tests.test_web import ORIGIN, FakeKeys, auth, fake_run_job
 from tests.test_web import settings  # noqa: F401 (fixture)
 from web import health, status
@@ -22,6 +22,7 @@ SAB = SabnzbdConfig(url="http://sab:8080", apikey="sab-key")
 SEERR = SeerrConfig(url="http://seerr:5055", apikey="seerr-key")
 TAUTULLI = TautulliConfig(url="http://tautulli:8181", apikey="tautulli-key")
 BAZARR = BazarrConfig(url="http://bazarr:6767/subs", apikey="bazarr-key")
+UNRAID = UnraidConfig(url="http://unraid", apikey="unraid-key")
 
 
 def response(body=None, code=200):
@@ -346,11 +347,203 @@ class TestBazarr:
     def test_without_its_base_url(self):
         page = MagicMock(status_code=200)
         page.json.side_effect = requests.exceptions.JSONDecodeError("Expecting value", "<html>", 0)
-        result, _ = run(lambda: status.check_all(ConfigSettings(plex=None, radarr=None, sonarr=None, bazarr=BAZARR), NOW)[3], {
+        result, _ = run(lambda: next(s for s in status.check_all(ConfigSettings(plex=None, radarr=None, sonarr=None, bazarr=BAZARR), NOW) if s.service == "bazarr"), {
             "/subs/api/system/status": page,
         })
         assert result.state == "bad"
         assert "add its base URL" in result.error
+
+
+# ---------------------------------------------------------------------------
+# unraid, answers shaped like unraid 7.4's api (4.37) gives them
+# ---------------------------------------------------------------------------
+
+
+def disk(name, kind="DATA", status="DISK_OK", temp=35, errors=0, size_tb=10, free_tb=4.0, warning=None, critical=None, rotational=True):
+    kb = 1024**3  # sizes are in KB
+    return {
+        "name": name, "status": status, "type": kind, "rotational": rotational, "temp": temp, "numErrors": str(errors),
+        # parity has no file system, a pool's second device has no sizes of its own
+        "fsSize": None if kind == "PARITY" or size_tb is None else str(int(size_tb * kb)),
+        "fsFree": None if kind == "PARITY" or size_tb is None else str(int(free_tb * kb)),
+        "warning": warning, "critical": critical,
+    }
+
+
+def unraid_data(**overrides):
+    array = {
+        "state": "STARTED",
+        "capacity": {"kilobytes": {"free": str(9 * 1024**3), "total": str(120 * 1024**3)}},
+        "parityCheckStatus": {
+            "status": "COMPLETED", "date": "2026-11-02T06:12:00.000Z", "duration": 50_580, "speed": "75.1 MB/s",
+            "errors": 0, "progress": 0, "running": False, "paused": False, "correcting": False,
+        },
+        "parities": [disk("parity", "PARITY"), disk("parity2", "PARITY", temp=None)],
+        "disks": [disk("disk1", warning=95, critical=99), disk("disk2", temp=38), {"name": "disk3", "status": "DISK_NP", "type": "DATA"}],
+        "caches": [disk("cache_nvme", "CACHE", temp=43, size_tb=1, free_tb=0.7, rotational=False), disk("cache_nvme2", "CACHE", size_tb=None, rotational=False)],
+    }
+    data = {
+        "vars": {"version": "7.4.0", "name": "Tower"},
+        "info": {"display": {"unit": "CELSIUS", "warning": 70, "critical": 90, "hot": 50, "max": 55}},
+        "array": array,
+        "notifications": {"alerts": [], "warnings": []},
+        "docker": {"containers": [
+            {"names": ["/sonarr"], "state": "RUNNING", "status": "Up 2 days", "autoStart": True},
+            {"names": ["/old-thing"], "state": "EXITED", "status": "Exited (0) 3 weeks ago", "autoStart": False},
+        ]},
+    }
+    for key, value in overrides.items():
+        (array if key in array else data)[key] = value
+    return data
+
+
+def unraid_run(data=None, errors=None, answer=None):
+    body = {"data": unraid_data() if data is None else data}
+    if errors:
+        body["errors"] = errors
+    with patch.object(status.requests, "post", return_value=answer or response(body)) as post:
+        return status.unraid_status(UNRAID), post
+
+
+def texts(result):
+    return [(p.level, p.text, p.key) for p in result.problems]
+
+
+class TestUnraid:
+    def test_healthy(self):
+        result, post = unraid_run()
+        assert (result.state, result.version, result.problems) == ("ok", "7.4.0", [])
+        assert dict(result.facts) == {
+            "Server": "Tower",
+            "Array": "Started, 9.0 TB free of 120.0 TB",
+            "Disks": "2 data, 2 parity",
+            "Hottest disk": "cache_nvme, 43°C",
+            "Pools": "cache_nvme 716.8 GB free",
+            "Last parity check": "2026-11-02, no errors, took 14h 3m",
+            "Containers": "1 running, 1 stopped",
+        }
+        assert post.call_args.args[0] == "http://unraid/graphql"
+        assert post.call_args.kwargs["headers"] == {"x-api-key": "unraid-key"}
+        assert post.call_args.kwargs["allow_redirects"] is False
+
+    def test_a_disk_dropping_out_is_the_worst_news(self):
+        result, _ = unraid_run(unraid_data(disks=[
+            disk("disk1", temp=51),
+            disk("disk8", status="DISK_DSBL", errors=49_012),
+            disk("disk9", status="DISK_NP_MISSING", temp=None),
+        ], parities=[disk("parity", "PARITY", status="DISK_DSBL")]))
+        assert result.state == "bad"
+        assert texts(result) == [
+            ("bad", "Parity is disabled: the array has less protection", "disk:parity"),
+            ("bad", "Disk 8 is disabled: Unraid is emulating it from parity", "disk:disk8"),
+            ("bad", "Disk 9 is missing: Unraid is emulating it from parity", "disk:disk9"),
+            ("warn", "Disk 1 is running hot: 51°C, Unraid warns at 50°C", "temp:disk1"),
+            ("warn", "Disk 8 has 49,012 read/write errors", "errors:disk8"),
+        ]
+
+    def test_temperatures(self):
+        result, _ = unraid_run(unraid_data(disks=[disk("disk1", temp=55), disk("disk2", temp=float("nan"))], caches=[
+            disk("cache_ssd", "CACHE", temp=65, rotational=False),  # ssds use unraid's ssd defaults, 60/70
+            disk("cache_nvme", "CACHE", temp=70, rotational=False),
+        ]))
+        assert texts(result) == [
+            ("bad", "Disk 1 is 55°C, over Unraid's 55°C limit", "temp:disk1"),
+            ("bad", "cache_nvme is 70°C, over Unraid's 70°C limit", "temp:cache_nvme"),
+            ("warn", "cache_ssd is running hot: 65°C, Unraid warns at 60°C", "temp:cache_ssd"),
+        ]
+
+    def test_space_uses_each_disks_thresholds_else_the_servers(self):
+        result, _ = unraid_run(unraid_data(disks=[
+            disk("disk1", free_tb=0.8, warning=95, critical=99),  # 92% full: under its own 95
+            disk("disk2", free_tb=0.4, warning=95, critical=99),  # 96%
+            disk("disk3", free_tb=2.5),  # 75%: over the server's 70
+            disk("disk4", free_tb=0.5, warning=0, critical=0),  # 0 turns them off
+        ], caches=[disk("cache_ssd", "CACHE", size_tb=1, free_tb=0.05, warning=90, critical=95)]))
+        assert texts(result) == [
+            ("bad", "cache_ssd is 95% full, 51.2 GB free (critical at 95%)", "space:cache_ssd"),
+            ("warn", "Disk 2 is 96% full, 409.6 GB free (Unraid warns at 95%)", "space:disk2"),
+            ("warn", "Disk 3 is 75% full, 2.5 TB free (Unraid warns at 70%)", "space:disk3"),
+        ]
+
+    def test_array_stopped(self):
+        result, _ = unraid_run(unraid_data(state="STOPPED", docker=None), errors=[{"message": "Docker is not running", "path": ["docker"]}])
+        assert texts(result) == [("bad", "The array is stopped", "array")]
+        assert dict(result.facts)["Array"].startswith("Stopped")
+
+    def test_parity_check_running(self):
+        result, _ = unraid_run(unraid_data(parityCheckStatus={
+            "status": "RUNNING", "running": True, "paused": False, "progress": 45, "speed": "150 MB/s", "errors": 3, "correcting": False,
+        }))
+        assert dict(result.facts)["Parity check"] == "45%, 150 MB/s"
+        assert texts(result) == [("warn", "The parity check running now has found 3 errors so far", "parity")]
+        paused, _ = unraid_run(unraid_data(parityCheckStatus={"status": "PAUSED", "running": True, "paused": True, "progress": 60}))
+        assert (dict(paused.facts)["Parity check"], paused.state) == ("60%, paused", "ok")
+
+    @pytest.mark.parametrize("check, fact, problem", [
+        ({"status": "COMPLETED", "errors": 1, "date": "2026-11-02T06:12:00Z"}, "2026-11-02, 1 error", "The last parity check found 1 error"),
+        ({"status": "FAILED", "date": "2026-11-02T06:12:00Z"}, "2026-11-02, failed", "The last parity check failed"),
+        ({"status": "CANCELLED", "date": "2026-11-02T06:12:00Z", "duration": 600}, "2026-11-02, cancelled, took 10m", None),
+        ({"status": "NEVER_RUN"}, "never run", None),
+    ])
+    def test_last_parity_check(self, check, fact, problem):
+        result, _ = unraid_run(unraid_data(parityCheckStatus=check))
+        assert dict(result.facts)["Last parity check"] == fact
+        assert [p.text for p in result.problems] == ([problem] if problem else [])
+
+    def test_containers_that_should_be_running(self):
+        result, _ = unraid_run(unraid_data(docker={"containers": [
+            {"names": ["/radarr"], "state": "EXITED", "status": "Exited (1) 2 hours ago", "autoStart": True},
+            {"names": ["/cloudflared"], "state": "PAUSED", "status": "", "autoStart": True},
+            {"names": ["/sonarr"], "state": "RUNNING", "status": "Up", "autoStart": True},
+        ]}))
+        assert texts(result) == [
+            ("warn", "Container radarr isn't running (Exited (1) 2 hours ago), but it's set to autostart", "container:radarr"),
+            ("warn", "Container cloudflared isn't running (paused), but it's set to autostart", "container:cloudflared"),
+        ]
+        assert dict(result.facts)["Containers"] == "1 running, 2 stopped"
+
+    def test_notifications(self):
+        result, _ = unraid_run(unraid_data(notifications={
+            "alerts": [{"subject": "Alert [TOWER] - Disk 8 in error state (disk dsbl)", "description": "ST8000 (sdk)"}],
+            "warnings": [{"subject": "Warning [TOWER] - reallocated sector ct is 8", "description": "ST10000 (sdf) see http://x/y?key=abc"}],
+        }))
+        assert texts(result) == [
+            ("bad", "Notification: Alert [TOWER] - Disk 8 in error state (disk dsbl): ST8000 (sdk)", "notice:Alert [TOWER] - Disk 8 in error state (disk dsbl)|ST8000 (sdk)"),
+            ("warn", "Notification: Warning [TOWER] - reallocated sector ct is 8: ST10000 (sdf) see http://x", "notice:Warning [TOWER] - reallocated sector ct is 8|ST10000 (sdf) see http://x/y?key=abc"),
+        ]
+
+    def test_what_the_key_cant_read_is_a_warning(self):
+        forbidden = {"extensions": {"code": "FORBIDDEN"}}
+        result, _ = unraid_run(unraid_data(notifications=None, docker=None), errors=[
+            {"message": "Forbidden resource", "path": ["notifications"], **forbidden},
+            {"message": "Forbidden resource", "path": ["docker"], **forbidden},
+        ])
+        assert texts(result) == [
+            ("warn", "Unraid's notifications can't be read: Forbidden resource", "notifications"),
+            ("warn", "Docker containers can't be read: Forbidden resource", "docker"),
+        ]
+
+    def test_without_the_array_the_card_is_down(self):
+        data = {**unraid_data(), "array": None}
+        with patch.object(status.requests, "post", return_value=response({"data": data, "errors": [{"message": "Forbidden resource", "path": ["array"]}]})):
+            result = status.check_all(ConfigSettings(plex=None, radarr=None, sonarr=None, unraid=UNRAID), NOW)[0]
+        assert (result.service, result.state, result.error) == ("unraid", "bad", "Unraid didn't say how the array is: Forbidden resource")
+
+    def test_refused_key(self):
+        refused = response({"data": None, "errors": [{"message": "Unauthorized", "extensions": {"code": "UNAUTHENTICATED"}}]})
+        with patch.object(status.requests, "post", return_value=refused):
+            result = status.check_all(ConfigSettings(plex=None, radarr=None, sonarr=None, unraid=UNRAID), NOW)[0]
+        assert result.error == "Unraid refused the API key: Unauthorized"
+        with patch.object(status.requests, "post", return_value=response(code=401)):
+            result = status.check_all(ConfigSettings(plex=None, radarr=None, sonarr=None, unraid=UNRAID), NOW)[0]
+        assert result.error == "Unraid refused the API key (HTTP 401)"
+
+    def test_incidents_per_disk(self):
+        result, _ = unraid_run(unraid_data(disks=[disk("disk8", status="DISK_DSBL", errors=5), disk("disk9", errors=2)]))
+        assert {i.key: i.level for i in health.issues(result)} == {"disk:disk8": "bad", "errors:disk8": "warn", "errors:disk9": "warn"}
+
+    def test_needs_a_connection(self):
+        assert status.unraid_status(None).state == "off"
 
 
 # ---------------------------------------------------------------------------
@@ -461,7 +654,7 @@ class TestPlex:
 # ---------------------------------------------------------------------------
 
 
-EVERYTHING = ConfigSettings(plex=None, radarr=RADARR, sonarr=SONARR, tautulli=TAUTULLI, seerr=SEERR, sabnzbd=SAB, bazarr=BAZARR)
+EVERYTHING = ConfigSettings(plex=None, radarr=RADARR, sonarr=SONARR, tautulli=TAUTULLI, seerr=SEERR, sabnzbd=SAB, bazarr=BAZARR, unraid=UNRAID)
 
 
 class TestCheckAll:
@@ -476,12 +669,13 @@ class TestCheckAll:
             }[host]
             return FakeServices(answers)(url, timeout, headers, params)
 
-        with patch.object(status.requests, "get", side_effect=fake_get):
+        with patch.object(status.requests, "get", side_effect=fake_get), \
+                patch.object(status.requests, "post", return_value=response({"data": unraid_data()})):
             results = check_all(EVERYTHING, NOW)
         assert [(s.service, s.state) for s in results] == [
-            ("plex", "ok"), ("radarr", "ok"), ("sonarr", "bad"), ("bazarr", "ok"), ("sabnzbd", "ok"), ("seerr", "ok"),
+            ("unraid", "ok"), ("plex", "ok"), ("radarr", "ok"), ("sonarr", "bad"), ("bazarr", "ok"), ("sabnzbd", "ok"), ("seerr", "ok"),
         ]
-        assert results[2].error == "Couldn't connect"
+        assert results[3].error == "Couldn't connect"
 
     def test_refused_key(self):
         with patch.object(status.requests, "get", return_value=response(code=401)):
@@ -490,11 +684,12 @@ class TestCheckAll:
 
     def test_errors_never_hold_a_key(self):
         # sabnzbd's key is a query param, requests puts the url in its errors
-        with patch.object(status.requests, "get", return_value=response(code=500)):
+        with patch.object(status.requests, "get", return_value=response(code=500)), \
+                patch.object(status.requests, "post", return_value=response(code=500)):
             results = check_all(EVERYTHING, NOW)
         for result in results:
             assert result.state == "bad"
-            for key in ("sab-key", "radarr-key", "sonarr-key", "seerr-key", "tautulli-key", "bazarr-key"):
+            for key in ("sab-key", "radarr-key", "sonarr-key", "seerr-key", "tautulli-key", "bazarr-key", "unraid-key"):
                 assert key not in result.error
 
     def test_nothing_connected(self):
@@ -595,6 +790,23 @@ class TestPages:
         assert ">Open Tautulli</a> <a" in line and ">Tracearr</a>" in line
         also = page[page.index("Also open"):]
         assert ">Unraid</a>" in also and "Tracearr" not in also
+
+    def test_unraid_card(self, settings, monkeypatch):  # noqa: F811
+        def found(_settings, _now):
+            answer = response({"data": unraid_data(disks=[disk("disk8", status="DISK_DSBL")])})
+            with patch.object(status.requests, "post", return_value=answer):
+                return [status.unraid_status(UNRAID), ServiceStatus("radarr", "Radarr")]
+
+        monkeypatch.setattr("web.status_routes.check_all", found)
+        unraid = UnraidConfig(url="http://192.168.1.15", apikey="k", public_url="https://unraid.example.com")
+        config = ConfigSettings(plex=None, radarr=None, sonarr=None, unraid=unraid)
+        app = create_app(settings, keys=FakeKeys(), run_job=fake_run_job, load_config=lambda: config, run_scheduler=False)
+        with TestClient(app) as c:
+            page = c.get("/status", headers=auth()).text
+        assert "Unraid: 1 error" in page
+        assert 'data-mute="unraid|disk:disk8" data-level="bad"' in page
+        assert "Disk 8 is disabled: Unraid is emulating it from parity" in page
+        assert 'data-local="http://192.168.1.15" data-public="https://unraid.example.com">Open Unraid</a>' in page
 
     def test_problems_can_be_muted(self, client, monkeypatch):
         def warn(settings, now):

@@ -287,7 +287,7 @@ class HealthIncident(Base):
     __tablename__ = "health_incidents"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    # radarr, sonarr, sabnzbd, bazarr, seerr, plex
+    # unraid, radarr, sonarr, sabnzbd, bazarr, seerr, plex
     service: Mapped[str] = mapped_column(String(16), index=True)
     # the same problem from one check to the next: "down", "disk:/data", a health
     # message, "queue:<title>"...

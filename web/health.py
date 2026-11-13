@@ -33,6 +33,7 @@ REOPEN_WITHIN = timedelta(minutes=15)
 KEEP = timedelta(days=365)
 STATUS_SETTING = "health_check"
 LABELS = {
+    "unraid": "Unraid",
     "plex": "Plex",
     "radarr": "Radarr",
     "sonarr": "Sonarr",

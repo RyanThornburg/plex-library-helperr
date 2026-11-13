@@ -1,9 +1,10 @@
-"""status.py - what radarr, sonarr, sabnzbd, bazarr, seerr and plex (through tautulli) are doing
+"""status.py - what unraid, radarr, sonarr, sabnzbd, bazarr, seerr and plex (through tautulli) are doing
 right now, for the status page. Read only, except ArrQueue, which removes stuck downloads
 someone selected. Every service is asked at once, and one that is down or slow only marks
 its own card"""
 
 import logging
+import re
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
@@ -12,11 +13,12 @@ from typing import Any
 
 import requests
 
-from config.models import ArrConfig, BazarrConfig, ConfigSettings, SabnzbdConfig, SeerrConfig, TautulliConfig
+from config.models import ArrConfig, BazarrConfig, ConfigSettings, SabnzbdConfig, SeerrConfig, TautulliConfig, UnraidConfig
 from logging_config import failure_text, url_hosts
 from tautulli import TautulliRefused, tautulli_get
 from web.lookups import BAZARR_NOT_API, redact
 from web.seerr import SeerrRefused, seerr_get
+from web.unraid import UnraidRefused, error_text, unraid_query
 
 logger = logging.getLogger(__name__)
 
@@ -580,6 +582,236 @@ def bazarr_status(bazarr: BazarrConfig | None) -> ServiceStatus:
 
 
 # ---------------------------------------------------------------------------
+# unraid
+# ---------------------------------------------------------------------------
+
+UNRAID_DISK = "name status type rotational temp numErrors fsSize fsFree warning critical"
+UNRAID_NOTIFICATION = "subject description"
+# unread warnings and alerts read, of each
+UNRAID_NOTIFICATIONS = 20
+# everything the card shows, in one request. A field the key can't read (or docker while
+# the array is stopped) answers null with an error, and the rest still answers
+UNRAID_QUERY = f"""query HelperrStatus {{
+  vars {{ version name }}
+  info {{ display {{ unit warning critical hot max }} }}
+  array {{
+    state
+    capacity {{ kilobytes {{ free total }} }}
+    parityCheckStatus {{ status date duration speed errors progress running paused correcting }}
+    parities {{ {UNRAID_DISK} }}
+    disks {{ {UNRAID_DISK} }}
+    caches {{ {UNRAID_DISK} }}
+  }}
+  notifications {{
+    alerts: list(filter: {{type: UNREAD, importance: ALERT, offset: 0, limit: {UNRAID_NOTIFICATIONS}}}) {{ {UNRAID_NOTIFICATION} }}
+    warnings: list(filter: {{type: UNREAD, importance: WARNING, offset: 0, limit: {UNRAID_NOTIFICATIONS}}}) {{ {UNRAID_NOTIFICATION} }}
+  }}
+  docker {{ containers {{ names state status autoStart }} }}
+}}"""
+# the array isn't started, in unraid's words (ArrayState)
+ARRAY_STATES = {
+    "STOPPED": "The array is stopped",
+    "NEW_ARRAY": "The array is new and hasn't been started",
+    "RECON_DISK": "The array is stopped: a disk is waiting to be rebuilt",
+    "DISABLE_DISK": "The array is stopped with a disabled disk",
+    "SWAP_DSBL": "The array is stopped: a disabled disk is being swapped",
+    "INVALID_EXPANSION": "The array is stopped: too many disks were changed at once",
+    "PARITY_NOT_BIGGEST": "The array is stopped: a parity disk is smaller than a data disk",
+    "TOO_MANY_MISSING_DISKS": "The array is stopped: too many disks are missing",
+    "NEW_DISK_TOO_SMALL": "The array is stopped: a new disk is too small for its slot",
+    "NO_DATA_DISKS": "The array is stopped: it has no data disks",
+}
+# a disk that isn't fine (ArrayDiskStatus). DISK_OK is, and DISK_NP is an empty slot
+DISK_STATES = {
+    "DISK_NP_MISSING": ("bad", "{} is missing"),
+    "DISK_DSBL": ("bad", "{} is disabled"),
+    "DISK_NP_DSBL": ("bad", "{} is disabled and missing"),
+    "DISK_WRONG": ("bad", "{} isn't the disk assigned to its slot"),
+    "DISK_INVALID": ("warn", "{} is invalid: it's being rebuilt, or parity needs a sync"),
+    "DISK_DSBL_NEW": ("warn", "{} is a replacement for a disabled disk, waiting to be rebuilt"),
+    "DISK_NEW": ("warn", "{} is new and not part of the array yet"),
+}
+# what a disabled or missing disk means
+DISK_GONE = ("DISK_NP_MISSING", "DISK_DSBL", "DISK_NP_DSBL")
+DISK_EMULATED = {"DATA": ": Unraid is emulating it from parity", "PARITY": ": the array has less protection"}
+# unraid's own defaults for SSDs, which its api doesn't give (it gives the hard drives' ones)
+SSD_HOT, SSD_MAX = 60, 70
+
+
+def disk_label(name: str) -> str:
+    """disk8 as Disk 8, parity2 as Parity 2, a pool by its name"""
+    if found := re.fullmatch(r"(disk|parity)(\d*)", name):
+        return f"{found[1].title()} {found[2]}".strip()
+    return name
+
+
+def _threshold(own: object, default: object) -> int:
+    """a disk's own threshold, else the server's, 0 is off"""
+    return _int(default if own is None else own)
+
+
+def unraid_disk(status: ServiceStatus, disk: dict[str, Any], display: dict[str, Any]) -> None:
+    """a disk's problems: its state, errors, temperature and how full it is, against
+    the thresholds set in unraid"""
+    name = str(disk.get("name") or "unnamed")
+    label, kind = disk_label(name), disk.get("type")
+    state = str(disk.get("status"))
+    if found := DISK_STATES.get(state):
+        level, text = found
+        emulated = DISK_EMULATED.get(str(kind), "") if state in DISK_GONE else ""
+        status.problem(level, text.format(label) + emulated, f"disk:{name}")
+    errors = _int(disk.get("numErrors"))
+    if errors:
+        status.problem("warn", f"{label} has {errors:,} read/write error{'s' if errors != 1 else ''}", f"errors:{name}")
+    temp = _float(disk.get("temp"))
+    if temp is not None and temp == temp:  # NaN when it's spun down
+        unit = "°F" if display.get("unit") == "FAHRENHEIT" else "°C"
+        ssd = disk.get("rotational") is False
+        hot, limit = (SSD_HOT, SSD_MAX) if ssd else (_int(display.get("hot")), _int(display.get("max")))
+        if limit and temp >= limit:
+            status.problem("bad", f"{label} is {temp:.0f}{unit}, over Unraid's {limit}{unit} limit", f"temp:{name}")
+        elif hot and temp >= hot:
+            status.problem("warn", f"{label} is running hot: {temp:.0f}{unit}, Unraid warns at {hot}{unit}", f"temp:{name}")
+    total, free = _float(disk.get("fsSize")), _float(disk.get("fsFree"))
+    if total and free is not None and kind != "PARITY":
+        used = (total - free) / total * 100
+        warning = _threshold(disk.get("warning"), display.get("warning"))
+        critical = _threshold(disk.get("critical"), display.get("critical"))
+        # sizes are in KB
+        full = f"{label} is {used:.0f}% full, {size(free * 1024)} free"
+        if critical and used >= critical:
+            status.problem("bad", f"{full} (critical at {critical}%)", f"space:{name}")
+        elif warning and used >= warning:
+            status.problem("warn", f"{full} (Unraid warns at {warning}%)", f"space:{name}")
+
+
+def _hours(seconds: int) -> str:
+    hours, minutes = divmod(seconds // 60, 60)
+    return f"{hours}h {minutes}m" if hours else f"{minutes}m"
+
+
+def unraid_parity(status: ServiceStatus, check: dict[str, Any]) -> None:
+    """the parity check running now, else the last one's result"""
+    state, errors = check.get("status"), _int(check.get("errors"))
+    found = f"{errors:,} error{'s' if errors != 1 else ''}"
+    if check.get("running") or state in ("RUNNING", "PAUSED"):
+        paused = check.get("paused") or state == "PAUSED"
+        what = "Correcting parity check" if check.get("correcting") else "Parity check"
+        progress = f"{_int(check.get('progress'))}%"
+        status.facts.append((what, ", ".join(str(v) for v in (progress, "paused" if paused else check.get("speed")) if v)))
+        if errors:
+            status.problem("warn", f"The parity check running now has found {found} so far", "parity")
+        return
+    result = {
+        "COMPLETED": found if errors else "no errors",
+        "CANCELLED": "cancelled",
+        "FAILED": "failed",
+        "NEVER_RUN": "never run",
+    }.get(str(state), str(state).lower())
+    took = _int(check.get("duration"))
+    when = str(check.get("date") or "")[:10]
+    status.facts.append(
+        ("Last parity check", ", ".join(v for v in (when, result, f"took {_hours(took)}" if took else "") if v))
+    )
+    if state == "FAILED":
+        status.problem("warn", "The last parity check failed", "parity")
+    elif errors:
+        status.problem("warn", f"The last parity check found {found}", "parity")
+
+
+def unraid_containers(status: ServiceStatus, docker: dict[str, Any] | None, errors: list[dict[str, Any]]) -> None:
+    """containers set to start with the array that aren't running"""
+    containers = (docker or {}).get("containers")
+    if containers is None:
+        status.problem("warn", f"Docker containers can't be read: {error_text(errors, 'docker')}", "docker")
+        return
+    running = sum(1 for c in containers if c.get("state") == "RUNNING")
+    for container in containers:
+        if not container.get("autoStart") or container.get("state") == "RUNNING":
+            continue
+        name = str((container.get("names") or ["unnamed"])[0]).lstrip("/")
+        detail = container.get("status") or str(container.get("state") or "").lower()
+        status.problem(
+            "warn",
+            f"Container {name} isn't running" + (f" ({detail})" if detail else "") + ", but it's set to autostart",
+            f"container:{name}",
+        )
+    stopped = len(containers) - running
+    status.facts.append(("Containers", f"{running} running" + (f", {stopped} stopped" if stopped else "")))
+
+
+def unraid_notifications(status: ServiceStatus, notes: dict[str, Any] | None, errors: list[dict[str, Any]]) -> None:
+    """unraid's unread alerts and warnings (smart warnings among them), until they're
+    dismissed in unraid"""
+    if notes is None:
+        status.problem("warn", f"Unraid's notifications can't be read: {error_text(errors, 'notifications')}", "notifications")
+        return
+    for level, kind in (("bad", "alerts"), ("warn", "warnings")):
+        for note in notes.get(kind) or []:
+            subject = str(note.get("subject") or "").strip()
+            description = str(note.get("description") or "").strip()
+            text = f"{subject}: {description}" if subject and description and description != subject else subject or description
+            # from plugins too: a url in one might hold a key that isn't ours
+            status.problem(level, url_hosts(f"Notification: {text}"), f"notice:{subject}|{description}")
+
+
+def unraid_answers(status: ServiceStatus, data: dict[str, Any], errors: list[dict[str, Any]]) -> None:
+    """unraid's answer to UNRAID_QUERY on its card, the worst problems first"""
+    about = data.get("vars") or {}
+    status.version = about.get("version")
+    display = (data.get("info") or {}).get("display") or {}
+    array = data.get("array")
+    if not array:
+        raise Refused(f"Unraid didn't say how the array is: {error_text(errors, 'array')}")
+    state = array.get("state")
+    started = state == "STARTED"
+    if not started:
+        status.problem("bad", ARRAY_STATES.get(str(state), f"The array isn't started ({state})"), "array")
+    parities, disks, pools = (
+        [d for d in array.get(kind) or [] if isinstance(d, dict) and d.get("status") != "DISK_NP"]
+        for kind in ("parities", "disks", "caches")
+    )
+    for disk in parities + disks + pools:
+        unraid_disk(status, disk, display)
+    if about.get("name"):
+        status.facts.append(("Server", str(about["name"])))
+    kilobytes = (array.get("capacity") or {}).get("kilobytes") or {}
+    free, total = _float(kilobytes.get("free")), _float(kilobytes.get("total"))
+    status.facts.append(
+        ("Array", ("Started" if started else "Stopped") + (f", {size(free * 1024)} free of {size(total * 1024)}" if free is not None and total else ""))
+    )
+    status.facts.append(("Disks", f"{len(disks)} data, {len(parities)} parity"))
+    temps = [(t, d) for d in parities + disks + pools if (t := _float(d.get("temp"))) is not None and t == t]
+    if temps:
+        hottest, disk = max(temps, key=lambda found: found[0])
+        unit = "°F" if display.get("unit") == "FAHRENHEIT" else "°C"
+        status.facts.append(("Hottest disk", f"{disk_label(str(disk.get('name')))}, {hottest:.0f}{unit}"))
+    # a pool with more than one device has its size on the first
+    if pool_space := [
+        f"{p.get('name')} {size(pool_free * 1024)} free"
+        for p in pools
+        if _float(p.get("fsSize")) and (pool_free := _float(p.get("fsFree"))) is not None
+    ]:
+        status.facts.append(("Pools", ", ".join(pool_space)))
+    unraid_parity(status, array.get("parityCheckStatus") or {})
+    unraid_notifications(status, data.get("notifications"), errors)
+    # docker stops with the array
+    if started:
+        unraid_containers(status, data.get("docker"), errors)
+    status.problems.sort(key=lambda p: -LEVELS.get(p.level, 0))
+
+
+def unraid_status(unraid: UnraidConfig | None) -> ServiceStatus:
+    status = ServiceStatus("unraid", "Unraid")
+    if unraid is None:
+        status.state = "off"
+        return status
+    data, errors = unraid_query(unraid.url, unraid.apikey, UNRAID_QUERY, timeout=TIMEOUT)
+    unraid_answers(status, data, errors)
+    return status
+
+
+# ---------------------------------------------------------------------------
 # plex, through tautulli
 # ---------------------------------------------------------------------------
 
@@ -656,7 +888,7 @@ def plex_status(tautulli: TautulliConfig | None) -> ServiceStatus:
 
 def failure(e: Exception, label: str, *secrets: str | None) -> str:
     """why a request to a service failed, secrets redacted"""
-    if isinstance(e, (Refused, TautulliRefused, SeerrRefused)):
+    if isinstance(e, (Refused, TautulliRefused, SeerrRefused, UnraidRefused)):
         return redact(str(e), *secrets)
     if isinstance(e, requests.exceptions.ConnectionError):
         return "Couldn't connect"
@@ -687,6 +919,8 @@ def check_all(settings: ConfigSettings, now: datetime) -> list[ServiceStatus]:
     """every service's status, in the page's order"""
     min_free = settings.web.min_free_gb
     checks: list[tuple[ServiceStatus, Callable[[], ServiceStatus]]] = [
+        # the server under everything else first: a disk dropping out is the worst news
+        (ServiceStatus("unraid", "Unraid"), lambda: unraid_status(settings.unraid)),
         (ServiceStatus("plex", "Plex"), lambda: plex_status(settings.tautulli)),
         (ServiceStatus("radarr", "Radarr"), lambda: arr_status("radarr", "Radarr", settings.radarr, min_free)),
         (ServiceStatus("sonarr", "Sonarr"), lambda: arr_status("sonarr", "Sonarr", settings.sonarr, min_free)),
@@ -697,7 +931,7 @@ def check_all(settings: ConfigSettings, now: datetime) -> list[ServiceStatus]:
     # every key is redacted from every card's error
     secrets = [
         getattr(service, "apikey", None)
-        for service in (settings.radarr, settings.sonarr, settings.sabnzbd, settings.seerr, settings.tautulli, settings.bazarr)
+        for service in (settings.radarr, settings.sonarr, settings.sabnzbd, settings.seerr, settings.tautulli, settings.bazarr, settings.unraid)
         if service
     ]
     with ThreadPoolExecutor(max_workers=len(checks)) as pool:
