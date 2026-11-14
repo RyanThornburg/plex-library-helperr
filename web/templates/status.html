@@ -21,14 +21,27 @@
     <ul class="status-items">
       {% for item in s.items %}
       <li>
-        <span class="item-title{% if s.service == 'sabnzbd' %} machine{% endif %}">{% if item.level != "ok" %}<span class="state-word state-{{ item.level }}">{{ "transcode" if s.service == "plex" else word(item.level) }}</span> {% endif %}{{ item.title }}{% if s.service in queues %}{{ since(s.service, item_key(item)) }}{% endif %}</span>
+        <span class="item-title">{% if item.level != "ok" %}<span class="state-word state-{{ item.level }}">{{ word(item.level) }}</span> {% endif %}{{ item.title }}{% if s.service in queues %}{{ since(s.service, item_key(item)) }}{% endif %}</span>
         {% if item.detail %}<span class="hint">{{ item.detail }}</span>{% endif %}
-        {% if item.progress %}<progress max="100" value="{{ item.progress }}" aria-label="{{ item.title }}">{{ item.progress }}%</progress>{% endif %}
       </li>
       {% endfor %}
     </ul>
     {% endif %}
+    {# a disk's fill (unraid); a live meter such as a parity check is in the Right now band #}
+    {% set fills = s.meters | rejectattr("live") | list %}
+    {% if fills %}
+    <h3>Disks</h3>
+    <div class="meters">
+      {% for m in fills %}<span>{{ m.label }}</span>{{ ui.bar(m.percent, m.level) }}<span class="meter-value{% if m.level in ('warn', 'bad') %} state-{{ m.level }}{% endif %}">{{ m.percent }}%</span><span class="muted">{{ m.text }}</span>{% endfor %}
+    </div>
+    {% endif %}
 {% endmacro %}
+{# how plex's streams are going, a word each in playback's colors: 2 direct play, 1 transcode #}
+{% macro decisions(streams) -%}
+{% set found = [] %}
+{%- for decision in ["Direct play", "Direct stream", "Transcode"] %}{% set n = streams | selectattr("decision", "equalto", decision) | list | length %}{% if n %}{% set _ = found.append((decision, n)) %}{% endif %}{% endfor %}
+{%- for decision, n in found %}<span class="decision decision-{{ decision | lower | replace(' ', '_') }}">{{ n }} {{ decision | lower }}</span>{{ ", " if not loop.last }}{% endfor %}
+{%- endmacro %}
 {% block toolbar %}
 <div class="group">
   {{ ui.tool("refresh", "Refresh", "/status" ~ ("" if refresh else "?refresh=0")) }}
@@ -74,10 +87,11 @@
       (stuck ~ " stuck") if stuck,
     ] | select | join(", ") }}{% endif %}{% if open_since[s.service] %}, for {{ open_since[s.service] }}{% endif %}</a>
   {% endfor %}
+  {% if activity.summary %}<span class="verdict-activity">{{ activity.summary }}</span>{% endif %}
 </p>
-<p class="verdict" data-verdict-muted hidden>All {{ connected | length }} connected services are OK, apart from what you muted.</p>
+<p class="verdict" data-verdict-muted hidden>All {{ connected | length }} connected services are OK, apart from what you muted.{% if activity.summary %}<span class="verdict-activity">{{ activity.summary }}</span>{% endif %}</p>
 {% else %}
-<p class="verdict">All {{ connected | length }} connected services are OK.</p>
+<p class="verdict">All {{ connected | length }} connected services are OK.{% if activity.summary %}<span class="verdict-activity">{{ activity.summary }}</span>{% endif %}</p>
 {% endif %}
 
 {% if attention %}
@@ -112,6 +126,77 @@
 </section>
 {% endif %}
 
+{% if activity %}
+{% set labels = {"radarr": "Radarr", "sonarr": "Sonarr"} %}
+<section class="now" aria-label="Right now">
+  {% if activity.streams %}
+  <div class="panel" id="now-playing">
+    <div class="panel-head">
+      <h2>Now playing</h2>
+      <span class="panel-sum">{{ activity.streams | length }} stream{{ "s" if activity.streams | length != 1 }}: {{ decisions(activity.streams) }}{% if activity.plex_note %} · {{ activity.plex_note }}{% endif %}</span>
+    </div>
+    <ul class="streams">
+      {% for st in activity.streams %}
+      {% set tx = st.decision == "Transcode" %}
+      <li{% if tx %} class="is-transcode"{% endif %}>
+        <div class="stream-who">
+          <p><b>{{ st.user }}</b>{% if st.paused %} <span class="tag">paused</span>{% endif %}</p>
+          <p>{{ st.title }}</p>
+          <p class="muted">{{ [st.player, "remote" if st.remote else "LAN"] | select | join(" · ") }}</p>
+        </div>
+        <div class="stream-time">
+          {{ ui.bar(st.progress, buffer=st.buffered) }}
+          <p class="muted">{% if st.position %}<b>{{ st.position }}</b>{% if st.duration %} of {{ st.duration }}{% endif %}{% else %}{{ st.progress }}%{% endif %}{% if st.buffered %} · transcoded to {{ st.buffered }}%{% endif %}</p>
+        </div>
+        <dl class="stream-tracks">
+          {% for t in st.tracks %}<dt>{{ t.kind }}</dt><dd>{{ t.file }}{% if t.sent %} <span class="muted">→</span> {% if tx and t.decision == "Transcode" %}<span class="decision decision-transcode">{{ t.sent }}</span>{% else %}{{ t.sent }}{% endif %}{% endif %}{% if t.decision and t.decision != "Direct play" %} <span class="muted">· {{ t.decision | lower }}{% if t.kind == "Video" and t.decision == "Transcode" and st.hardware is not none %}, {{ "hardware" if st.hardware else "CPU" }}{% endif %}</span>{% endif %}</dd>{% endfor %}
+        </dl>
+        <p class="stream-end"><span class="decision decision-{{ st.decision | lower | replace(' ', '_') }}">{{ st.decision | lower }}</span>{% if st.mbps is not none %}<span class="muted">{{ "%.1f" | format(st.mbps) }} Mbps</span>{% endif %}</p>
+        {% if st.cause %}
+        <p class="stream-why"><span class="state-word state-warn">why</span> {{ st.cause }}{% if st.now %}: {{ st.now }}{% endif %}. Change to <strong>{{ st.change }}</strong>.{% if st.user_id %} <a href="/playback?user={{ st.user_id }}">{{ st.user }} on Playback</a>{% endif %}</p>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  {% if activity.downloads %}
+  <div class="panel" id="now-downloading">
+    <div class="panel-head">
+      <h2>Downloading</h2>
+      {% if activity.download_note %}<span class="panel-sum">{{ activity.download_note }}</span>{% endif %}
+    </div>
+    <ul class="downloads">
+      {% for d in activity.downloads %}
+      <li{% if d.state not in ("downloading", "importing") %} class="is-waiting"{% endif %}>
+        <div class="dl-what">
+          {% if d.service %}<p><b>{{ d.title }}</b> <span class="tag">{{ labels[d.service] }}</span></p>{% if d.release %}<p class="machine muted">{{ d.release }}</p>{% endif %}
+          {% else %}<p class="machine">{{ d.title }}</p>{% endif %}
+        </div>
+        {{ ui.bar(100 if d.state == "importing" else d.progress) }}
+        <p class="dl-end">{% if d.state == "importing" %}<span class="state-word state-info">importing</span>{% elif d.state == "downloading" %}<span><b>{{ d.progress or 0 }}%</b>{% if d.eta %} · {{ d.eta }}{% endif %}</span>{% else %}<span class="muted">{{ d.state }}</span>{% endif %}{% if d.size and d.state != "importing" %}<span class="muted">{{ d.size }}</span>{% endif %}</p>
+      </li>
+      {% endfor %}
+    </ul>
+    {% if activity.more or activity.stuck %}
+    <p class="panel-foot">{% if activity.more %}{{ activity.more }} more in the queues{% endif %}{% for service, label, n in activity.stuck %}{{ " · " if activity.more or not loop.first }}<a href="#{{ service }}">{{ n }} stuck in {{ label }}</a>{% endfor %}</p>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% for label, m in activity.meters %}
+  <div class="panel">
+    <ul class="downloads">
+      <li>
+        <div class="dl-what"><p><b>{{ m.label }}</b> <span class="tag">{{ label }}</span></p></div>
+        {{ ui.bar(m.percent, m.level) }}
+        <p class="dl-end"><b>{{ m.percent }}%</b>{% if m.text %}<span class="muted{% if m.level == 'warn' %} state-warn{% endif %}">{{ m.text }}</span>{% endif %}</p>
+      </li>
+    </ul>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
 {% set quiet = services | rejectattr("state", "in", ["warn", "bad"]) | list %}
 {% if quiet %}
 <ul class="service-lines">
@@ -138,7 +223,7 @@
       <summary class="line">
         <span class="line-name">{{ s.label }}{% if s.version %} <span class="version">{{ s.version }}</span>{% endif %}</span>
         <span class="line-state">ok</span>
-        <span class="line-facts">{% if s.summary %}{{ s.summary }}{% else %}{% for label, value in s.facts %}{{ label }} {{ value }}{% if not loop.last %} · {% endif %}{% endfor %}{% endif %}</span>
+        <span class="line-facts">{% if s.streams %}{{ s.streams | length }} stream{{ "s" if s.streams | length != 1 }}: {{ decisions(s.streams) }}{% if s.activity_note %} · {{ s.activity_note }}{% endif %}{% elif s.summary %}{{ s.summary }}{% else %}{% for label, value in s.facts %}{{ label }} {{ value }}{% if not loop.last %} · {% endif %}{% endfor %}{% endif %}</span>
         <span class="line-link">{{ open_link(s) }}</span>
       </summary>
       <div class="line-body">

@@ -24,6 +24,8 @@ from web.playback import (
     causes,
     detail,
     playback_from,
+    tracks,
+    transcode_reason,
     report,
     stream_data,
     sync,
@@ -280,6 +282,35 @@ class TestDetail:
 
     def test_without_stream_data(self):
         assert detail(play(details=False)) == "No stream details in Tautulli"
+
+
+class TestTranscodeReason:
+    def test_a_quality_limit(self):
+        assert transcode_reason(play()) == {"cause": "Quality setting", "now": "4 Mbps 720p", "change": "Original or Maximum"}
+
+    def test_a_file_the_player_cant_play(self):
+        assert transcode_reason(play(audio_codec="dca", **AUDIO)) == {
+            "cause": "Audio format", "now": "can't play DTS 5.1", "change": "the Plex app's audio passthrough setting"
+        }
+
+    def test_none_when_it_isnt_transcoding(self):
+        assert transcode_reason(play(decision="direct play", **DIRECT)) is None
+
+
+class TestTracks:
+    def test_a_transcode_says_what_plex_sends(self):
+        assert tracks(play()) == [
+            {"kind": "Video", "file": "1080p H264", "sent": "720p H264", "decision": "Transcode"},
+            {"kind": "Audio", "file": "EAC3 5.1", "sent": "AAC 5.1", "decision": "Transcode"},
+        ]
+
+    def test_a_direct_play_and_burned_subtitles(self):
+        assert tracks(play(decision="direct play", **DIRECT)) == [
+            {"kind": "Video", "file": "1080p H264", "sent": "", "decision": "Direct play"},
+            {"kind": "Audio", "file": "EAC3 5.1", "sent": "", "decision": "Direct play"},
+        ]
+        burned = tracks(play(stream_subtitle_decision="burn", subtitle_codec="pgs"))
+        assert burned[-1] == {"kind": "Subtitles", "file": "PGS", "sent": "burned in", "decision": "Transcode"}
 
 
 class TestReport:

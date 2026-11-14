@@ -53,6 +53,15 @@
 <svg class="share{% if rate and percent > 50 %} share-high{% endif %}" width="56" height="6" aria-hidden="true" focusable="false"><rect class="share-track" width="100%" height="100%"/>{% if percent %}<rect class="share-fill" width="{{ '%g' | format(percent | round(1)) }}%" height="100%"/>{% endif %}</svg>
 {%- endmacro %}
 
+{# progress or a level as a full-width bar (a download, a stream, a disk's fill), hidden
+   from screen readers: the number or word beside it says it. level warn/bad colors the
+   fill; buffer is a lighter fill behind it (how far ahead plex has transcoded). An svg
+   for the same reason as share() #}
+{% macro bar(percent, level="", buffer=None) -%}
+{% set percent = [[percent or 0, 0] | max, 100] | min %}
+<svg class="bar{% if level in ('warn', 'bad') %} bar-{{ level }}{% endif %}" aria-hidden="true" focusable="false"><rect class="bar-track" width="100%" height="100%"/>{% if buffer %}<rect class="bar-buffer" width="{{ [buffer, 100] | min }}%" height="100%"/>{% endif %}{% if percent %}<rect class="bar-fill" width="{{ '%g' | format(percent | round(1)) }}%" height="100%"/>{% endif %}</svg>
+{%- endmacro %}
+
 {# a job's or run's mode (web.jobs.MODES), the same tag everywhere; note says why, in dim ink #}
 {% macro mode_tag(key, note="") -%}
 {% set label, level = MODES.get(key, MODES["unknown"]) %}<span class="tag{% if level %} tag-{{ level }}{% endif %}">{{ label }}</span>{% if note %} <span class="muted">{{ note }}</span>{% endif %}

@@ -13,7 +13,7 @@ from tests.test_web import ORIGIN, FakeKeys, auth, fake_run_job
 from tests.test_web import settings  # noqa: F401 (fixture)
 from web import health, status
 from web.app import create_app
-from web.status import Item, ServiceStatus, check_all, size
+from web.status import Download, Item, Meter, ServiceStatus, Stream, check_all, size
 
 NOW = datetime(2026, 10, 25, 12)
 RADARR = ArrConfig(baseurl="http://radarr:7878/", apikey="radarr-key", tag=None)
@@ -201,6 +201,41 @@ class TestArrQueue:
         assert dict(result.facts)["Queue"] == "7, 1 downloading, 1 need attention"
         assert health.item_key(result.items[0]) == "queue:SABnzbd_nzo_pack"
 
+    def test_downloads_in_flight(self):
+        records = [
+            {
+                "downloadId": "SABnzbd_nzo_heat", "title": "Heat.1995.2160p.REMUX-FGT", "status": "downloading",
+                "trackedDownloadState": "downloading", "size": 40 * 1024**3, "sizeleft": 10 * 1024**3,
+                "timeleft": "00:04:12", "movie": {"title": "Heat", "year": 1995},
+            },
+            {
+                "downloadId": "SABnzbd_nzo_ronin", "title": "Ronin.1998.1080p", "status": "completed",
+                "trackedDownloadState": "importing", "size": 8 * 1024**3, "sizeleft": 0, "movie": {"title": "Ronin", "year": 1998},
+            },
+            {"title": "Collateral.2004", "status": "queued", "trackedDownloadState": "downloading", "size": 0, "sizeleft": 0},
+            # stuck: on the card, not in flight
+            {"downloadId": "x", "trackedDownloadState": "importBlocked", "movie": {"title": "Thief", "year": 1981}},
+        ]
+        result = ServiceStatus("radarr", "Radarr")
+        status.arr_queue(result, records, 4)
+        assert result.downloads == [
+            Download("Heat (1995)", "Heat.1995.2160p.REMUX-FGT", "radarr", "downloading", 75, "30.0 GB of 40.0 GB", "4m", "SABnzbd_nzo_heat"),
+            Download("Ronin (1998)", "Ronin.1998.1080p", "radarr", "importing", 100, "8.0 GB of 8.0 GB", "", "SABnzbd_nzo_ronin"),
+            Download("Collateral.2004", "", "radarr", "queued"),
+        ]
+
+    def test_a_season_pack_downloading_is_one_download(self):
+        pack = [
+            {
+                "downloadId": "nzo_pack", "title": "The.Bear.S03.1080p", "status": "downloading", "trackedDownloadState": "downloading",
+                "size": 1000, "sizeleft": 770, "series": {"title": "The Bear"}, "episode": {"seasonNumber": 3, "episodeNumber": n},
+            }
+            for n in range(1, 11)
+        ]
+        result = ServiceStatus("sonarr", "Sonarr")
+        status.arr_queue(result, pack, 10)
+        assert [(d.title, d.progress) for d in result.downloads] == [("The Bear S03, 10 episodes", 23)]
+
     def test_title_falls_back_to_the_release(self):
         assert status.arr_title({"title": "Some.Release.1080p"}) == "Some.Release.1080p"
         assert status.arr_title({"series": {"title": "Bluey"}}) == "Bluey"
@@ -262,7 +297,9 @@ class TestSabnzbd:
             "Free (complete)": "32.2 TB",
             "Failed, 7 days": "0",
         }
-        assert result.items == [Item("Heat.1995", "Downloading · movies · 0:01:40", progress=42)]
+        assert result.items == []
+        assert result.downloads == [Download("Heat.1995", state="downloading", progress=42, eta="1m")]
+        assert result.activity_note == "10.0 MB/s · 1.0 GB left · done in 1m"
         assert fake.calls[0][2]["apikey"] == "sab-key"
 
     def test_paused_is_a_warning(self):
@@ -293,7 +330,7 @@ class TestSabnzbd:
     def test_idle_queue_has_no_speed(self):
         result, _ = run(lambda: status.sabnzbd_status(SAB, NOW), sab_answers({"noofslots_total": 0, "slots": [], "status": "Idle"}))
         assert "Speed" not in dict(result.facts)
-        assert result.items == []
+        assert (result.downloads, result.activity_note) == ([], "")
 
     def test_refused_in_the_body(self):
         answers = sab_answers()
@@ -459,6 +496,12 @@ class TestUnraid:
             ("warn", "cache_ssd is running hot: 65°C, Unraid warns at 60°C", "temp:cache_ssd"),
         ]
 
+    def test_each_disks_fill_as_a_meter(self):
+        result, _ = unraid_run(unraid_data(disks=[disk("disk1", free_tb=1), disk("disk2", free_tb=2.5)], caches=[]))
+        # parity has no file system; the server warns at 70% and is critical at 90%
+        assert result.meters == [Meter("Disk 1", 90, "1024.0 GB free", "bad"), Meter("Disk 2", 75, "2.5 TB free", "warn")]
+        assert not any(m.live for m in result.meters)
+
     def test_space_uses_each_disks_thresholds_else_the_servers(self):
         result, _ = unraid_run(unraid_data(disks=[
             disk("disk1", free_tb=0.8, warning=95, critical=99),  # 92% full: under its own 95
@@ -484,7 +527,10 @@ class TestUnraid:
         assert dict(result.facts)["Parity check"] == "45%, 150 MB/s"
         assert result.summary == "9.0 TB free of 120.0 TB · Parity check 45%, 150 MB/s"
         assert texts(result) == [("warn", "The parity check running now has found 3 errors so far", "parity")]
+        # drawn as a bar in the Right now band
+        assert [m for m in result.meters if m.live] == [Meter("Parity check", 45, "150 MB/s, 3 errors", "warn", live=True)]
         paused, _ = unraid_run(unraid_data(parityCheckStatus={"status": "PAUSED", "running": True, "paused": True, "progress": 60}))
+        assert [m.text for m in paused.meters if m.live] == ["paused, 0 errors"]
         assert (dict(paused.facts)["Parity check"], paused.state) == ("60%, paused", "ok")
 
     @pytest.mark.parametrize("check, fact, problem", [
@@ -602,15 +648,35 @@ def tautulli(data, result="success"):
 
 SESSION = {
     "friendly_name": "barry",
+    "user_id": "42",
+    "media_type": "episode",
+    "grandparent_title": "Justified",
+    "parent_media_index": "1",
+    "media_index": "4",
+    "title": "Ghosts",
     "full_title": "Justified - Ghosts",
     "transcode_decision": "transcode",
+    "quality_profile": "2 Mbps 480p",
+    "video_decision": "transcode",
+    "video_codec": "hevc",
+    "stream_video_codec": "h264",
     "video_full_resolution": "720p",
     "stream_video_full_resolution": "SD",
+    "audio_decision": "copy",
+    "audio_codec": "eac3",
+    "stream_audio_codec": "eac3",
+    "audio_channels": "6",
+    "stream_audio_channels": "6",
+    "transcode_hw_encoding": "1",
+    "transcode_progress": "70",
     "player": "LG OLED",
     "product": "Plex for LG",
     "state": "playing",
     "location": "wan",
     "progress_percent": "51",
+    "view_offset": "1381000",
+    "duration": "2706000",
+    "bandwidth": "2400",
 }
 
 
@@ -639,14 +705,34 @@ class TestPlex:
         assert result.state == "ok"
         assert result.version == "1.43.5"
         assert dict(result.facts) == {"Streams": "1: 1 transcode", "Bandwidth": "41.9 Mbps, 41.9 remote"}
-        assert result.items == [
-            Item("barry: Justified - Ghosts", "Transcode · 720p → SD · LG OLED (Plex for LG) · remote", progress=51, level="warn")
+        assert result.items == []
+        assert result.activity_note == "41.9 Mbps, 41.9 remote"
+        assert result.streams == [
+            Stream(
+                "barry", "Justified S01E04 · Ghosts", "Transcode", user_id=42, progress=51, buffered=70,
+                position="23:01", duration="45:06", player="LG OLED (Plex for LG)", remote=True, mbps=2.4,
+                tracks=[
+                    {"kind": "Video", "file": "720p HEVC", "sent": "SD H264", "decision": "Transcode"},
+                    {"kind": "Audio", "file": "EAC3 5.1", "sent": "", "decision": "Direct stream"},
+                ],
+                hardware=True, cause="Quality setting", now="2 Mbps 480p", change="Original or Maximum",
+            )
         ]
+
+    def test_a_direct_play_has_no_reason_or_buffer(self):
+        session = {
+            **SESSION, "media_type": "movie", "title": "Heat", "year": "1995", "transcode_decision": "direct play",
+            "video_decision": "direct play", "audio_decision": "direct play", "state": "paused", "location": "lan",
+        }
+        found = status.stream(session)
+        assert (found.title, found.decision, found.buffered, found.cause, found.paused, found.remote, found.hardware) == (
+            "Heat (1995)", "Direct play", None, "", True, False, None
+        )
 
     def test_nothing_playing(self):
         result, _ = run(lambda: status.plex_status(TAUTULLI), plex_answers())
         assert dict(result.facts) == {"Streams": "0"}
-        assert result.items_label == ""
+        assert (result.streams, result.activity_note) == ([], "")
 
     def test_plex_unreachable(self):
         result, _ = run(lambda: status.plex_status(TAUTULLI), plex_answers(connected=False))
@@ -708,6 +794,68 @@ class TestCheckAll:
 # ---------------------------------------------------------------------------
 # pages
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("00:04:12", "4m"), ("0:04:12", "4m"), ("01:02:03", "1h 2m"), ("1.02:03:04", "1d 2h"), ("1:02:03:04", "1d 2h"),
+    ("00:00:20", "under a minute"), ("0:00:00", ""), (None, ""), ("soon", ""),
+])
+def test_eta(text, expected):
+    assert status.eta(text) == expected
+
+
+def test_clock():
+    assert (status.clock("1381000"), status.clock(3700000), status.clock(None)) == ("23:01", "1:01:40", "0:00")
+
+
+def service(name, label, **fields):
+    found = ServiceStatus(name, label)
+    for key, value in fields.items():
+        setattr(found, key, value)
+    return found
+
+
+class TestActivity:
+    def test_a_download_is_one_row_with_the_arrs_title_and_sabnzbds_progress(self):
+        radarr = service("radarr", "Radarr", downloads=[
+            Download("Heat (1995)", "Heat.1995.REMUX", "radarr", "downloading", 40, "4.0 GB of 10.0 GB", "9m", "SABnzbd_nzo_heat"),
+            Download("Ronin (1998)", "Ronin.1998", "radarr", "importing", 100, "8.0 GB of 8.0 GB", "", "SABnzbd_nzo_ronin"),
+        ])
+        sab = service("sabnzbd", "SABnzbd", activity_note="80.0 MB/s · 6.0 GB left · done in 2m", downloads=[
+            Download("Heat.1995.REMUX", state="downloading", progress=61, size="6.1 GB of 10.0 GB", eta="2m", key="SABnzbd_nzo_heat"),
+            Download("Manual.Grab.2024", state="queued", progress=0, key="SABnzbd_nzo_manual"),
+        ])
+        found = status.activity([radarr, sab])
+        assert found.downloads == [
+            Download("Ronin (1998)", "Ronin.1998", "radarr", "importing", 100, "8.0 GB of 8.0 GB", "", "SABnzbd_nzo_ronin"),
+            Download("Heat (1995)", "Heat.1995.REMUX", "radarr", "downloading", 61, "6.1 GB of 10.0 GB", "2m", "SABnzbd_nzo_heat"),
+            Download("Manual.Grab.2024", state="queued", progress=0, key="SABnzbd_nzo_manual"),
+        ]
+        assert found.download_note == "80.0 MB/s · 6.0 GB left · done in 2m"
+        assert found.summary == "1 downloading, 1 importing"
+        # the arr's own record is left as it was
+        assert radarr.downloads[0].progress == 40
+
+    def test_stuck_downloads_stay_on_their_card(self):
+        sonarr = service("sonarr", "Sonarr", items=[Item("Bluey S03E01", "Not an upgrade", level="warn", key="nzo_stuck")])
+        sab = service("sabnzbd", "SABnzbd", downloads=[Download("Bluey.S03E01", key="nzo_stuck")])
+        found = status.activity([sonarr, sab])
+        assert (found.downloads, found.stuck, bool(found)) == ([], [("sonarr", "Sonarr", 1)], False)
+
+    def test_streams_parity_and_a_long_queue(self):
+        plex = service("plex", "Plex", activity_note="12.0 Mbps, 4.0 remote", streams=[
+            Stream("barry", "Heat (1995)", "Transcode"), Stream("ava", "Ronin (1998)", "Direct play"),
+        ])
+        unraid = service("unraid", "Unraid", meters=[Meter("Disk 1", 50), Meter("Parity check", 43, "142 MB/s", live=True)])
+        sab = service("sabnzbd", "SABnzbd", downloads=[Download(f"Grab.{n}", state="queued", key=f"n{n}") for n in range(8)])
+        found = status.activity([plex, unraid, sab])
+        assert [m.label for _, m in found.meters] == ["Parity check"]
+        assert (len(found.downloads), found.more) == (status.ACTIVITY_DOWNLOADS, 8 - status.ACTIVITY_DOWNLOADS)
+        assert found.summary == "2 streaming, 1 transcoding · 8 queued · parity check 43%"
+
+    def test_down_or_unconnected_services_add_nothing(self):
+        plex = service("plex", "Plex", error="Couldn't connect", streams=[Stream("barry", "Heat", "Direct play")])
+        assert not status.activity([plex, ServiceStatus("sabnzbd", "SABnzbd", state="off")])
 
 
 @pytest.fixture
@@ -854,6 +1002,45 @@ class TestPages:
         assert "All 1 connected services are OK." in page
         assert "No health checks yet." in page
 
+    def test_right_now(self, client, monkeypatch):
+        def busy(settings, now):
+            plex = ServiceStatus("plex", "Plex", activity_note="41.9 Mbps, 41.9 remote")
+            plex.streams = [status.stream(SESSION), Stream("ava", "Heat (1995) <b>", "Direct play", progress=10)]
+            radarr = ServiceStatus("radarr", "Radarr", downloads=[
+                Download("Ronin (1998)", "Ronin.1998.1080p", "radarr", "downloading", 61, "6.1 GB of 10.0 GB", "4m", "nzo_ronin"),
+            ])
+            sab = ServiceStatus("sabnzbd", "SABnzbd", activity_note="80.0 MB/s · 4.0 GB left · done in 4m", downloads=[
+                Download("Manual.Grab.2024", state="queued", key="nzo_manual"),
+            ])
+            unraid = ServiceStatus("unraid", "Unraid", meters=[Meter("Disk 1", 93, "700.0 GB free", "warn"), Meter("Parity check", 43, "142 MB/s", live=True)])
+            return [unraid, plex, radarr, sab]
+
+        monkeypatch.setattr("web.status_routes.check_all", busy)
+        page = client.get("/status", headers=auth()).text
+        # the verdict says it in a line, the band shows it
+        assert '<span class="verdict-activity">2 streaming, 1 transcoding · 1 downloading · parity check 43%</span>' in page
+        assert '<section class="now" aria-label="Right now">' in page
+        assert "Heat (1995) &lt;b&gt;" in page
+        # a transcode is outlined, with why and the fix, linked to the person's playback
+        assert '<li class="is-transcode">' in page
+        assert "Quality setting: 2 Mbps 480p. Change to <strong>Original or Maximum</strong>." in page
+        assert '<a href="/playback?user=42">barry on Playback</a>' in page
+        assert '<rect class="bar-buffer" width="70%" height="100%"/><rect class="bar-fill" width="51%" height="100%"/>' in page
+        # one row per download: the arr's title with its release, sabnzbd's own by its name
+        assert '<p><b>Ronin (1998)</b> <span class="tag">Radarr</span></p><p class="machine muted">Ronin.1998.1080p</p>' in page
+        assert '<p class="machine">Manual.Grab.2024</p>' in page
+        assert "<span><b>61%</b> · 4m</span>" in page
+        assert "80.0 MB/s · 4.0 GB left · done in 4m" in page
+        # plex's line names its streams' decisions; unraid's opens to its disks
+        assert '<span class="decision decision-direct_play">1 direct play</span>, <span class="decision decision-transcode">1 transcode</span>' in page
+        assert '<span class="meter-value state-warn">93%</span>' in page
+
+    def test_nothing_happening_has_no_band(self, client, monkeypatch):
+        monkeypatch.setattr("web.status_routes.check_all", lambda s, n: [ServiceStatus("radarr", "Radarr")])
+        page = client.get("/status", headers=auth()).text
+        assert 'aria-label="Right now"' not in page
+        assert "verdict-activity" not in page
+
     def test_nothing_connected(self, client, monkeypatch):
         monkeypatch.setattr("web.status_routes.check_all", lambda s, n: [ServiceStatus("radarr", "Radarr", state="off")])
         assert "Nothing is connected yet." in client.get("/status", headers=auth()).text
@@ -865,6 +1052,7 @@ class TestPages:
         assert radarr["state"] == "warn"
         assert radarr["facts"] == {"Queue": "1, 1 need attention"}
         assert radarr["items"][0]["title"] == "Heat (1995) <script>"
+        assert body["activity"]["stuck"] == [["radarr", "Radarr", 1]]
 
     def test_needs_access(self, client):
         assert client.get("/status").status_code == 403

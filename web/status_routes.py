@@ -39,6 +39,7 @@ from web.status import (
     ArrQueue,
     ServiceStatus,
     StuckDownload,
+    activity,
     check_all,
     clear_stuck,
     failure,
@@ -152,6 +153,7 @@ def status_page(request: Request) -> HTMLResponse:
             "health": sync_status(request.app.state.engine, STATUS_SETTING),
             "check_minutes": int(CHECK_INTERVAL.total_seconds() // 60),
             "auto_remove": auto_remove(request),
+            "activity": activity(services),
         },
     )
 
@@ -183,6 +185,7 @@ def api_status(request: Request) -> JSONResponse:
         {
             "checked_at": checked_at.isoformat(),
             "services": [s.to_dict() for s in services],
+            "activity": jsonable_encoder(activity(services)),
         }
     )
 

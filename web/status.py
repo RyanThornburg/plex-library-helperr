@@ -5,9 +5,10 @@ its own card"""
 
 import logging
 import re
+from collections import Counter
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -16,7 +17,9 @@ import requests
 from config.models import ArrConfig, BazarrConfig, ConfigSettings, SabnzbdConfig, SeerrConfig, TautulliConfig, UnraidConfig
 from logging_config import failure_text, url_hosts
 from tautulli import TautulliRefused, tautulli_get
+from web.db import Playback
 from web.lookups import BAZARR_NOT_API, redact
+from web.playback import DECISIONS, stream_columns, tracks, transcode_reason
 from web.seerr import SeerrRefused, seerr_get
 from web.unraid import UnraidRefused, error_text, unraid_query
 
@@ -65,16 +68,75 @@ class Problem:
 
 @dataclass
 class Item:
-    """a row on a card: a download, a stuck import, a stream"""
+    """a row on a card: a download radarr/sonarr won't finish on their own"""
 
     title: str
     detail: str = ""
-    progress: int | None = None  # percent
     level: str = "ok"
     # a queue download's id in the download client, for its incident ("" when it has none)
     key: str = ""
     # a stuck download's trackedDownloadStates, for queue cleanup
     states: list[str] = field(default_factory=list[str])
+
+
+@dataclass
+class Stream:
+    """something plex is playing now (through tautulli's get_activity)"""
+
+    user: str
+    title: str
+    # DECISIONS' words: Direct play, Direct stream, Transcode
+    decision: str
+    user_id: int | None = None
+    # percent watched, and transcoded ahead of it (the buffer, transcodes only)
+    progress: int = 0
+    buffered: int | None = None
+    # 38:12, 1:01:40
+    position: str = ""
+    duration: str = ""
+    player: str = ""
+    remote: bool = False
+    paused: bool = False
+    mbps: float | None = None
+    # web.playback.tracks(): kind, file, sent, decision
+    tracks: list[dict[str, str]] = field(default_factory=list[dict[str, str]])
+    hardware: bool | None = None
+    # why it transcodes and what to change (web.playback.transcode_reason)
+    cause: str = ""
+    now: str = ""
+    change: str = ""
+
+
+@dataclass
+class Download:
+    """a download in flight: one per download, from radarr/sonarr's queue and sabnzbd's,
+    joined on the download id (activity())"""
+
+    title: str
+    # the release's name when the title is the movie or episode
+    release: str = ""
+    # radarr or sonarr when one of them grabbed it, else empty (sabnzbd's own)
+    service: str = ""
+    # downloading, queued, paused, importing, ... (DOWNLOAD_STATES' words)
+    state: str = "downloading"
+    progress: int | None = None
+    # 23.2 GB of 38.1 GB, and 4m
+    size: str = ""
+    eta: str = ""
+    # the download client's id: radarr/sonarr's downloadId, sabnzbd's nzo_id
+    key: str = ""
+
+
+@dataclass
+class Meter:
+    """a level drawn as a bar: a disk's fill, a parity check's progress. A live one is
+    work happening now, shown with the downloads and streams"""
+
+    label: str
+    percent: int
+    text: str = ""
+    level: str = "ok"
+    live: bool = False
 
 
 @dataclass
@@ -92,6 +154,12 @@ class ServiceStatus:
     # the folded line of a service that's fine, when its facts are too many for one line
     summary: str = ""
     error: str | None = None
+    # what's happening now, for the status page's Right now band: plex's streams,
+    # downloads, a parity check, and the band's heading for them (speed, bandwidth)
+    streams: list[Stream] = field(default_factory=list[Stream])
+    downloads: list[Download] = field(default_factory=list[Download])
+    meters: list[Meter] = field(default_factory=list[Meter])
+    activity_note: str = ""
 
     def problem(self, level: str, text: str, key: str = "") -> None:
         self.problems.append(Problem(level, text, key))
@@ -140,6 +208,34 @@ def _float(value: object) -> float | None:
         return float(value)  # type: ignore[arg-type]
     except TypeError, ValueError:
         return None
+
+
+def eta(text: object) -> str:
+    """radarr/sonarr's 1.02:03:04 or sabnzbd's 1:02:03:04 / 0:04:12 as 1d 2h, 4m"""
+    try:
+        parts = [int(p) for p in str(text).replace(".", ":").split(":")]
+    except ValueError:
+        return ""
+    if not 1 <= len(parts) <= 4 or any(p < 0 for p in parts):
+        return ""
+    days, hours, minutes, seconds = [0] * (4 - len(parts)) + parts
+    if days:
+        return f"{days}d {hours}h"
+    if hours:
+        return f"{hours}h {minutes}m"
+    return f"{minutes}m" if minutes else ("under a minute" if seconds else "")
+
+
+def clock(milliseconds: object) -> str:
+    """a position in a video as 38:12 or 1:01:40"""
+    seconds = _int(milliseconds) // 1000
+    hours, rest = divmod(seconds, 3600)
+    minutes, seconds = divmod(rest, 60)
+    return f"{hours}:{minutes:02d}:{seconds:02d}" if hours else f"{minutes}:{seconds:02d}"
+
+
+def _percent(part: float, whole: float) -> int:
+    return max(0, min(100, round(100 * part / whole))) if whole else 0
 
 
 def _get_json(url: str, label: str, **kwargs: Any) -> Any:
@@ -193,15 +289,68 @@ def stuck_messages(record: dict[str, Any]) -> list[str]:
     ]
 
 
+# a queue record's status (or sabnzbd's, lower case) as the Right now band says it
+DOWNLOAD_STATES = {
+    "downloading": "downloading",
+    "queued": "queued",
+    "paused": "paused",
+    "delay": "delayed",
+    "completed": "downloaded",
+    "downloadclientunavailable": "client unavailable",
+    "grabbing": "grabbing",
+    "fetching": "fetching",
+    "propagating": "propagating",
+    "checking": "checking",
+}
+
+
+def pack_title(records: list[dict[str, Any]]) -> str:
+    """a download's movie or episodes: a season pack (a record per episode) as the
+    series, its season and how many episodes"""
+    if len(records) == 1 or not (series := records[0].get("series")):
+        return arr_title(records[0])
+    seasons = {(r.get("episode") or {}).get("seasonNumber") for r in records}
+    season = next(iter(seasons)) if len(seasons) == 1 else None
+    where = f" S{season:02d}" if isinstance(season, int) else ""
+    return f"{series.get('title')}{where}, {len(records)} episodes"
+
+
+def arr_download(service: str, records: list[dict[str, Any]]) -> Download:
+    """one download from its queue records (a season pack has one per episode, each with
+    the whole download's size)"""
+    record = records[0]
+    total, left = _float(record.get("size")) or 0, _float(record.get("sizeleft")) or 0
+    title = pack_title(records)
+    release = str(record.get("title") or "")
+    if record.get("trackedDownloadState") == "importing":
+        state = "importing"
+    else:
+        state = DOWNLOAD_STATES.get(str(record.get("status") or "").lower(), "downloading")
+    return Download(
+        title,
+        release if release != title else "",
+        service,
+        state,
+        progress=_percent(total - left, total) if total else None,
+        size=f"{size(total - left)} of {size(total)}" if total else "",
+        eta=eta(record.get("timeleft")) if state == "downloading" else "",
+        key=str(record.get("downloadId") or ""),
+    )
+
+
 def arr_queue(status: ServiceStatus, records: list[dict[str, Any]], total: int) -> None:
-    """the queue's size and the downloads radarr/sonarr won't finish on their own. A
-    season pack is a record per episode: it's one download here, as on the queue page"""
+    """the queue's size, its downloads in flight (the Right now band) and the downloads
+    radarr/sonarr won't finish on their own. A season pack is a record per episode: it's
+    one download here, as on the queue page"""
     downloading: set[object] = set()
     stuck: dict[object, tuple[Item, list[str], list[str]]] = {}
+    flight: dict[object, list[dict[str, Any]]] = {}
     for index, record in enumerate(records):
         group = record.get("downloadId") or ("record", index)
         if record.get("trackedDownloadState") == "downloading":
             downloading.add(group)
+        if not stuck_level(record):
+            flight.setdefault(group, []).append(record)
         if level := stuck_level(record):
             item, titles, messages = stuck.setdefault(
                 group, (Item("", level=level, key=str(record.get("downloadId") or "")), [], [])
@@ -218,6 +367,8 @@ def arr_queue(status: ServiceStatus, records: list[dict[str, Any]], total: int) 
         item.detail = "; ".join(messages)
         status.items.append(item)
         status.raise_state(item.level)
+    # a download with a stuck episode is stuck: it's on the card, not in flight
+    status.downloads = [arr_download(status.service, group) for key, group in flight.items() if key not in stuck]
     downloading_count = len(downloading)
     status.items_label = "Needs attention in the queue"
     queue = f"{total:,}"
@@ -427,19 +578,28 @@ def sab_queue(status: ServiceStatus, queue: dict[str, Any], min_free_gb: int = 0
         if free is not None:
             status.facts.append((name, size(free * 1024**3)))
             status.low_space(int(free * 1024**3), folder, min_free_gb)
-    status.items_label = "Downloading" if slots else ""
-    for slot in slots:
-        status.items.append(
-            Item(
-                str(slot.get("filename") or "Unknown"),
-                " · ".join(
-                    str(v)
-                    for v in (slot.get("status"), slot.get("cat"), slot.get("timeleft"))
-                    if v and v != "*"
-                ),
-                progress=_int(slot.get("percentage")),
-            )
+    if total:
+        done_in = eta(queue.get("timeleft"))
+        note = (
+            f"{size(speed * 1024)}/s" if speed is not None else "",
+            f"{size(left * 1024 * 1024)} left" if left is not None else "",
+            f"done in {done_in}" if done_in else "",
         )
+        status.activity_note = "paused" if paused else " · ".join(v for v in note if v)
+    status.downloads = [sab_download(slot) for slot in slots]
+
+
+def sab_download(slot: dict[str, Any]) -> Download:
+    total, left = _float(slot.get("mb")), _float(slot.get("mbleft"))
+    state = DOWNLOAD_STATES.get(str(slot.get("status") or "").lower(), "downloading")
+    return Download(
+        str(slot.get("filename") or "Unknown"),
+        state=state,
+        progress=_int(slot.get("percentage")),
+        size=f"{size((total - (left or 0)) * 1024**2)} of {size(total * 1024**2)}" if total else "",
+        eta=eta(slot.get("timeleft")) if state == "downloading" else "",
+        key=str(slot.get("nzo_id") or ""),
+    )
 
 
 def sab_failures(status: ServiceStatus, slots: list[dict[str, Any]], now: datetime) -> None:
@@ -682,10 +842,14 @@ def unraid_disk(status: ServiceStatus, disk: dict[str, Any], display: dict[str, 
         warning = _threshold(disk.get("warning"), display.get("warning"))
         critical = _threshold(disk.get("critical"), display.get("critical"))
         full = f"{label} is {used:.0f}% full, {size(free * UNRAID_KB)} free"
+        level = "ok"
         if critical and used >= critical:
+            level = "bad"
             status.problem("bad", f"{full} (critical at {critical}%)", f"space:{name}")
         elif warning and used >= warning:
+            level = "warn"
             status.problem("warn", f"{full} (Unraid warns at {warning}%)", f"space:{name}")
+        status.meters.append(Meter(label, _percent(total - free, total), f"{size(free * UNRAID_KB)} free", level))
 
 
 def _hours(seconds: int) -> str:
@@ -702,6 +866,15 @@ def unraid_parity(status: ServiceStatus, check: dict[str, Any]) -> None:
         what = "Correcting parity check" if check.get("correcting") else "Parity check"
         progress = f"{_int(check.get('progress'))}%"
         status.facts.append((what, ", ".join(str(v) for v in (progress, "paused" if paused else check.get("speed")) if v)))
+        status.meters.append(
+            Meter(
+                what,
+                max(0, min(100, _int(check.get("progress")))),
+                ", ".join(str(v) for v in ("paused" if paused else check.get("speed"), found) if v),
+                "warn" if errors else "ok",
+                live=True,
+            )
+        )
         if errors:
             status.problem("warn", f"The parity check running now has found {found} so far", "parity")
         return
@@ -821,30 +994,49 @@ def unraid_status(unraid: UnraidConfig | None) -> ServiceStatus:
 # ---------------------------------------------------------------------------
 
 
-def stream(session: dict[str, Any]) -> Item:
+def stream_title(session: dict[str, Any]) -> str:
+    """Severance S02E07 · Chikhai Bardo, Dune: Part Two (2024)"""
+    title = str(session.get("title") or "")
+    if session.get("media_type") == "episode" and (show := session.get("grandparent_title")):
+        season, episode = session.get("parent_media_index"), session.get("media_index")
+        try:
+            where = f" S{int(season):02d}E{int(episode):02d}"
+        except TypeError, ValueError:
+            where = ""
+        return f"{show}{where}" + (f" · {title}" if title else "")
+    if session.get("media_type") == "movie" and session.get("year"):
+        return f"{title} ({session['year']})"
+    return str(session.get("full_title") or title or "Unknown")
+
+
+def stream(session: dict[str, Any]) -> Stream:
     decision = str(session.get("transcode_decision") or "")
-    quality = session.get("stream_video_full_resolution") or session.get("video_full_resolution")
-    source = session.get("video_full_resolution")
-    if quality and source and quality != source:
-        quality = f"{source} → {quality}"
+    play = Playback(transcode_decision=decision, details=True, **stream_columns(session))
     player = session.get("player") or session.get("platform")
     product = session.get("product")
-    return Item(
-        f"{session.get('friendly_name') or session.get('user')}: {session.get('full_title') or session.get('title')}",
-        " · ".join(
-            str(v)
-            for v in (
-                decision.title() if decision else None,
-                quality,
-                f"{player} ({product})" if player and product else player or product,
-                "paused" if session.get("state") == "paused" else None,
-                "remote" if session.get("location") == "wan" else None,
-            )
-            if v
-        ),
-        progress=_int(session.get("progress_percent")),
-        level="warn" if decision == "transcode" else "ok",
+    bandwidth = _float(session.get("bandwidth"))
+    found = Stream(
+        str(session.get("friendly_name") or session.get("user") or "Someone"),
+        stream_title(session),
+        DECISIONS.get(decision, decision.title()),
+        user_id=_int(session.get("user_id"), 0) or None,
+        progress=max(0, min(100, _int(session.get("progress_percent")))),
+        position=clock(session.get("view_offset")) if session.get("view_offset") is not None else "",
+        duration=clock(session.get("duration")) if _int(session.get("duration")) else "",
+        player=f"{player} ({product})" if player and product else str(player or product or ""),
+        remote=session.get("location") == "wan",
+        paused=session.get("state") == "paused",
+        mbps=bandwidth / 1000 if bandwidth is not None else None,
+        tracks=tracks(play),
+        hardware=play.hw_encoding if play.video_decision == "transcode" else None,
     )
+    if decision == "transcode":
+        # how far ahead plex has transcoded, when it's ahead of where they are
+        buffered = _int(session.get("transcode_progress"), -1)
+        found.buffered = buffered if buffered > found.progress else None
+        if reason := transcode_reason(play):
+            found.cause, found.now, found.change = reason["cause"], reason["now"], reason["change"]
+    return found
 
 
 def plex_status(tautulli: TautulliConfig | None) -> ServiceStatus:
@@ -876,19 +1068,104 @@ def plex_status(tautulli: TautulliConfig | None) -> ServiceStatus:
     status.facts.append(("Streams", f"{streams}: {kinds}" if kinds else f"{streams}"))
     if streams:
         # tautulli's bandwidth is in kbps
-        status.facts.append(
-            (
-                "Bandwidth",
-                f"{_int(activity.get('total_bandwidth')) / 1000:.1f} Mbps, "
-                f"{_int(activity.get('wan_bandwidth')) / 1000:.1f} remote",
-            )
+        bandwidth = (
+            f"{_int(activity.get('total_bandwidth')) / 1000:.1f} Mbps, "
+            f"{_int(activity.get('wan_bandwidth')) / 1000:.1f} remote"
         )
-    status.items_label = "Now playing" if sessions else ""
-    status.items = [stream(s) for s in sessions]
+        status.facts.append(("Bandwidth", bandwidth))
+        status.activity_note = bandwidth
+    status.streams = [stream(s) for s in sessions]
     return status
 
 
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# right now: what's playing and downloading, across the services
+# ---------------------------------------------------------------------------
+
+# the downloads the band lists, the rest are counted
+ACTIVITY_DOWNLOADS = 6
+# nearly done first, then what's moving, then what's waiting
+STATE_ORDER = {"importing": 0, "downloading": 1}
+
+
+@dataclass
+class Activity:
+    """the status page's Right now band"""
+
+    streams: list[Stream] = field(default_factory=list[Stream])
+    # plex's bandwidth, sabnzbd's speed, left and time
+    plex_note: str = ""
+    downloads: list[Download] = field(default_factory=list[Download])
+    more: int = 0
+    download_note: str = ""
+    # (service, label, how many) stuck downloads, on their cards rather than here
+    stuck: list[tuple[str, str, int]] = field(default_factory=list[tuple[str, str, int]])
+    # (service label, meter): a parity check running
+    meters: list[tuple[str, Meter]] = field(default_factory=list[tuple[str, Meter]])
+    # one line for the verdict: 4 streaming, 1 transcode · 3 downloading
+    summary: str = ""
+
+    def __bool__(self) -> bool:
+        return bool(self.streams or self.downloads or self.meters)
+
+
+def activity(services: list[ServiceStatus]) -> Activity:
+    """what's playing and downloading now. A download is in radarr's or sonarr's queue
+    and in sabnzbd's: it's one row, the arr's (its title is the movie or episodes) with
+    sabnzbd's progress, joined on the download id. A download stuck in an arr's queue is
+    on its card, not here"""
+    found = {s.service: s for s in services if s.state != "off" and not s.error}
+    plex, sab = found.get("plex"), found.get("sabnzbd")
+    downloads: list[Download] = []
+    by_key: dict[str, int] = {}
+    stuck_keys: set[str] = set()
+    stuck = []
+    for service in ("radarr", "sonarr"):
+        if (arr := found.get(service)) is None:
+            continue
+        stuck_items = [i for i in arr.items if i.level != "ok"]
+        stuck_keys.update(i.key for i in stuck_items if i.key)
+        if stuck_items:
+            stuck.append((service, arr.label, len(stuck_items)))
+        for download in arr.downloads:
+            if download.key:
+                by_key[download.key] = len(downloads)
+            downloads.append(replace(download))
+    for slot in sab.downloads if sab else []:
+        if slot.key and slot.key in stuck_keys:
+            continue
+        if slot.key in by_key:
+            own = downloads[by_key[slot.key]]
+            # the client knows best how far a download has got; an arr importing it is past that
+            if own.state != "importing":
+                own.state, own.progress, own.eta = slot.state, slot.progress, slot.eta
+                own.size = slot.size or own.size
+        else:
+            downloads.append(replace(slot))
+    downloads.sort(key=lambda d: STATE_ORDER.get(d.state, 2))
+    meters = [(s.label, m) for s in services if not s.error for m in s.meters if m.live]
+    streams = plex.streams if plex else []
+    transcodes = sum(1 for s in streams if s.decision == DECISIONS["transcode"])
+    moving = Counter(d.state for d in downloads)
+    summary = [
+        f"{len(streams)} streaming" + (f", {transcodes} transcoding" if transcodes else "") if streams else "",
+        ", ".join(f"{moving[state]} {state}" for state in ("downloading", "importing") if moving[state])
+        or (f"{len(downloads)} queued" if downloads else ""),
+        *(f"{m.label.lower()} {m.percent}%" for _, m in meters),
+    ]
+    return Activity(
+        streams=streams,
+        plex_note=plex.activity_note if plex else "",
+        downloads=downloads[:ACTIVITY_DOWNLOADS],
+        more=max(0, len(downloads) - ACTIVITY_DOWNLOADS),
+        download_note=sab.activity_note if sab and downloads else "",
+        stuck=stuck,
+        meters=meters,
+        summary=" · ".join(p for p in summary if p),
+    )
 
 
 def failure(e: Exception, label: str, *secrets: str | None) -> str:

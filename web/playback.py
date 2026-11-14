@@ -132,7 +132,6 @@ def playback_from(row: Mapping[str, Any], stream: Mapping[str, Any] | None) -> d
     user_id = as_int(row.get("user_id"))
     if history_id is None or started_at is None or user_id is None or row.get("media_type") not in MEDIA_TYPES:
         return None
-    s = stream or {}
     return {
         "id": history_id,
         "started_at": started_at,
@@ -147,6 +146,14 @@ def playback_from(row: Mapping[str, Any], stream: Mapping[str, Any] | None) -> d
         "location": as_text(row.get("location"), 16),
         "transcode_decision": as_text(row.get("transcode_decision"), 32),
         "details": stream is not None,
+        **stream_columns(stream or {}),
+    }
+
+
+def stream_columns(s: Mapping[str, Any]) -> dict[str, Any]:
+    """a Playback's stream columns from get_stream_data, or from a get_activity session,
+    which names them the same"""
+    return {
         "quality_profile": as_text(s.get("quality_profile"), 64),
         "container": as_text(s.get("container"), 32),
         "stream_container": as_text(s.get("stream_container"), 32),
@@ -377,6 +384,53 @@ def file_format(p: Playback, cause: str) -> str:
     return ""
 
 
+def current(p: Playback, cause: str) -> str:
+    """what the play had that made it transcode for that cause: its quality limit, or
+    "can't play" and the file's format; empty when there's nothing to name"""
+    if cause == "quality":
+        return p.quality_profile or ""
+    if cause in FILE_CAUSES and (found := file_format(p, cause)):
+        return "can't play " + found
+    return ""
+
+
+def transcode_reason(p: Playback) -> dict[str, str] | None:
+    """why a play is transcoding and what to change, like a row of the fix list (the
+    status page's streams); None when it isn't"""
+    if not (found := causes(p)):
+        return None
+    return {"cause": CAUSES[found[0]][0], "now": current(p, found[0]), "change": CHANGES[found[0]]}
+
+
+def tracks(p: Playback) -> list[dict[str, str]]:
+    """a play's video, audio and burned subtitles: the file's, what plex sends when it
+    converts it ("sent", else empty), and the decision as DECISIONS words"""
+    found = []
+    if p.video_codec:
+        hdr = p.video_dynamic_range if _hdr(p.video_dynamic_range) else None
+        video = " ".join(v for v in (p.video_resolution, _codec(p.video_codec), hdr) if v)
+        stream_hdr = p.stream_video_dynamic_range if _hdr(p.stream_video_dynamic_range) else None
+        sent = " ".join(v for v in (p.stream_video_resolution, _codec(p.stream_video_codec), stream_hdr) if v)
+        found.append(_track("Video", video, sent, p.video_decision))
+    if p.audio_codec:
+        audio = " ".join(v for v in (_codec(p.audio_codec), _channels(p.audio_channels)) if v)
+        sent = " ".join(v for v in (_codec(p.stream_audio_codec), _channels(p.stream_audio_channels)) if v)
+        found.append(_track("Audio", audio, sent, p.audio_decision))
+    if p.subtitle_decision == "burn":
+        found.append({"kind": "Subtitles", "file": _codec(p.subtitle_codec) or "Subtitles", "sent": "burned in", "decision": "Transcode"})
+    return found
+
+
+def _track(kind: str, file: str, sent: str, decision: str | None) -> dict[str, str]:
+    converted = decision in ("transcode", "copy")
+    return {
+        "kind": kind,
+        "file": file,
+        "sent": sent if converted and sent and sent != file else "",
+        "decision": DECISIONS.get(decision or "", ""),
+    }
+
+
 def player_name(p: Playback) -> str:
     return p.product or p.platform or "Unknown player"
 
@@ -436,11 +490,7 @@ def fixes(plays: list[Playback], cause_of: CauseOf = causes) -> dict[str, Any]:
             continue
         main = Counter(cause_of(p)[0] for p in transcodes).most_common(1)[0][0]
         of_main = [p for p in transcodes if cause_of(p)[0] == main]
-        now = None
-        if main == "quality":
-            now = Counter(p.quality_profile for p in of_main).most_common(1)[0][0]
-        elif main in FILE_CAUSES and (formats := Counter(f for p in of_main if (f := file_format(p, main)))):
-            now = "can't play " + formats.most_common(1)[0][0]
+        now = Counter(n for p in of_main if (n := current(p, main))).most_common(1)
         devices.append(
             {
                 "user_id": user_id,
@@ -449,7 +499,7 @@ def fixes(plays: list[Playback], cause_of: CauseOf = causes) -> dict[str, Any]:
                 "plays": len(group),
                 "transcodes": len(transcodes),
                 "cause": CAUSES[main][0],
-                "now": now,
+                "now": now[0][0] if now else None,
                 "change": CHANGES[main],
             }
         )
