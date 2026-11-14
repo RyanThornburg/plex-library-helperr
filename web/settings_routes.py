@@ -44,11 +44,13 @@ QUEUE_STATE_LABELS = {
     "failed": ("Failed downloads", "SABnzbd reported the download failed (failed, failedPending)."),
     "import_blocked": (
         "Import blocked",
-        "Downloaded, but Radarr/Sonarr won't import it: not an upgrade, a sample, no eligible files, a title it can't match (importBlocked).",
+        "A release of several files where some won't import, such as a season pack with a bad episode (importBlocked).",
     ),
     "import_pending": (
         "Import pending",
-        "Downloaded and waiting to import. Usually clears by itself; only stuck when it stays (importPending).",
+        "Downloaded, not imported. A single file Radarr/Sonarr refused is here too: not an upgrade, a sample, "
+        "no eligible files, a title it can't match. A TBA episode title imports by itself 48 hours after airing, "
+        "so keep Sonarr's stuck time over 2 days to wait for it (importPending).",
     ),
 }
 

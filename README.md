@@ -317,7 +317,7 @@ One set for Radarr (`[radarr.queue_cleanup]`), one for Sonarr (`[sonarr.queue_cl
 | --- | --- |
 | `enabled` | Remove stuck downloads automatically (default off) |
 | `stuck_for` | How long the health check has seen a download stuck before it's removed, at least `1h` (default `6h`) |
-| `states` | Which stuck downloads to remove: `failed` (the download failed), `import_blocked` (downloaded, but it won't import), `import_pending` (still waiting to import). Default `failed` and `import_blocked` |
+| `states` | Which stuck downloads to remove: `failed` (the download failed), `import_blocked` (a release of several files where some won't import, such as a season pack with a bad episode), `import_pending` (downloaded, not imported: Radarr and Sonarr also put a single file they refused here, such as one that isn't an upgrade; a TBA episode title imports by itself 48 hours after airing, so keep Sonarr's `stuck_for` over 2 days). Default `failed` and `import_blocked` |
 | `method` | `client` removes it from the download client too, deleting the download; `ignore` only removes it from the queue (default `client`) |
 | `blocklist` | `none`, `search` (blocklist the release and search for another) or `only` (blocklist, don't search) (default `search`) |
 | `max_per_run` | Remove none when more than this are due at once. `0` means no limit (default `10`) |
