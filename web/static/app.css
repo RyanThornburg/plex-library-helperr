@@ -572,6 +572,11 @@ td.date { white-space: nowrap; font-variant-numeric: tabular-nums; }
 /* not watched yet isn't a failure: ink, not red */
 .progress-not_started { color: var(--text); }
 .progress-unavailable, .progress-unmatched { color: var(--muted); }
+/* the library page's watch state */
+.state { font-weight: 600; }
+.state-stale { color: var(--warn-text); }
+.state-recent { color: var(--ok); }
+.state-new { color: var(--muted); font-weight: 400; }
 
 @media (max-width: 700px) {
   .services { grid-template-columns: minmax(0, 1fr); }

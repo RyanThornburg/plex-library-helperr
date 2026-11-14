@@ -17,7 +17,7 @@ from tests.test_web import ORIGIN, FakeKeys, auth, live_config
 from tests.test_web import settings  # noqa: F401 (fixture)
 from web import stats
 from web.app import create_app
-from web.db import MediaRequest, Play, make_engine, migrate
+from web.db import LibraryItem, MediaRequest, Play, make_engine, migrate
 from web.jobs import utc_now
 from tautulli import TautulliRefused
 from web.stats import (
@@ -36,6 +36,8 @@ from web.stats import (
     sync,
     sync_plays,
     sync_requests,
+    Usage,
+    usage,
 )
 from web.sync import SyncError, sync_status
 
@@ -340,9 +342,10 @@ class TestFindPlays:
 
 
 class FakeSection:
-    def __init__(self, type, items, key=1, episodes=()):
+    def __init__(self, type, items, key=1, episodes=(), title="Library"):
         self.type = type
         self.key = key
+        self.title = title
         self._items = items
         self._episodes = list(episodes)
         self.pages = []
@@ -461,9 +464,54 @@ class TestSync:
 
     def test_copies_plays_before_seerr_is_connected(self, engine):
         settings = ConfigSettings(plex=PLEX, radarr=None, sonarr=None, tautulli=TAUTULLI)
-        with patch.object(stats.requests, "get", return_value=response(tautulli_body({"data": [history_row()]}))):
+        with (
+            patch.object(stats.requests, "get", return_value=response(tautulli_body({"data": [history_row()]}))),
+            patch.object(stats, "PlexServer", return_value=fake_plex(FakeSection("movie", [], title="Movies"))),
+        ):
             status = sync(engine, settings)
         assert (status.plays_read, status.error) == (1, "Needs Seerr on Settings → Connections")
+        # the library only needs tautulli and plex
+        library = sync_status(engine, stats.LIBRARY_STATUS)
+        assert (library.error, library.plays_read, library.finished_at is not None) == (None, 1, True)
+
+    def test_the_library_needs_tautulli_and_plex(self, engine):
+        sync(engine, ConfigSettings(plex=None, radarr=None, sonarr=None))
+        assert sync_status(engine, stats.LIBRARY_STATUS).error == "Needs Tautulli, Plex on Settings → Connections"
+
+    def test_requests_use_the_librarys_plex_read(self, engine):
+        settings = ConfigSettings(plex=PLEX, radarr=None, sonarr=None, tautulli=TAUTULLI, seerr=SEERR)
+        movie = plex_item("Heat", "plex://movie/a", ["tmdb://101"], ratingKey=1)
+        with (
+            patch.object(stats, "sync_plays", return_value=0),
+            patch.object(stats, "PlexServer", return_value=fake_plex(FakeSection("movie", [movie], title="Movies"))) as server,
+            patch.object(stats, "sync_requests", return_value=3) as synced,
+        ):
+            status = sync(engine, settings)
+        assert (status.error, status.requests) == (None, 3)
+        assert server.call_count == 1
+        assert isinstance(synced.call_args.args[4], PlexIndex)
+        assert sync_status(engine, stats.LIBRARY_STATUS).library_items == 1
+
+    def test_a_plays_error_is_the_librarys_too(self, engine):
+        settings = ConfigSettings(plex=PLEX, radarr=None, sonarr=None, tautulli=TAUTULLI, seerr=SEERR)
+        with patch.object(stats, "sync_plays", side_effect=TautulliRefused("Tautulli refused the API key")):
+            status = sync(engine, settings)
+        assert status.error == "Tautulli refused the API key"
+        assert sync_status(engine, stats.LIBRARY_STATUS).error == status.error
+
+    def test_a_library_error_still_syncs_requests(self, engine):
+        settings = ConfigSettings(plex=PLEX, radarr=None, sonarr=None, tautulli=TAUTULLI, seerr=SEERR)
+        error = requests.exceptions.ConnectionError("http://plex:32400/library/sections?X-Plex-Token=plex-token failed")
+        with (
+            patch.object(stats, "sync_plays", return_value=0),
+            patch.object(stats, "PlexServer", side_effect=error),
+            patch.object(stats, "sync_requests", return_value=2) as synced,
+        ):
+            status = sync(engine, settings)
+        library = sync_status(engine, stats.LIBRARY_STATUS)
+        assert "plex-token" not in library.error and "ConnectionError" in library.error
+        # without the library's read, requests read plex themselves
+        assert (status.error, status.requests, synced.call_args.args[4]) == (None, 2, None)
 
     def test_errors_are_saved_without_secrets(self, engine):
         settings = ConfigSettings(plex=PLEX, radarr=None, sonarr=None, tautulli=TAUTULLI, seerr=SEERR)
@@ -722,3 +770,111 @@ def test_settings_that_cant_load_are_the_syncs_error(engine):
     status = StatsSync(engine, broken).run_once()
     assert status.error == "The settings can't be loaded: [radarr] bad"
     assert sync_status(engine, stats.STATUS_SETTING).error == status.error
+    # the library page shows it too
+    assert sync_status(engine, stats.LIBRARY_STATUS).error == status.error
+
+
+# ---------------------------------------------------------------------------
+# the library
+# ---------------------------------------------------------------------------
+
+
+class TestUsage:
+    def test_everyones_plays(self):
+        plays = [
+            SimpleNamespace(user_id=10, username="kev", started_at=DAY),
+            SimpleNamespace(user_id=11, username="sam", started_at=DAY + timedelta(days=2)),
+            SimpleNamespace(user_id=10, username="kev", started_at=DAY + timedelta(days=1)),
+        ]
+        assert usage(plays) == Usage(3, 2, DAY + timedelta(days=2), "sam")
+
+    def test_never_played(self):
+        assert usage([]) == Usage(0, 0, None, None)
+
+
+def test_plex_times_become_utc():
+    local = datetime(2026, 10, 1, 12, 0)
+    expected = local.astimezone(timezone.utc).replace(tzinfo=None)
+    assert stats.plex_time(local) == expected
+    assert stats.plex_time(None) is None
+    ep = SimpleNamespace(parentIndex=1, index=2, guid="plex://episode/x", addedAt=local)
+    assert stats._ref(ep).added_at == expected
+
+
+class TestLibraryRows:
+    def add_plays(self, engine, *rows):
+        with Session(engine) as session:
+            for row in rows:
+                session.add(Play(**play_from_row(row)))
+            session.commit()
+
+    def rows(self, engine, *sections):
+        index = PlexIndex(fake_plex(*sections))
+        index.load_all_episodes()
+        with Session(engine) as session:
+            return stats.library_rows(session, index, DAY)
+
+    def test_a_movie_with_everyones_plays(self, engine):
+        added = datetime(2025, 1, 1)
+        heat = plex_item("Heat", "plex://movie/a", ["tmdb://101", "imdb://tt1"], ratingKey=1, addedAt=added)
+        never = plex_item("Never", "plex://movie/b", ["tmdb://102"], ratingKey=2, addedAt=added)
+        self.add_plays(
+            engine,
+            history_row(id=1, guid="plex://movie/a", user_id=10, started=DAY - timedelta(days=9)),
+            history_row(id=2, guid="com.plexapp.agents.imdb://tt1?lang=en", user_id=11, started=datetime(2020, 1, 1)),
+            # a partial play counts
+            history_row(id=3, guid="plex://movie/a", user_id=10, watched_status=0, started=DAY - timedelta(days=5)),
+        )
+        rows = {r["title"]: r for r in self.rows(engine, FakeSection("movie", [heat, never], title="Movies"))}
+        r = rows["Heat"]
+        assert (r["kind"], r["library"], r["tmdb_id"], r["tvdb_id"], r["episodes"]) == ("movie", "Movies", 101, None, None)
+        assert (r["plays"], r["viewers"], r["last_played_at"], r["last_viewer"]) == (3, 2, DAY - timedelta(days=5), "user10")
+        assert r["added_at"] == stats.plex_time(added)
+        assert (rows["Never"]["plays"], rows["Never"]["last_played_at"]) == (0, None)
+
+    def test_a_show_and_its_seasons(self, engine):
+        ep = {"media_type": "episode"}
+        s1, s2 = datetime(2024, 1, 1), datetime(2025, 6, 1)
+        survivor = plex_item("Survivor", "plex://show/s", ["tvdb://202", "tmdb://303"], ratingKey=5, leafCount=3, addedAt=s1)
+        episodes = [
+            SimpleNamespace(grandparentRatingKey=5, parentIndex=1, index=1, guid="plex://episode/1-1", addedAt=s1),
+            SimpleNamespace(grandparentRatingKey=5, parentIndex=1, index=2, guid="plex://episode/1-2", addedAt=s1 + timedelta(days=7)),
+            SimpleNamespace(grandparentRatingKey=5, parentIndex=2, index=1, guid="plex://episode/2-1", addedAt=s2),
+        ]
+        self.add_plays(
+            engine,
+            # moved from another library: another rating key, same episode guid
+            history_row(id=1, guid="plex://episode/1-1", grandparent_rating_key=99, parent_media_index=1, media_index=1, user_id=10, **ep),
+            # an episode plex no longer has, by the show's rating key
+            history_row(id=2, guid="plex://episode/gone", grandparent_rating_key=5, parent_media_index=1, media_index=9, user_id=11, **ep),
+            # before plex's new agents
+            history_row(id=3, guid="com.plexapp.agents.thetvdb://202/1/2?lang=en", grandparent_rating_key=40, parent_media_index=1, media_index=2, user_id=10, started=datetime(2021, 1, 1), **ep),
+            # another show
+            history_row(id=4, guid="plex://episode/x", grandparent_rating_key=6, parent_media_index=2, media_index=1, **ep),
+        )
+        section = FakeSection("show", [survivor], episodes=episodes, title="TV")
+        rows = self.rows(engine, section)
+        assert [(r["kind"], r["season"], r["episodes"], r["plays"], r["viewers"]) for r in rows] == [
+            ("show", None, 3, 3, 2),
+            ("season", 1, 2, 3, 2),
+            ("season", 2, 1, 0, 0),
+        ]
+        show, first, second = rows
+        assert (show["tvdb_id"], show["tmdb_id"], show["rating_key"]) == (202, 303, 5)
+        assert show["added_at"] == stats.plex_time(s1)
+        # a season was added when its first episode was
+        assert (first["added_at"], second["added_at"]) == (stats.plex_time(s1), stats.plex_time(s2))
+        # every show was read with the library's episode list, none one at a time
+        assert section.pages == [0]
+
+    def test_sync_library_rewrites_the_table(self, engine):
+        movie = plex_item("Heat", "plex://movie/a", ["tmdb://101"], ratingKey=1)
+        show = plex_item("Survivor", "plex://show/s", ["tvdb://202"], ratingKey=5, leafCount=1)
+        episodes = [SimpleNamespace(grandparentRatingKey=5, parentIndex=1, index=1, guid="plex://episode/1-1")]
+        for _ in range(2):
+            index = PlexIndex(fake_plex(FakeSection("movie", [movie]), FakeSection("show", [show], key=2, episodes=episodes)))
+            index.load_all_episodes()
+            assert stats.sync_library(engine, index) == 2
+        with Session(engine) as session:
+            kinds = sorted(i.kind for i in session.scalars(select(LibraryItem)))
+        assert kinds == ["movie", "season", "show"]

@@ -51,6 +51,8 @@ class SyncStatus:
     error: str | None = None
     plays_read: int = 0
     requests: int = 0
+    # movies and shows, for the library sync
+    library_items: int = 0
 
     def to_json(self) -> str:
         return json.dumps(
@@ -60,6 +62,7 @@ class SyncStatus:
                 "error": self.error,
                 "plays_read": self.plays_read,
                 "requests": self.requests,
+                "library_items": self.library_items,
             }
         )
 
@@ -77,6 +80,7 @@ def sync_status(engine: Engine, key: str) -> SyncStatus:
             error=data.get("error"),
             plays_read=data.get("plays_read") or 0,
             requests=data.get("requests") or 0,
+            library_items=data.get("library_items") or 0,
         )
     except ValueError, AttributeError:
         return SyncStatus()
@@ -101,6 +105,14 @@ class BackgroundSync:
     interval: timedelta
     status_key: str
     thread_name: str
+    # other statuses sync() saves, which get the same error when it can't run
+    other_status_keys: tuple[str, ...] = ()
+
+    def _save_failure(self, error: str) -> SyncStatus:
+        now = utc_now()
+        for key in (self.status_key, *self.other_status_keys):
+            save_status(self.engine, SyncStatus(now, now, error), key)
+        return SyncStatus(now, now, redacted(error))
 
     def __init__(self, engine: Engine, load_config: Callable[[], ConfigSettings]):
         self.engine = engine
@@ -127,10 +139,7 @@ class BackgroundSync:
             try:
                 settings = self.load_config()
             except Exception as e:
-                now = utc_now()
-                status = SyncStatus(now, now, f"The settings can't be loaded: {e}")
-                save_status(self.engine, status, self.status_key)
-                return status
+                return self._save_failure(f"The settings can't be loaded: {e}")
             return self.sync(settings)
         finally:
             self.running = False
@@ -148,8 +157,7 @@ class BackgroundSync:
                 # pages showing the last good sync as current
                 logger.exception("WEB\t %s failed", self.thread_name)
                 try:
-                    now = utc_now()
-                    save_status(self.engine, SyncStatus(now, now, f"{type(e).__name__}: {e}"), self.status_key)
+                    self._save_failure(f"{type(e).__name__}: {e}")
                 except Exception:
                     logger.exception("WEB\t %s couldn't save its status", self.thread_name)
             self._wake.wait(self.interval.total_seconds())

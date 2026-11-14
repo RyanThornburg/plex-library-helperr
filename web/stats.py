@@ -7,7 +7,8 @@ long first sync never holds up movers. It only reads from the services"""
 
 import logging
 from collections import defaultdict
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -21,7 +22,7 @@ from sqlalchemy.orm import Session
 from config.models import ConfigSettings, PlexConfig, SeerrConfig, TautulliConfig
 from movie_remover import PlayLookup, RadarrMovie
 from tautulli import HISTORY_PAGE, PLAYS_OVERLAP, TautulliRefused, from_timestamp, history_rows, tautulli_after, tautulli_get
-from web.db import MediaRequest, Play
+from web.db import LibraryItem, MediaRequest, Play
 from web.jobs import utc_now
 from web.lookups import redact
 from web.seerr import SeerrRefused, seerr_get
@@ -35,6 +36,7 @@ SEERR_PAGE = 100
 # rows per insert, under sqlite's limit on variables
 BATCH = 500
 STATUS_SETTING = "stats_sync"
+LIBRARY_STATUS = "library_sync"
 
 REQUEST_STATUS = {1: "pending", 2: "approved", 3: "declined", 4: "failed", 5: "completed"}
 MEDIA_STATUS = {
@@ -275,18 +277,26 @@ SHOW_PAGE = 100
 SECTION_PAGE = 1000
 
 
+def plex_time(value: object) -> datetime | None:
+    """a plexapi time (the container's local time, naive) as naive utc"""
+    if not isinstance(value, datetime):
+        return None
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 @dataclass(frozen=True)
 class EpisodeRef:
-    """what wanted() reads of an episode, kept instead of plexapi's objects (which hold
-    their page's xml): a sync can read every episode of a library"""
+    """what wanted() and the library read of an episode, kept instead of plexapi's objects
+    (which hold their page's xml): a sync can read every episode of a library"""
 
     parentIndex: int | None
     index: int | None
     guid: str | None
+    added_at: datetime | None = None
 
 
 def _ref(episode: Any) -> EpisodeRef:
-    return EpisodeRef(episode.parentIndex, episode.index, episode.guid)
+    return EpisodeRef(episode.parentIndex, episode.index, episode.guid, plex_time(getattr(episode, "addedAt", None)))
 
 
 class PlexIndex:
@@ -294,6 +304,8 @@ class PlexIndex:
 
     def __init__(self, plex: Any, types: tuple[str, ...] = ("movie", "show")):
         self.by_guid: dict[tuple[str, str], list[Any]] = defaultdict(list)
+        # every library read, with its items, for the library page
+        self.sections: list[tuple[Any, list[Any]]] = []
         # show sections, and each show's section and episode count, to choose how
         # load_episodes() reads them
         self._sections: dict[Any, Any] = {}
@@ -302,7 +314,9 @@ class PlexIndex:
         for section in plex.library.sections():
             if section.type not in types:
                 continue
-            for item in section.search(includeGuids=True):
+            items = list(section.search(includeGuids=True))
+            self.sections.append((section, items))
+            for item in items:
                 for guid in item.guids:
                     self.by_guid[(section.type, guid.id)].append(item)
                 if section.type == "show":
@@ -340,6 +354,11 @@ class PlexIndex:
             whole = -(-max(sum(self._leaves[k] for k in in_section), 1) // SECTION_PAGE)
             if whole < own:
                 self._read_section(self._sections[key], in_section)
+
+    def load_all_episodes(self) -> None:
+        """every show's episodes, a library a page at a time"""
+        for key, section in self._sections.items():
+            self._read_section(section, [k for k, s in self._show_section.items() if s == key])
 
     def _read_section(self, section: Any, show_keys: list[Any]) -> None:
         found: dict[Any, list[EpisodeRef]] = {k: [] for k in show_keys}
@@ -486,16 +505,22 @@ class Summary:
     other_viewers: int
 
 
-def find_plays(session: Session, want: Wanted) -> list[PlayFact]:
-    """the plays of a request: by guid, and a show's by rating key or legacy tvdb guid too,
-    only of the seasons that count"""
-    columns = (Play.id, Play.guid, Play.user_id, Play.watched, Play.started_at, Play.season, Play.episode)
+def play_rows(
+    session: Session,
+    columns: Iterable[Any],
+    guids: Iterable[str],
+    show_keys: Iterable[int] = (),
+    tvdb_ids: Iterable[str] = (),
+) -> list[Any]:
+    """plays by guid, and a show's by its rating keys or legacy tvdb guids too (episodes
+    plex no longer has, or that moved library), each once"""
+    columns = (Play.id, *columns)
     conditions = []
-    guids = sorted(want.guids)
+    guids = sorted(guids)
     conditions += [Play.guid.in_(guids[i : i + BATCH]) for i in range(0, len(guids), BATCH)]
-    if want.show_keys:
-        conditions.append(Play.grandparent_rating_key.in_(sorted(want.show_keys)))
-    for tvdb_id in sorted(want.tvdb_ids):
+    if show_keys := sorted(show_keys):
+        conditions.append(Play.grandparent_rating_key.in_(show_keys))
+    for tvdb_id in sorted(tvdb_ids):
         # a prefix as a range, so it uses the guid index (LIKE wouldn't)
         prefix = f"{LEGACY_AGENT}thetvdb://{tvdb_id}/"
         conditions.append(Play.guid.between(prefix, prefix + "\uffff"))
@@ -503,8 +528,15 @@ def find_plays(session: Session, want: Wanted) -> list[PlayFact]:
     for condition in conditions:
         for row in session.execute(select(*columns).where(condition)):
             rows[row.id] = row
+    return list(rows.values())
+
+
+def find_plays(session: Session, want: Wanted) -> list[PlayFact]:
+    """the plays of a request: by guid, and a show's by rating key or legacy tvdb guid too,
+    only of the seasons that count"""
+    columns = (Play.guid, Play.user_id, Play.watched, Play.started_at, Play.season, Play.episode)
     plays = []
-    for row in rows.values():
+    for row in play_rows(session, columns, want.guids, want.show_keys, want.tvdb_ids):
         if want.media_type == "movie":
             key: Any = "movie"
         elif row.season is not None and row.episode is not None:
@@ -559,12 +591,18 @@ def _seerr_title(config: SeerrConfig, request: ParsedRequest) -> tuple[str, int 
 
 
 def sync_requests(
-    engine: Engine, seerr: SeerrConfig, tautulli: TautulliConfig, plex: PlexConfig
+    engine: Engine,
+    seerr: SeerrConfig,
+    tautulli: TautulliConfig,
+    plex: PlexConfig,
+    index: PlexIndex | None = None,
 ) -> int:
-    """rewrite media_requests from seerr, plex and the copied plays. Returns the count"""
+    """rewrite media_requests from seerr, plex (index, when the library sync read it
+    already) and the copied plays. Returns the count"""
     raw = seerr_requests(seerr)
     users = _tautulli(tautulli, "get_users")
-    index = PlexIndex(PlexServer(plex.baseurl, plex.token, timeout=TIMEOUT))
+    if index is None:
+        index = PlexIndex(PlexServer(plex.baseurl, plex.token, timeout=TIMEOUT))
     with Session(engine) as session:
         known = {r.id: (r.title, r.year) for r in session.scalars(select(MediaRequest))}
 
@@ -630,11 +668,96 @@ def sync_requests(
 
 
 # ---------------------------------------------------------------------------
+# the library: everyone's plays of every movie, show and season plex has
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Usage:
+    plays: int
+    viewers: int
+    last_played_at: datetime | None
+    last_viewer: str | None
+
+
+def usage(plays: Iterable[Any]) -> Usage:
+    """how often anyone played something, from plays with user_id, username and started_at"""
+    plays = list(plays)
+    last = max(plays, key=lambda p: p.started_at, default=None)
+    return Usage(
+        plays=len(plays),
+        viewers=len({p.user_id for p in plays}),
+        last_played_at=last.started_at if last else None,
+        last_viewer=last.username if last else None,
+    )
+
+
+def _first_id(item: Any, scheme: str) -> int | None:
+    return next((n for v in _external_ids(item, scheme) if (n := as_int(v)) is not None), None)
+
+
+def library_rows(session: Session, index: PlexIndex, now: datetime) -> list[dict[str, Any]]:
+    """a row per movie, show and season of every library the index read. Plays are found
+    like a request's: by plex guid and legacy agent guids, and a show's by its rating key
+    too, so plays of episodes since removed or moved still count"""
+    columns = (Play.user_id, Play.username, Play.started_at, Play.season)
+    rows: list[dict[str, Any]] = []
+    for section, items in index.sections:
+        for item in items:
+            base = {
+                "rating_key": int(item.ratingKey),
+                "library": str(section.title)[:255],
+                "title": str(item.title)[:500],
+                "year": as_int(getattr(item, "year", None)),
+                "tmdb_id": _first_id(item, "tmdb"),
+                "tvdb_id": _first_id(item, "tvdb"),
+                "synced_at": now,
+            }
+            if section.type == "movie":
+                plays = play_rows(session, columns, movie_guids([item], None, None))
+                rows.append(
+                    {**base, "kind": "movie", "season": None, "episodes": None,
+                     "added_at": plex_time(getattr(item, "addedAt", None)), **usage(plays).__dict__}
+                )
+                continue
+            episodes = index.episodes(item)
+            plays = play_rows(
+                session, columns, {e.guid for e in episodes if e.guid}, {int(item.ratingKey)}, _external_ids(item, "tvdb")
+            )
+            rows.append(
+                {**base, "kind": "show", "season": None, "episodes": len(episodes),
+                 "added_at": plex_time(getattr(item, "addedAt", None)), **usage(plays).__dict__}
+            )
+            for number in sorted({e.parentIndex for e in episodes if e.parentIndex is not None}):
+                in_season = [e for e in episodes if e.parentIndex == number]
+                added = [e.added_at for e in in_season if e.added_at]
+                rows.append(
+                    {**base, "kind": "season", "season": number, "episodes": len(in_season),
+                     "added_at": min(added) if added else None,
+                     **usage(p for p in plays if p.season == number).__dict__}
+                )
+    return rows
+
+
+def sync_library(engine: Engine, index: PlexIndex) -> int:
+    """rewrite library_items from plex (every show's episodes read) and the copied plays.
+    Returns the movies and shows"""
+    with Session(engine) as session:
+        rows = library_rows(session, index, utc_now())
+        session.execute(delete(LibraryItem))
+        for start in range(0, len(rows), BATCH):
+            session.execute(insert(LibraryItem), rows[start : start + BATCH])
+        session.commit()
+    return sum(1 for r in rows if r["kind"] != "season")
+
+
+# ---------------------------------------------------------------------------
 # status and the sync thread
 # ---------------------------------------------------------------------------
 
 
 def missing_connections(settings: ConfigSettings) -> list[str]:
+    """what the requests sync needs"""
     return [
         name
         for name, value in (("Seerr", settings.seerr), ("Tautulli", settings.tautulli), ("Plex", settings.plex))
@@ -642,26 +765,16 @@ def missing_connections(settings: ConfigSettings) -> list[str]:
     ]
 
 
-def sync(engine: Engine, settings: ConfigSettings) -> SyncStatus:
-    """one sync, its status saved. Never raises: the error is in the status"""
-    status = SyncStatus(started_at=utc_now())
-    secrets = [
-        settings.seerr.apikey if settings.seerr else None,
-        settings.tautulli.apikey if settings.tautulli else None,
-        settings.plex.token if settings.plex else None,
-    ]
+def library_missing(settings: ConfigSettings) -> list[str]:
+    """what the library sync needs"""
+    return [name for name, value in (("Tautulli", settings.tautulli), ("Plex", settings.plex)) if value is None]
+
+
+@contextmanager
+def _recorded(status: SyncStatus, secrets: list[str | None]) -> Iterator[None]:
+    """a step of the sync whose error goes in status"""
     try:
-        # plays first, so the slow first copy can be done before seerr is connected
-        if settings.tautulli is not None:
-            status.plays_read = sync_plays(engine, settings.tautulli)
-        if missing := missing_connections(settings):
-            raise SyncError(f"Needs {', '.join(missing)} on Settings → Connections")
-        status.requests = sync_requests(
-            engine, settings.seerr, settings.tautulli, settings.plex  # type: ignore[arg-type]
-        )
-        logger.info(
-            "STATS\t Synced %s plays and %s requests", status.plays_read, status.requests
-        )
+        yield
     except (SyncError, TautulliRefused, SeerrRefused) as e:
         status.error = str(e)
         logger.info("STATS\t Not synced: %s", e)
@@ -669,16 +782,59 @@ def sync(engine: Engine, settings: ConfigSettings) -> SyncStatus:
         # requests errors hold urls, and tautulli's key is a query param
         status.error = redact(f"{type(e).__name__}: {e}", *secrets)
         logger.error("STATS\t Sync failed: %s", status.error)
-    status.finished_at = utc_now()
+
+
+def sync(engine: Engine, settings: ConfigSettings) -> SyncStatus:
+    """one sync: plays, then the library (Tautulli and Plex), then requests (Seerr too),
+    each status saved. Never raises: the errors are in the statuses. Returns the requests'"""
+    status = SyncStatus(started_at=utc_now())
+    library = SyncStatus(started_at=status.started_at)
+    secrets = [
+        settings.seerr.apikey if settings.seerr else None,
+        settings.tautulli.apikey if settings.tautulli else None,
+        settings.plex.token if settings.plex else None,
+    ]
+    index: PlexIndex | None = None
+    with _recorded(status, secrets):
+        # plays first, so the slow first copy can be done before seerr is connected
+        if settings.tautulli is not None:
+            status.plays_read = sync_plays(engine, settings.tautulli)
+    library.plays_read = status.plays_read
+    if status.error:
+        library.error = status.error
+    else:
+        with _recorded(library, secrets):
+            if missing := library_missing(settings):
+                raise SyncError(f"Needs {', '.join(missing)} on Settings → Connections")
+            plex = settings.plex
+            built = PlexIndex(PlexServer(plex.baseurl, plex.token, timeout=TIMEOUT))  # type: ignore[union-attr]
+            built.load_all_episodes()
+            library.library_items = sync_library(engine, built)
+            index = built
+        with _recorded(status, secrets):
+            if missing := missing_connections(settings):
+                raise SyncError(f"Needs {', '.join(missing)} on Settings → Connections")
+            status.requests = sync_requests(
+                engine, settings.seerr, settings.tautulli, settings.plex, index  # type: ignore[arg-type]
+            )
+    if not status.error and not library.error:
+        logger.info(
+            "STATS\t Synced %s plays, %s movies and shows and %s requests",
+            status.plays_read, library.library_items, status.requests,
+        )
+    library.finished_at = status.finished_at = utc_now()
+    save_status(engine, library, LIBRARY_STATUS)
     save_status(engine, status, STATUS_SETTING)
     return status
 
 
 class StatsSync(BackgroundSync):
-    """the requests sync: Tautulli's plays and Seerr's requests, every SYNC_INTERVAL"""
+    """the stats sync: Tautulli's plays, the library and Seerr's requests, every
+    SYNC_INTERVAL"""
 
     interval = SYNC_INTERVAL
     status_key = STATUS_SETTING
+    other_status_keys = (LIBRARY_STATUS,)
     thread_name = "stats-sync"
 
     def sync(self, settings: ConfigSettings) -> SyncStatus:

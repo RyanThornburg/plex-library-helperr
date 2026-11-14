@@ -226,6 +226,38 @@ class MediaRequest(Base):
     synced_at: Mapped[datetime]
 
 
+class LibraryItem(Base):
+    """a movie, show or season in plex with everyone's plays of it, for the library page.
+    Rewritten by every web.stats sync"""
+
+    __tablename__ = "library_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # movie, show or season
+    kind: Mapped[str] = mapped_column(String(8), index=True)
+    # plex's rating key of the movie or show (a season's show)
+    rating_key: Mapped[int]
+    # a season's number, None for a movie or show
+    season: Mapped[int | None]
+    # the plex library's name
+    library: Mapped[str] = mapped_column(String(255))
+    title: Mapped[str] = mapped_column(String(500))
+    year: Mapped[int | None]
+    # for matching seerr requests
+    tmdb_id: Mapped[int | None]
+    tvdb_id: Mapped[int | None]
+    # plex's addedAt; a season's is its first episode's
+    added_at: Mapped[datetime | None]
+    # episodes plex has of a show or season, None for a movie
+    episodes: Mapped[int | None]
+    # everyone's plays, including episodes plex no longer has
+    plays: Mapped[int]
+    viewers: Mapped[int]
+    last_played_at: Mapped[datetime | None]
+    last_viewer: Mapped[str | None] = mapped_column(String(255))
+    synced_at: Mapped[datetime]
+
+
 
 class Playback(Base):
     """a play from the last few weeks of Tautulli's history with how plex streamed it

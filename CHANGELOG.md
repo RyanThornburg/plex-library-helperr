@@ -2,6 +2,12 @@
 
 What changed in each release. Versions are `MAJOR.MINOR.PATCH`: the major number goes up when upgrading needs you to do something (a new required setting, a removed feature, a change that breaks the API), the minor number for new features, the patch number for fixes.
 
+## Unreleased
+
+### New
+
+- Library: every movie, show and season in Plex with everyone's plays of it, to find what nobody watches. Shows what's never been watched since it was added and what hasn't been watched in a while (180 days by default, any number you like), with filters for library, type and requester, TV per show or per season, counts per requester and per library, sorting by longest idle, title, added, last played, plays or requester, and a CSV download. Plays count from Tautulli's whole history, including episodes Plex no longer has and shows moved to another library. It's synced every hour with Requests and only needs Tautulli and Plex. `GET /api/library` returns the same list. It replaces the separate plex-library-watch-history script.
+
 ## 2.2.0 (2026-11-13)
 
 ### New

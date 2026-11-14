@@ -20,6 +20,7 @@ from web.config_store import ConfigStore
 from web.db import make_engine, migrate
 from web.jobs import JobRunner, LoadConfig, RunJob
 from web.login import LoginThrottle, announce_setup_token
+from web.library_routes import router as library_router
 from web.login_routes import router as login_router
 from web.health import HealthMonitor
 from web.logs_routes import router as logs_router
@@ -158,6 +159,7 @@ def create_app(
     app.include_router(rule_router)
     app.include_router(webhook_router)
     app.include_router(stats_router)
+    app.include_router(library_router)
     app.include_router(status_router)
     app.include_router(playback_router)
     app.include_router(logs_router)

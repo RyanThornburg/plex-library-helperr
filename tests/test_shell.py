@@ -37,6 +37,8 @@ def section(shell, key):
         ("/settings/sonarr/profilers/new", "movers"),
         ("/movers", "movers"),
         ("/settings", "settings"),
+        ("/library", "library"),
+        ("/library/export.csv", "library"),
         ("/requests", "requests"),
         ("/playback", "playback"),
         ("/statusx", None),

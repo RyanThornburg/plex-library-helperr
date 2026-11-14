@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Library · Helperr{% endblock %}
+{% block head %}{% if syncing %}<meta http-equiv="refresh" content="5">{% endif %}{% endblock %}
+{% block toolbar %}
+<div class="group">{{ ui.tool_post("refresh", "Syncing…" if syncing else "Sync now", "/library/sync", disabled=syncing or missing) }}</div>
+<div class="group">{{ ui.tool("download", "Download CSV", "/library/export.csv?" ~ (filters.query() | urlencode)) }}</div>
+{% endblock %}
+{% block content %}
+<h1>Library</h1>
+<p class="muted">Every movie and show in Plex with everyone's plays of it, from Tautulli, to find what nobody watches. Requesters come from Seerr. Synced every hour with Requests.
+{% if status.finished_at and not status.error %}Last sync {{ status.finished_at | localtime }}: {{ status.library_items }} movies and shows.{% endif %}</p>
+{% if syncing %}<p class="banner">Syncing. The first sync copies all of Tautulli's history and reads every episode in Plex, so it takes a few minutes; this page refreshes until it's done.</p>{% endif %}
+{% if missing %}<p class="banner banner-warn">Connect {{ missing | join(" and ") }} on <a href="/settings/connections">Settings → Connections</a> to see what's watched in your library here.</p>{% endif %}
+{% if status.error %}<p class="banner banner-bad">{{ status.error }}</p>{% endif %}
+
+<form method="get" action="/library" class="filters">
+  <label>Show
+    <select name="watch">
+      {% for key, label in WATCH.items() %}<option value="{{ key }}"{% if filters.watch == key %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>For
+    <span class="with-unit"><input name="days" type="number" min="0" value="{{ filters.days }}" class="input-days"> days</span>
+  </label>
+  <label>Library
+    <select name="library">
+      <option value="">Any</option>
+      {% for name in libraries %}<option value="{{ name }}"{% if filters.library == name %} selected{% endif %}>{{ name }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Type
+    <select name="type">
+      <option value="">Any</option>
+      {% for key, label in TYPES.items() %}<option value="{{ key }}"{% if filters.type == key %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Requester
+    <select name="requester">
+      <option value="">Anyone or no one</option>
+      <option value="{{ NO_REQUESTER }}"{% if filters.requester == NO_REQUESTER %} selected{% endif %}>No request</option>
+      {% for id, name in requesters %}<option value="{{ id }}"{% if filters.requester == id | string %} selected{% endif %}>{{ name }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Sort
+    <select name="sort">
+      {% for key, label in SORTS.items() %}<option value="{{ key }}"{% if filters.sort == key %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="check filter-check"><input type="checkbox" name="reverse" value="1"{% if filters.reverse %} checked{% endif %}> Reverse</label>
+  <label class="check filter-check"><input type="checkbox" name="seasons" value="1"{% if filters.seasons %} checked{% endif %}> TV by season</label>
+  <div class="actions">
+    <button type="submit">Filter</button>
+    {% if filters.filtered %}<a class="button button-secondary" href="/library">Clear</a>{% endif %}
+  </div>
+</form>
+
+{% if scoped %}
+<details class="muted column-notes">
+  <summary>Never watched: nobody has played it and it's been in Plex {{ filters.days }} days or more. Stale: played, but not in the last {{ filters.days }} days.</summary>
+  <p>Plays are anyone's, partial ones too, including episodes Plex no longer has. A season was added when its first episode was. A requester is whoever asked for it in Seerr (declined requests left out); a season's is whoever asked for that season, else for the show.</p>
+</details>
+<h2>By requester</h2>
+<table class="stack" data-sortable>
+  <thead><tr><th>Requester</th><th>Never watched</th><th>Stale</th><th>Items</th></tr></thead>
+  <tbody>
+    {% for g in by_requester %}
+    <tr>
+      <td class="long first lead"><a href="/library?{{ filters.query(requester=g.key, watch='all') | urlencode }}">{{ g.name }}</a></td>
+      <td data-label="Never watched"><a href="/library?{{ filters.query(requester=g.key, watch='never') | urlencode }}">{{ g.never }}</a></td>
+      <td data-label="Stale"><a href="/library?{{ filters.query(requester=g.key, watch='stale') | urlencode }}">{{ g.stale }}</a></td>
+      <td data-label="Items">{{ g['items'] }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2>By library</h2>
+<table class="stack" data-sortable>
+  <thead><tr><th>Library</th><th>Never watched</th><th>Stale</th><th>Items</th></tr></thead>
+  <tbody>
+    {% for g in by_library %}
+    <tr>
+      <td class="long first lead"><a href="/library?{{ filters.query(library=g.key, watch='all') | urlencode }}">{{ g.name }}</a></td>
+      <td data-label="Never watched"><a href="/library?{{ filters.query(library=g.key, watch='never') | urlencode }}">{{ g.never }}</a></td>
+      <td data-label="Stale"><a href="/library?{{ filters.query(library=g.key, watch='stale') | urlencode }}">{{ g.stale }}</a></td>
+      <td data-label="Items">{{ g['items'] }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<h2>{{ WATCH[filters.watch] }}</h2>
+{% if not scoped %}
+<p class="empty">{% if status.finished_at %}Nothing in Plex matches.{% else %}Nothing synced yet.{% if not missing %} The first sync starts with the app; Sync now reads Plex again.{% endif %}{% endif %}</p>
+{% elif not rows %}
+<p class="empty">Nothing matches.</p>
+{% else %}
+<p class="muted">{{ rows | length }} of {{ scoped }}{% if limit and rows | length > limit %}, the first {{ limit }} shown. <a href="/library?{{ filters.query() | urlencode }}&amp;all=1">Show all {{ rows | length }}</a>{% endif %}.</p>
+<table class="stack">
+  <thead>
+    <tr><th>Title</th><th>Requested by</th><th>Added</th><th>Last played</th><th>Plays</th></tr>
+  </thead>
+  <tbody>
+    {% for row in (rows[:limit] if limit else rows) %}
+    {% set i = row.item %}
+    <tr>
+      <td class="long first lead">
+        {{ row.label }}
+        <br><span class="muted">{{ i.library }}{% if i.episodes is not none %}, {{ i.episodes }} episode{{ "s" if i.episodes != 1 }}{% endif %} · <span class="state state-{{ row.state }}">{{ STATES[row.state] }}</span></span>
+      </td>
+      <td class="long" data-label="Requested by">{{ row.requesters | map(attribute=1) | join(", ") or "-" }}</td>
+      <td class="date" data-label="Added">{% if i.added_at %}{{ i.added_at | localdate }}<br><span class="muted">{{ days_since(i.added_at, now) }} days</span>{% else %}-{% endif %}</td>
+      <td class="date" data-label="Last played">{% if i.last_played_at %}{{ i.last_played_at | localdate }}<br><span class="muted">{{ days_since(i.last_played_at, now) }} days{% if i.last_viewer %}, {{ i.last_viewer }}{% endif %}</span>{% else %}Never{% endif %}</td>
+      <td data-label="Plays">{% if i.plays %}{{ i.plays }}<br><span class="muted">{{ i.viewers }} {{ "people" if i.viewers != 1 else "person" }}</span>{% else %}-{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% if limit and rows | length > limit %}<p class="table-actions"><a href="/library?{{ filters.query() | urlencode }}&amp;all=1">Show all {{ rows | length }}</a></p>{% endif %}
+{% endif %}
+{% endblock %}

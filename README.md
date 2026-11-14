@@ -46,12 +46,13 @@ All of the data in these is made up.
 - **Removers:** each run plans what it would delete. You review the plan, tick what to remove, and confirm. Once you trust a rule you can turn on auto-approve for it.
 - **Duplicate versions:** finds movies and episodes with more than one version in Plex, for example when Radarr or Sonarr re-downloaded files from a disk that dropped out and the old copies came back. It plans deleting every version that isn't the file Radarr/Sonarr tracks, for you to review the same way as removers. It skips anything it can't be sure of: a file added in the last few days, a download in progress, a version much longer or shorter than the tracked one (it may be another episode or cut), or a file holding several episodes. Deleting goes through Plex, which needs Settings > Library > Allow media deletion turned on.
 - **Webhooks:** point Radarr's and Sonarr's webhook at the app and movers run as soon as something is added, before it downloads. File upgrades queue a trash empty a little later.
+- **Library:** every movie, show and season in Plex with everyone's plays of it, to find what nobody watches: never watched since it was added, or not watched in a while (180 days unless you pick another number). Filter by library, type and requester, show TV a row per season, see counts per requester and per library, and download the list as CSV. Uses Tautulli's history, Plex, and Seerr for who asked for what.
 - **Requests:** every Seerr request, who made it, when it reached Plex and how much of it they watched. Uses Tautulli's history.
 - **Playback:** how each play was streamed and why it transcoded (quality setting, audio format, subtitles, HDR and so on), grouped by person and device with what to change.
 - **Sign-in:** a username and password, or Cloudflare Access if you already use it. Every page needs it.
 - **Settings:** everything is set up in the app, including connections (with a Test button) and rules (with a Preview button that shows what a rule would match before you save it). Every save is kept as a version you can compare and restore.
 - **Events and logs:** the app's log, viewable and downloadable from the app.
-- **JSON API:** most pages have a matching `/api/...` endpoint (runs, schedules, config, status, requests, playback). It needs the same sign-in as the pages.
+- **JSON API:** most pages have a matching `/api/...` endpoint (runs, schedules, config, status, library, requests, playback). It needs the same sign-in as the pages.
 
 ## Upgrading from version 1
 
