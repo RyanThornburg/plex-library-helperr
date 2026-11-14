@@ -1,4 +1,4 @@
-"""webhooks.py - radarr/sonarr webhooks, authenticated with the app's api key"""
+"""webhooks.py - radarr/sonarr and kometa webhooks, authenticated with the app's api key"""
 
 import base64
 import binascii
@@ -15,6 +15,7 @@ from starlette.concurrency import run_in_threadpool
 from sqlalchemy import Engine, delete
 from sqlalchemy.orm import Session
 
+from web import kometa
 from web.db import AppSetting, TrashEvent
 from web.jobs import JobRunner, utc_now
 
@@ -33,7 +34,8 @@ IMPORT_EVENT = "Download"
 
 def api_key(engine: Engine) -> str:
     """the app's api key, generated the first time. Like the *arrs it's stored and shown
-    as is: it only lets radarr/sonarr start movers, and it's sent with every webhook"""
+    as is: it only lets radarr/sonarr start movers and kometa report its runs, and it's
+    sent with every webhook"""
     with Session(engine) as session:
         setting = session.get(AppSetting, API_KEY_SETTING)
         if setting is None:
@@ -59,8 +61,9 @@ def regenerate_api_key(engine: Engine, requested_by: str | None) -> str:
 
 def presented_key(request: Request) -> str | None:
     """the key from the X-Api-Key header (radarr/sonarr's webhook headers), or the
-    password of basic auth for versions without headers. Never from the url, which ends
-    up in logs"""
+    password of basic auth for versions without headers and for kometa (whose requests
+    turns a url's user:password@ into basic auth). Never from the url's path or query,
+    which end up in logs"""
     if key := request.headers.get("x-api-key"):
         return key
     scheme, _, value = request.headers.get("authorization", "").partition(" ")
@@ -161,3 +164,20 @@ def handle(request: Request, payload: dict[str, Any]) -> JSONResponse:
     logger.info("WEB\t Webhook %s from %s", event, source)
     run_id = runner.submit_soon("movers", "webhook", source)
     return JSONResponse({"event": event, "queued": run_id})
+
+
+@router.post("/webhooks/kometa")
+async def kometa_webhook(request: Request) -> JSONResponse:
+    """kometa's config.yml webhooks (error, run_start, run_end, version): its runs, for the
+    Status page. Kometa can't send headers, so the key is the url's password. Other events
+    (changes, delete) are accepted and ignored"""
+    check_key(request)
+    payload = await json_body(request)
+    event = str(payload.get("event", ""))[:32]
+    said = await run_in_threadpool(kometa.record, request.app.state.engine, payload, utc_now())
+    if said is None:
+        logger.info("WEB\t Kometa webhook %r, nothing to do", event or "unknown")
+    else:
+        # one line whatever kometa's text holds, so it can't fake another log line
+        logger.info("WEB\t %s", " ".join(said.split()))
+    return JSONResponse({"event": event, "recorded": said is not None})

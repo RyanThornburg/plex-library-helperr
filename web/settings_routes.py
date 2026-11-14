@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 import config
 from config.models import QueueCleanup, WebDefaults
+from web import kometa
 from web.db import ConfigVersion
 from web.lookups import (
     LookupFailed,
@@ -375,8 +376,18 @@ def webhook_page(request: Request) -> HTMLResponse:
         {
             "api_key": api_key(request.app.state.engine),
             "port": os.environ.get("PORT", "8080"),
+            "kometa_events": kometa.EVENTS,
+            "kometa_last": kometa.last_received(request.app.state.engine),
         },
     )
+
+
+@router.post("/settings/kometa/forget")
+def forget_kometa(request: Request) -> RedirectResponse:
+    """the Status page stops showing Kometa, until it sends another webhook"""
+    deleted = kometa.forget(request.app.state.engine)
+    logger.info("WEB\t %s forgot Kometa's %s stored runs", request.state.user, deleted)
+    return RedirectResponse("/settings/webhook#kometa", status_code=303)
 
 
 @router.post("/settings/api-key")

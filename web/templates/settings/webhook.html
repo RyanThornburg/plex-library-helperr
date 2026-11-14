@@ -2,7 +2,7 @@
 {% set tab = "webhook" %}
 {% block settings %}
 <h2>API key</h2>
-<p class="muted">Radarr and Sonarr send this with their webhooks. It's only accepted on the webhook, which starts movers; everything else needs you to sign in.</p>
+<p class="muted">Radarr, Sonarr and Kometa send this with their webhooks. It's only accepted on the webhooks, which start movers and record Kometa's runs; everything else needs you to sign in.</p>
 <div class="key-row">
   <input id="api-key" value="{{ api_key }}" readonly spellcheck="false" aria-label="API key">
   <button type="button" class="button-secondary" data-copy="api-key">Copy</button>
@@ -10,7 +10,7 @@
     <button type="submit" class="button-secondary">Regenerate</button>
   </form>
 </div>
-<p class="hint">Regenerating stops the old key working right away, paste the new one into Radarr and Sonarr.</p>
+<p class="hint">Regenerating stops the old key working right away, paste the new one into Radarr, Sonarr and Kometa's config.yml.</p>
 
 <h2>Radarr / Sonarr webhook</h2>
 <p class="muted">Movers run as soon as a movie or series is added, so it moves to its root folder before anything downloads. Keep a movers schedule (e.g. daily) as a safety net. An upgrade leaves the old file in Plex's trash, so a follow-up empty trash runs once Plex has scanned (Settings → General).</p>
@@ -24,4 +24,25 @@
 </dl>
 <p class="hint">Or send the key as the Password, with any Username: both work the same.</p>
 <p class="hint">The Test button in Radarr/Sonarr should succeed without starting a run.</p>
+
+<h2 id="kometa">Kometa webhooks</h2>
+<p class="muted">Kometa has no API, so it tells Helperr about its runs instead: when each starts and finishes, what it changed, and its errors, such as a list that no longer exists or a filter Kometa doesn't know. The Status page shows them, and warns when no run has finished for well over the usual time between runs.</p>
+<p>In Kometa's <code>config.yml</code>, under <code>webhooks:</code></p>
+{% set url = "http://helperr:" ~ api_key ~ "@plex-library-helperr:" ~ port ~ "/webhooks/kometa" %}
+<div class="key-row">
+  <textarea id="kometa-webhooks" class="snippet" rows="{{ kometa_events | length + 1 }}" readonly spellcheck="false" aria-label="Kometa webhooks">webhooks:
+{% for event in kometa_events %}  {{ event }}: {{ url }}
+{% endfor %}</textarea>
+  <button type="button" class="button-secondary" data-copy="kometa-webhooks">Copy</button>
+</div>
+<p class="hint">Kometa can't send headers, so the API key goes in the URL as its password. Kometa sends that as a login (basic auth), not in the address, and hides the URL in its own log. Leave out <code>changes</code> and <code>delete</code>: Helperr doesn't use them, and <code>changes</code> carries posters too large to accept.</p>
+{% if kometa_last %}
+<p>Last heard from Kometa {{ kometa_last | relative }}.</p>
+<form method="post" action="/settings/kometa/forget">
+  <button type="submit" class="button-secondary">Forget Kometa</button>
+</form>
+<p class="hint">Deletes its stored runs, so the Status page stops showing Kometa. Take the webhooks out of <code>config.yml</code> first, or its next run brings it back.</p>
+{% else %}
+<p class="muted">Nothing received from Kometa yet. Its card shows on the Status page once its next run starts.</p>
+{% endif %}
 {% endblock %}

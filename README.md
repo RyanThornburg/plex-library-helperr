@@ -41,11 +41,11 @@ All of the data in these is made up.
 
 ## What the web app does
 
-- **Status:** what Unraid, Plex (through Tautulli), Radarr, Sonarr, SABnzbd, Bazarr and Seerr are doing right now. Health warnings, stuck downloads, failed downloads, low disk space, who's streaming. For Unraid: the array, each disk's state, errors, temperature and fill level (against the thresholds you set in Unraid), parity checks, containers set to autostart that aren't running, and Unraid's own warnings and alerts (SMART warnings among them). Stuck downloads can be removed from here, the same way you would in Radarr or Sonarr, or automatically once they've been stuck a while. Health checks run every 5 minutes in the background and keep a history of problems for a year.
+- **Status:** what Unraid, Plex (through Tautulli), Radarr, Sonarr, SABnzbd, Bazarr, Seerr and Kometa are doing right now. Health warnings, stuck downloads, failed downloads, low disk space, who's streaming. For Unraid: the array, each disk's state, errors, temperature and fill level (against the thresholds you set in Unraid), parity checks, containers set to autostart that aren't running, and Unraid's own warnings and alerts (SMART warnings among them). Stuck downloads can be removed from here, the same way you would in Radarr or Sonarr, or automatically once they've been stuck a while. Health checks run every 5 minutes in the background and keep a history of problems for a year.
 - **Runs and schedules:** run any job by hand (with a **Dry run** button or a **Run...** button that asks first), or on a cron schedule. Every run is kept with what it changed and its log.
 - **Removers:** each run plans what it would delete. You review the plan, tick what to remove, and confirm. Once you trust a rule you can turn on auto-approve for it.
 - **Duplicate versions:** finds movies and episodes with more than one version in Plex, for example when Radarr or Sonarr re-downloaded files from a disk that dropped out and the old copies came back. It plans deleting every version that isn't the file Radarr/Sonarr tracks, for you to review the same way as removers. It skips anything it can't be sure of: a file added in the last few days, a download in progress, a version much longer or shorter than the tracked one (it may be another episode or cut), or a file holding several episodes. Deleting goes through Plex, which needs Settings > Library > Allow media deletion turned on.
-- **Webhooks:** point Radarr's and Sonarr's webhook at the app and movers run as soon as something is added, before it downloads. File upgrades queue a trash empty a little later.
+- **Webhooks:** point Radarr's and Sonarr's webhook at the app and movers run as soon as something is added, before it downloads. File upgrades queue a trash empty a little later. Kometa's webhooks report its runs and errors to the Status page.
 - **Library:** every movie, show and season in Plex with everyone's plays of it, to find what nobody watches: never watched since it was added, or not watched in a while (180 days unless you pick another number). Filter by library, type and requester, show TV a row per season, see counts per requester and per library, and download the list as CSV. Uses Tautulli's history, Plex, and Seerr for who asked for what.
 - **Requests:** every Seerr request, who made it, when it reached Plex and how much of it they watched. Uses Tautulli's history.
 - **Playback:** how each play was streamed and why it transcoded (quality setting, audio format, subtitles, HDR and so on), grouped by person and device with what to change.
@@ -155,7 +155,7 @@ If the `CF_ACCESS_*` variables are set and `AUTH_MODE` isn't, the app uses Cloud
 1. **Settings > Connections:** add Radarr, Sonarr, Plex and whatever else you use (Tautulli, Seerr, SABnzbd, Bazarr, Unraid, Autoscan) and hit Test on each.
 2. **Movers** and **Removers:** add your rules. Use Preview to see what a rule matches.
 3. **Activity > Schedules:** add schedules. New ones force dry run until you turn that off.
-4. **Settings > Webhook** (optional): shows the URL and API key to put in Radarr's and Sonarr's Connect > Webhook. Turn on *On Movie Added* / *On Series Add*, and *On File Upgrade* if you want trash emptied after upgrades. Put the key in an `X-Api-Key` header. The webhook is the one address that takes the API key instead of a sign-in, and all it can do is start movers.
+4. **Settings > Webhook** (optional): shows the URL and API key to put in Radarr's and Sonarr's Connect > Webhook. Turn on *On Movie Added* / *On Series Add*, and *On File Upgrade* if you want trash emptied after upgrades. Put the key in an `X-Api-Key` header. It also has the lines to paste into Kometa's `config.yml`. The webhooks are the only addresses that take the API key instead of a sign-in, and all they can do is start movers and record Kometa's runs.
 5. When the dry runs look right, turn dry run off in Settings. The app asks you to confirm anything that makes a job live.
 
 ## Removers and deleting files
@@ -204,6 +204,14 @@ It's off until you turn it on, and starts in dry run. It removes nothing:
 - for a download that's only flagged with a warning, not failed or blocked, since a download client hiccup can flag the whole queue.
 
 A blocked or failed run is tried again after another `stuck_for`.
+
+Radarr and Sonarr call a single file they refused to import (not an upgrade, a sample, a title they can't match) *import pending*, not *import blocked*: only a release of several files where some won't import is *import blocked*. To remove those too, add Import pending. Sonarr imports an episode with a TBA title by itself 48 hours after it airs, so give Sonarr a `stuck_for` over 2 days if you add it there.
+
+## Kometa
+
+Kometa has no API, so it reports its runs to Helperr through its webhooks instead. Settings → Webhook has the lines to paste under `webhooks:` in Kometa's `config.yml` (`run_start`, `run_end`, `error` and `version`). Leave out `changes` and `delete`: Helperr doesn't use them, and `changes` carries posters too large to accept. Kometa can't send headers, so the API key goes in the URL as its password, which Kometa sends as basic auth and hides in its own log.
+
+The Status page then has a Kometa card: when the last run finished, how long it took and what it changed, and Kometa's errors from that run, such as a list that no longer exists or a filter Kometa doesn't know. They're recorded in the health history like any other problem. Helperr learns how often Kometa runs from its runs over the past week, and warns when none has finished for half again the longest usual gap plus an hour (until it has a day of runs, it assumes once a day). A newer Kometa version shows as a note. **Forget Kometa** on Settings → Webhook deletes its stored runs if you stop using it.
 
 ## Running jobs without the web app
 

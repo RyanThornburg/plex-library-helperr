@@ -2,6 +2,16 @@
 
 What changed in each release. Versions are `MAJOR.MINOR.PATCH`: the major number goes up when upgrading needs you to do something (a new required setting, a removed feature, a change that breaks the API), the minor number for new features, the patch number for fixes.
 
+## Unreleased
+
+### New
+
+- Kometa on the Status page. Kometa has no API, so it reports its runs through its webhooks instead: Settings → Webhook has the lines to paste into Kometa's `config.yml`. The card shows when the last run finished, how long it took and what it changed, and lists Kometa's errors from that run (a list that no longer exists, a filter it doesn't know), which go into the health history like any other problem. It warns when no run has finished for well over Kometa's usual time between runs, learned from its runs, and notes when a newer Kometa is out.
+
+### Fixed
+
+- Settings → Stuck downloads described Import blocked and Import pending the wrong way round for most stuck imports. Radarr and Sonarr call a single file they refused (not an upgrade, a TBA title) import pending; only a release of several files where some won't import is import blocked. To have those removed automatically, add Import pending (for Sonarr with a stuck time over 2 days, since a TBA title imports by itself 48 hours after airing).
+
 ## 2.3.0 (2026-11-14)
 
 ### New

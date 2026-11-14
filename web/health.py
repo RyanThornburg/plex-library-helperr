@@ -23,8 +23,9 @@ from config.models import ConfigSettings
 from logging_config import redacted
 from web.db import HealthIncident
 from web.jobs import JobRunner, utc_now
-from web.sync import BackgroundSync, SyncStatus, save_status
+from web.kometa import kometa_status
 from web.status import LEVELS, Item, Problem, ServiceStatus, check_all
+from web.sync import BackgroundSync, SyncStatus, save_status
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ LABELS = {
     "bazarr": "Bazarr",
     "sabnzbd": "SABnzbd",
     "seerr": "Seerr",
+    "kometa": "Kometa",
 }
 # work waiting for someone rather than something wrong, left out of the history
 NOT_RECORDED = {("seerr", "pending"), ("seerr", "issues")}
@@ -148,6 +150,12 @@ def record(engine: Engine, statuses: Iterable[ServiceStatus], now: datetime) -> 
         return sum(i.ended_at is None for i in current.values())
 
 
+def all_statuses(engine: Engine, settings: ConfigSettings, now: datetime) -> list[ServiceStatus]:
+    """every service's card: the ones asked now (web.status), then kometa's, read from
+    what its webhooks sent"""
+    return check_all(settings, now) + [kometa_status(engine, now)]
+
+
 def check(
     engine: Engine,
     settings: ConfigSettings,
@@ -157,7 +165,7 @@ def check(
     raises: the error is in the status"""
     status = SyncStatus(started_at=utc_now())
     try:
-        statuses = check_all(settings, status.started_at)  # type: ignore[arg-type]
+        statuses = all_statuses(engine, settings, status.started_at)  # type: ignore[arg-type]
         record(engine, statuses, status.started_at)  # type: ignore[arg-type]
         if after is not None:
             after(statuses, status.started_at)  # type: ignore[arg-type]

@@ -28,6 +28,7 @@ from web.health import (
     summary,
 )
 from web.jobs import utc_now
+from web.kometa import kometa_status
 from web.queue_cleanup import IncidentClock, auto_note, summary as cleanup_summary
 from web.routes import form_lists, loaded_settings, templates
 from web.sync import sync_status
@@ -58,6 +59,8 @@ NEEDS = {
     "sabnzbd": ("SABnzbd", "sabnzbd"),
     "seerr": ("Seerr", "seerr"),
 }
+# a service set up somewhere other than Settings → Connections
+SETUP = {"kometa": ("Send Kometa's webhooks here", "/settings/webhook#kometa")}
 # the arrs whose stuck downloads can be removed here
 QUEUES = {"radarr": "Radarr", "sonarr": "Sonarr"}
 # the status page's recent problems
@@ -78,7 +81,8 @@ def statuses(
         return [], error, {}, []
     others = [{"name": l.name, "local": l.url, "public": l.public_url, "service": l.service} for l in settings.links]
     now = utc_now()
-    found = check_all(settings, now)
+    # like health.all_statuses, with check_all from here so tests can replace it
+    found = check_all(settings, now) + [kometa_status(request.app.state.engine, now)]
     # what the page shows is recorded too, so the header pill and the sidebar badges
     # (read from the incidents) agree with it instead of with the last background check
     try:
@@ -136,6 +140,7 @@ def status_page(request: Request) -> HTMLResponse:
             # ?refresh=0 pauses it, for reading (or a screen reader) without the page reloading
             "refresh": 0 if request.query_params.get("refresh") == "0" else REFRESH_SECONDS,
             "needs": NEEDS,
+            "setup": SETUP,
             "max_problems": MAX_PROBLEMS,
             "queues": QUEUES,
             "recent": [incident_dict(i, checked_at) for i in recent[:RECENT_LIMIT]],

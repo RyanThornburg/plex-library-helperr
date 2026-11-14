@@ -25,7 +25,7 @@ TOKEN_HEADER = b"cf-access-jwt-assertion"
 PUBLIC_PATHS = frozenset({"/healthz"})
 # called by radarr/sonarr over the docker network, they check the app's api key instead
 # (web/webhooks.py). Exact paths, so nothing else slips past the access check
-API_KEY_PATHS = frozenset({"/webhooks/arr"})
+API_KEY_PATHS = frozenset({"/webhooks/arr", "/webhooks/kometa"})
 # password mode's sign-in pages, and the css/js/icons they need: the app's own code,
 # nothing about your setup
 LOGIN_PATHS = frozenset({"/login", "/setup"})

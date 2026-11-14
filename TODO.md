@@ -2,10 +2,6 @@
 
 Planned work and ideas, roughly in order within each section. Nothing here is promised.
 
-## In progress
-
-- **Kometa**: Kometa has no API, but it sends webhooks (`run_start`, `run_end`, `error`, `changes`). A `POST /webhooks/kometa` endpoint records its runs, and a Status card shows the last run, how long it took, what it changed and its errors (as health incidents), plus a problem when no run has finished in a while.
-
 ## TRaSH Guides sync
 
 - [ ] Keep Radarr's and Sonarr's custom formats, quality profiles, quality sizes and naming in line with [TRaSH Guides](https://trash-guides.info/), like Recyclarr or Notifiarr's sync.
@@ -28,7 +24,7 @@ Support for a service comes in three levels, and most only need the first:
 - [ ] **Other download clients**: qBittorrent, NZBGet, Transmission, Deluge (level 1). Queue, stalled or errored downloads, free space.
 - [ ] **Jellyfin / Emby**: a big job, because Tautulli and the Requests and Playback pages are Plex-only. Probably not.
 - Skip: Readarr (retired, and its metadata service no longer answers) and Whisparr.
-- Already supported: Radarr, Sonarr, Seerr (Overseerr / Jellyseerr), SABnzbd, Bazarr, Unraid, Plex, Tautulli, Autoscan.
+- Already supported: Radarr, Sonarr, Seerr (Overseerr / Jellyseerr), SABnzbd, Bazarr, Unraid, Plex, Tautulli, Autoscan, Kometa (through its webhooks).
 
 ## Add requests from the site
 

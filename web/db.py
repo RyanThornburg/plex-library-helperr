@@ -148,6 +148,28 @@ class TrashEvent(Base):
     source: Mapped[str] = mapped_column(String(320))
 
 
+class KometaRun(Base):
+    """a Kometa run, from its webhooks (web.kometa): run_start, the errors it sent, then
+    run_end. Times are when helperr got them, since kometa sends its own local time
+    without a zone. Kept for web.kometa.KEEP"""
+
+    __tablename__ = "kometa_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    started_at: Mapped[datetime] = mapped_column(index=True)  # naive utc
+    # None while it runs, or when kometa stopped without a run_end
+    finished_at: Mapped[datetime | None]
+    # run_end's run time
+    run_seconds: Mapped[int | None]
+    # run_end's counts, web.kometa.COUNTS
+    counts: Mapped[dict[str, int] | None] = mapped_column(JSON)
+    # its error events: [{"text", "where", "critical"}]
+    errors: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
+    # the version event, which kometa sends when a newer version is out
+    version: Mapped[str | None] = mapped_column(String(64))
+    latest_version: Mapped[str | None] = mapped_column(String(64))
+
+
 class Play(Base):
     """a play from Tautulli's history, copied by web.stats so request stats don't read all
     of it every time. Matched to requests by plex guid, which survives a move to another

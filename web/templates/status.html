@@ -92,10 +92,9 @@
       <span class="tag" data-muted-tag hidden>muted</span>
     </div>
     {% if s.error %}
-    {% set name, section = needs[s.service] %}
     <div class="problem-block">
       <p><span class="state-word state-bad">down</span> {{ s.error }}{{ since(s.service, "down") }}</p>
-      <p><a href="/settings/connections#{{ section }}">Check the {{ name }} connection</a></p>
+      {% if s.service in needs %}{% set name, section = needs[s.service] %}<p><a href="/settings/connections#{{ section }}">Check the {{ name }} connection</a></p>{% endif %}
     </div>
     {% elif s.problems %}
     <ul class="problem-block problems">
@@ -118,7 +117,15 @@
 <ul class="service-lines">
 {% for s in quiet %}
   <li id="{{ s.service }}">
-  {% if s.state == "off" %}
+  {% if s.state == "off" and s.service in setup %}
+    {% set text, href = setup[s.service] %}
+    <div class="line">
+      <span class="line-name">{{ s.label }}</span>
+      <span class="line-state">not set up</span>
+      <span class="line-facts"><a href="{{ href }}">{{ text }}</a></span>
+      <span class="line-link">{{ open_link(s) }}</span>
+    </div>
+  {% elif s.state == "off" %}
     {% set name, section = needs[s.service] %}
     <div class="line">
       <span class="line-name">{{ s.label }}</span>
