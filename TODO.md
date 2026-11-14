@@ -4,7 +4,15 @@ Planned work and ideas, roughly in order within each section. Nothing here is pr
 
 ## In progress
 
-- **Automatic queue cleanup**: a `clear_stuck` job (`[radarr.queue_cleanup]`, `[sonarr.queue_cleanup]`, migration 0014) removes downloads that the health checks have seen stuck for longer than `stuck_for`, the same way the queue page's Remove does.
+- **Kometa**: Kometa has no API, but it sends webhooks (`run_start`, `run_end`, `error`, `changes`). A `POST /webhooks/kometa` endpoint records its runs, and a Status card shows the last run, how long it took, what it changed and its errors (as health incidents), plus a problem when no run has finished in a while.
+
+## TRaSH Guides sync
+
+- [ ] Keep Radarr's and Sonarr's custom formats, quality profiles, quality sizes and naming in line with [TRaSH Guides](https://trash-guides.info/), like Recyclarr or Notifiarr's sync.
+  - Read the guides' JSON from the TRaSH-Guides/Guides repo (custom formats with their trash ids and scores per profile, quality definitions, naming), pinned to a commit so a change upstream shows up as a diff, not a surprise.
+  - Settings: per arr, which guide profiles to follow, extra custom formats and score overrides.
+  - A run plans the changes (a custom format added or changed, scores, sizes) for review like removers, and applies only what was approved. Custom formats and profiles it didn't create are left alone.
+  - A schedule can check for guide updates and say when there's something to review.
 
 ## Services I don't use (for other people's setups)
 
