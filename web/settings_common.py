@@ -31,6 +31,7 @@ DRY_RUN_JOBS: dict[str, set[str]] = {
     "movers": set(ARRS),
     "empty_trash": {"empty_trash"},
     "clear_stuck": {f"{arr}:queue" for arr in ARRS},
+    "trash_sync": {f"{arr}:trash" for arr in ARRS},
 }
 
 # the config section of each: label, its secret's label, the url key
@@ -108,8 +109,9 @@ def check_kind(arr: str, kind: str) -> None:
 
 
 def live_parts(document: dict[str, Any]) -> set[str]:
-    """the parts of the config that change media as configured: an arr's movers by the
-    arr's name, its queue cleanup as <arr>:queue, and empty_trash"""
+    """the parts of the config that change media (or settings) as configured: an arr's
+    movers by the arr's name, its queue cleanup as <arr>:queue, format fixes applied
+    without review as <arr>:trash, and empty_trash"""
     settings = config.build_config(document)
     parts = {name for name in ARRS if (arr := getattr(settings, name)) and not arr.dry_run}
     parts |= {
@@ -117,6 +119,7 @@ def live_parts(document: dict[str, Any]) -> set[str]:
         for name in ARRS
         if (arr := getattr(settings, name)) and arr.queue_cleanup.enabled and not arr.queue_cleanup.dry_run
     }
+    parts |= {f"{name}:trash" for name in ARRS if (arr := getattr(settings, name)) and arr.trash.auto_formats}
     if not settings.empty_trash.dry_run:
         parts.add("empty_trash")
     return parts

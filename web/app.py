@@ -21,6 +21,7 @@ from web.db import make_engine, migrate
 from web.jobs import JobRunner, LoadConfig, RunJob
 from web.login import LoginThrottle, announce_setup_token
 from web.library_routes import router as library_router
+from web.guides_routes import router as guides_router
 from web.login_routes import router as login_router
 from web.health import HealthMonitor
 from web.logs_routes import router as logs_router
@@ -155,6 +156,7 @@ def create_app(
     app.include_router(connection_router)
     app.include_router(config_api_router)
     app.include_router(login_router)
+    app.include_router(guides_router)
     # last of the settings pages: /settings/{arr} would catch /settings/trash
     app.include_router(rule_router)
     app.include_router(webhook_router)

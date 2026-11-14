@@ -2,6 +2,12 @@
 
 What changed in each release. Versions are `MAJOR.MINOR.PATCH`: the major number goes up when upgrading needs you to do something (a new required setting, a removed feature, a change that breaks the API), the minor number for new features, the patch number for fixes.
 
+## Unreleased
+
+### New
+
+- TRaSH Guides sync (Runs, Settings → TRaSH Guides): keeps Radarr's and Sonarr's custom formats, quality profiles and quality sizes in line with TRaSH Guides, planned for review like removers. Link each quality profile to the guide profile it follows, with a score set and your own scores, which win. Each run lists what differs from the guides (a fixed regex, a new score, a quality size), you tick what to apply, and applying sends only what's still exactly as planned. Custom format fixes can be applied without review. Nothing is deleted. The guides are downloaded from GitHub once, then only when they change.
+
 ## 2.4.0 (2026-11-14)
 
 ### New

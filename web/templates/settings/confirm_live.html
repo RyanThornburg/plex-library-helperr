@@ -12,7 +12,7 @@
     <p class="banner banner-live">With this change, dry run is <strong>off</strong> for:</p>
     <ul>
       {% for job in jobs %}
-      <li><strong>{{ JOB_INFO[job][0] }}</strong>: {{ {"movers": "runs that aren't forced dry, including schedules and webhooks, will move files and change quality profiles.", "empty_trash": "runs that aren't forced dry, including follow-ups, will empty Plex's trash. Fully deleted items leave the library with their watch history.", "clear_stuck": "runs that aren't forced dry, including the ones the health check starts, will remove stuck downloads from the queue, as set here."}[job] }}</li>
+      <li><strong>{{ JOB_INFO[job][0] }}</strong>: {{ {"movers": "runs that aren't forced dry, including schedules and webhooks, will move files and change quality profiles.", "empty_trash": "runs that aren't forced dry, including follow-ups, will empty Plex's trash. Fully deleted items leave the library with their watch history.", "clear_stuck": "runs that aren't forced dry, including the ones the health check starts, will remove stuck downloads from the queue, as set here.", "trash_sync": "runs that aren't forced dry, including schedules, will update custom format definitions to the guides' without waiting for review. Scores, new custom formats and quality sizes still wait for review."}[job] }}</li>
       {% endfor %}
     </ul>
   </div>

@@ -148,6 +148,17 @@ class TrashEvent(Base):
     source: Mapped[str] = mapped_column(String(320))
 
 
+class GuideSnapshot(Base):
+    """the TRaSH Guides' json at a commit, as trash_guides.snapshot_from_tarball keeps
+    it, so a plan is applied from the guides it was made from (web.guides)"""
+
+    __tablename__ = "guide_snapshots"
+
+    commit: Mapped[str] = mapped_column(String(40), primary_key=True)
+    fetched_at: Mapped[datetime] = mapped_column(index=True)  # naive utc
+    data: Mapped[dict[str, Any]] = mapped_column(JSON)
+
+
 class KometaRun(Base):
     """a Kometa run, from its webhooks (web.kometa): run_start, the errors it sent, then
     run_end. Times are when helperr got them, since kometa sends its own local time

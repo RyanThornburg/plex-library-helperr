@@ -93,6 +93,53 @@
 {% endif %}
 {% endif %}
 
+{% if plan %}
+{% set kinds = {"format_add": "new custom format", "format_update": "custom format", "profile": "quality profile", "sizes": "quality sizes"} %}
+<h2>{{ "Applied" if run.plan_run_id else "Planned changes" }}</h2>
+{% if run.result.guide_commit %}<p class="muted">From TRaSH Guides at <a href="https://github.com/TRaSH-Guides/Guides/commits/{{ run.result.guide_commit }}" rel="noopener noreferrer">{{ run.result.guide_commit[:7] }}</a>.</p>{% endif %}
+{% if applied_by %}
+<p class="banner">Applied by run{{ "s" if applied_by | length > 1 }} {% for id in applied_by %}<a href="/runs/{{ id }}">#{{ id }}</a>{{ ", " if not loop.last }}{% endfor %}.</p>
+{% elif apply_problem %}
+<p class="banner banner-warn">{{ apply_problem }}</p>
+{% elif selectable %}
+<p class="muted">Select what to change, then review. Applying reads Radarr and Sonarr again, plans again from the same guides and only sends a change that's still exactly as planned. A score or setting you keep on purpose belongs in the profile's overrides (Settings → TRaSH Guides), so it stops being planned.</p>
+{% endif %}
+{% if selectable %}<form method="get" action="/runs/{{ run.id }}/apply">{% endif %}
+<table class="stack">
+  <thead>
+    <tr>
+      {% if selectable %}<th class="keep"><input type="checkbox" data-select-all="item" aria-label="Select all"><span class="stack-only" aria-hidden="true"> Select all</span></th>{% endif %}
+      <th>Change</th><th>What changes</th><th>Status</th><th>Detail</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for item in plan %}
+    <tr>
+      {% if selectable %}
+      <td class="first">{% if item.status in APPROVABLE %}<input type="checkbox" name="item" value="{{ removal_key(item) }}" aria-label="Apply {{ item.title }}">{% endif %}</td>
+      {% endif %}
+      <td class="long first lead">{{ item.title }} <span class="tag">{{ item.service | title }}</span><br><span class="muted">{{ kinds.get(item.kind, item.kind) }}</span></td>
+      <td class="long" data-label="What changes">
+        {% if item.lines | length > 4 %}
+        <details><summary>{{ item.lines | length }} changes</summary><ul class="items">{% for line in item.lines %}<li>{{ line }}</li>{% endfor %}</ul></details>
+        {% elif item.lines %}
+        <ul class="items">{% for line in item.lines %}<li>{{ line }}</li>{% endfor %}</ul>
+        {% else %}-{% endif %}
+      </td>
+      <td class="end"><span class="status status-{{ item.status }}">{{ item.status | replace("_", " ") }}</span></td>
+      <td class="long muted row">{{ item.detail }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% if selectable %}
+<div class="actions table-actions">
+  <button type="submit">Review selected…</button>
+</div>
+</form>
+{% endif %}
+{% endif %}
+
 {% if run.result.trash %}
 <h2>Fully deleted</h2>
 <p class="muted">No version of these is left, so emptying the trash removes them from Plex. Old versions left by upgrades aren't listed, they're counted with each library below.</p>
@@ -116,8 +163,8 @@
 </table>
 {% endif %}
 
-{% if changes or not removals %}
-<h2>{{ "Other changes" if removals else "Changes" }}</h2>
+{% if changes or not (removals or plan) %}
+<h2>{{ "Other changes" if removals or plan else "Changes" }}</h2>
 {% endif %}
 {% if changes %}
 <table>
@@ -144,8 +191,8 @@
     {% endfor %}
   </tbody>
 </table>
-{% elif not removals %}
-<p class="empty">Nothing to change.</p>
+{% elif not (removals or plan) %}
+<p class="empty">{{ "Already in line with TRaSH Guides." if run.job == "trash_sync" and not run.result.errors else "Nothing to change." }}</p>
 {% endif %}
 {% endif %}
 

@@ -32,10 +32,12 @@ from duplicates import run_duplicates
 from movie_remover import PlayLookup, run_movie_removers
 from remover import Approved, run_removers
 from results import JOBS, Change, JobResult
+from trash_guides import run_trash_sync
 from version import VERSION
 
 if TYPE_CHECKING:
     from web.queue_cleanup import StuckClock
+    from trash_guides import GuideLoader
 
 MATCH_FN: dict[str, Callable[[Iterable[object]], bool]] = {"any": any, "all": all}
 
@@ -500,6 +502,9 @@ def run_job(
     removed_files: Mapping[str, int] | None = None,
     movie_plays: PlayLookup | None = None,
     stuck_clock: "StuckClock | None" = None,
+    guides: "GuideLoader | None" = None,
+    guide_commit: str | None = None,
+    auto_formats: bool = True,
 ) -> JobResult:
     """run one job (movers, removers, duplicates, empty_trash or clear_stuck) and return
     what it changed. `approved` applies a reviewed removers plan ({"SONARR"/"RADARR":
@@ -508,11 +513,13 @@ def run_job(
     remover.run_removers and movie_remover.run_movie_removers, which `movie_plays` tells
     when movies were played. `removed_files` maps file names the removers deleted to
     their run, see plex.empty_plex_trash. `stuck_clock` says how long downloads have been
-    stuck, see web.queue_cleanup"""
+    stuck, see web.queue_cleanup. trash_sync reads TRaSH Guides through `guides` (at
+    `guide_commit` when applying its plan, {key: fingerprint} in `approved`), see
+    trash_guides.run_trash_sync, whose format fixes `auto_formats` lets through"""
     if job not in JOBS:
         raise ValueError(f"unknown job '{job}', expected one of {', '.join(JOBS)}")
-    if approved is not None and job not in ("removers", "duplicates"):
-        raise ValueError("only a removers or duplicates plan can be approved")
+    if approved is not None and job not in ("removers", "duplicates", "trash_sync"):
+        raise ValueError("only a removers, duplicates or TRaSH Guides plan can be approved")
     result = JobResult(job)
 
     if job == "empty_trash":
@@ -533,6 +540,20 @@ def run_job(
         except Exception as e:
             failed(e, "PLEX\t Duplicates failed")
             result.errors.append(f"Duplicates failed: {failure_text(e)}")
+        return result
+
+    if job == "trash_sync":
+        if guides is None:
+            # the guides are cached in the web app's database
+            result.errors.append("TRaSH Guides sync only runs in the web app")
+            return result
+        logger.info("-" * 90)
+        logger.info("STARTING TRASH GUIDES SYNC")
+        try:
+            run_trash_sync(settings, result, guides, approved, guide_commit, auto_formats)  # type: ignore[arg-type]
+        except Exception as e:
+            failed(e, "TRASH\t TRaSH Guides sync failed")
+            result.errors.append(f"TRaSH Guides sync failed: {failure_text(e)}")
         return result
 
     if job == "clear_stuck":

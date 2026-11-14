@@ -16,6 +16,7 @@
   "review_auto": ("Run and delete auto-approved", "button-danger"),
   "unknown": ("Run anyway", "button-secondary"),
 } %}
+{% if job == "trash_sync" %}{% set buttons = dict(buttons, review=("Plan changes", ""), review_auto=("Run and apply format fixes", "button-danger")) %}{% endif %}
 {% set label, button_class = buttons[mode] %}
 <section class="dialog" aria-labelledby="dialog-title">
   <header class="dialog-head">
@@ -26,10 +27,12 @@
     <p class="muted">{{ description }}</p>
     {% if mode == "unknown" %}
     <p class="banner banner-bad">The settings can't be loaded, so this run will fail: {{ config_error }}</p>
+    {% elif mode == "review_auto" and job == "trash_sync" %}
+    <p class="banner banner-live"><strong>Format fixes are applied without review</strong> for some *arrs (Settings → TRaSH Guides): custom formats whose conditions differ from the guides' <strong>will be updated</strong>. New custom formats, scores and quality sizes are planned for review.</p>
     {% elif mode == "review_auto" %}
     <p class="banner banner-live"><strong>Auto-approve is on</strong> for {{ auto_rules | length }} remover{{ "s" if auto_rules | length != 1 }} ({% for rule in auto_rules %}{{ rule.label }}{{ "; " if not loop.last }}{% endfor %}): their removals <strong>will be deleted</strong> without review. Other rules' removals are planned for review.</p>
     {% elif mode == "review" %}
-    <p class="banner">This only plans: nothing is deleted until you approve the plan on the run's page.</p>
+    <p class="banner">This only plans: nothing {{ "changes in Radarr or Sonarr" if job == "trash_sync" else "is deleted" }} until you approve the plan on the run's page.</p>
     {% elif mode == "mixed" %}
     <p class="banner banner-live">Dry run is off for some *arrs: this run <strong>will make changes</strong> there ({{ changes[job] }}) and only list what it would do for the others.</p>
     {% elif mode == "live" %}

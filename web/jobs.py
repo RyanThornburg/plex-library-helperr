@@ -25,8 +25,11 @@ ACTIVE = ("queued", "running")
 MAX_LOG_CHARS = 1_000_000
 # removals a reviewed plan can approve: not already done or failed
 APPROVABLE = ("dry_run", "blocked")
-# jobs whose runs plan deletions for review, applied by a later run of the same job
-PLAN_JOBS = ("removers", "duplicates")
+# jobs whose runs plan deletions (or TRaSH Guides changes) for review, applied by a
+# later run of the same job
+PLAN_JOBS = ("removers", "duplicates", "trash_sync")
+# the plan jobs that delete files, which applying needs REMOVERS_ALLOW_APPLY for
+DELETING_JOBS = ("removers", "duplicates")
 # removers deletions empty trash recognizes, plex's trash is emptied well before this
 REMOVED_FILES_MAX_AGE = timedelta(days=90)
 
@@ -66,9 +69,10 @@ MODES = {
 
 def configured_mode(job: str, dry_run: bool | None, auto_approve: bool = False) -> str:
     """a job's mode as configured: config.config_dry_run()'s answer, and for removers
-    whether any rule is auto-approved"""
+    whether any rule is auto-approved (trash_sync's format fixes say so with None)"""
     if job in PLAN_JOBS:
-        return "review_auto" if auto_approve and job == "removers" else "review"
+        auto = (auto_approve and job == "removers") or (job == "trash_sync" and dry_run is None)
+        return "review_auto" if auto else "review"
     return "mixed" if dry_run is None else "dry_run" if dry_run else "live"
 
 
@@ -95,16 +99,20 @@ def run_mode(run: JobRun) -> str:
 
 def removal_key(removal: dict[str, Any]) -> str:
     """how a planned removal is selected for approval: sonarr:<series id>,
-    radarr:<movie id> or plex:<rating key> (a duplicate)"""
+    radarr:<movie id> or plex:<rating key> (a duplicate). A TRaSH Guides change has its
+    own key (radarr:format:<trash id>...)"""
+    if "key" in removal:
+        return removal["key"]
     return f"{removal['service'].lower()}:{removal['media_id']}"
 
 
 def approvable(run: JobRun) -> list[dict[str, Any]]:
-    """the removals of a finished removers or duplicates run that can be approved"""
+    """the removals (or TRaSH Guides changes) of a finished plan run that can be approved"""
     if run.job not in PLAN_JOBS or run.plan_run_id is not None or run.status in ACTIVE:
         return []
-    removals = (run.result or {}).get("removals", [])
-    return [r for r in removals if r["status"] in APPROVABLE]
+    result = run.result or {}
+    items = result.get("plan", []) if run.job == "trash_sync" else result.get("removals", [])
+    return [r for r in items if r["status"] in APPROVABLE]
 
 
 def hide_in(value: Any) -> Any:
@@ -287,14 +295,14 @@ class JobRunner:
         return run_id
 
     def apply_problem(self, session: Session, plan: JobRun) -> str | None:
-        """why a removers or duplicates run's plan can't be applied, None when it can"""
-        if not self.allow_apply:
+        """why a plan run's plan can't be applied, None when it can"""
+        if not self.allow_apply and plan.job in DELETING_JOBS:
             return (
                 "Applying plans is turned off. Set REMOVERS_ALLOW_APPLY=true on the "
                 "container to allow it."
             )
         if not approvable(plan):
-            return "This run has no planned removals to approve."
+            return f"This run has no planned {'changes' if plan.job == 'trash_sync' else 'removals'} to approve."
         max_age = self.defaults().plan_max_age
         if utc_now() - plan.created_at > max_age:
             return (
@@ -324,15 +332,26 @@ class JobRunner:
                 raise ApplyRefused("Select at least one item to remove.")
             if chosen - removals.keys():
                 raise ApplyRefused("Some selected items aren't in this plan.")
-            approved = [
-                {
-                    "service": removals[key]["service"],
-                    "media_id": int(key.split(":", 1)[1]),
-                    "title": removals[key]["title"],
-                    "file_ids": [f["id"] for f in removals[key]["files"]],
-                }
-                for key in sorted(chosen)
-            ]
+            if plan.job == "trash_sync":
+                approved = [
+                    {
+                        "service": removals[key]["service"],
+                        "key": key,
+                        "title": removals[key]["title"],
+                        "fingerprint": removals[key]["fingerprint"],
+                    }
+                    for key in sorted(chosen)
+                ]
+            else:
+                approved = [
+                    {
+                        "service": removals[key]["service"],
+                        "media_id": int(key.split(":", 1)[1]),
+                        "title": removals[key]["title"],
+                        "file_ids": [f["id"] for f in removals[key]["files"]],
+                    }
+                    for key in sorted(chosen)
+                ]
             run_id = self._queue_run(
                 session,
                 JobRun(
@@ -414,6 +433,8 @@ class JobRunner:
             run.started_at = utc_now()
             session.commit()
             job, dry_run, approved = run.job, run.dry_run, run.approved
+            plan = session.get(JobRun, run.plan_run_id) if run.plan_run_id is not None else None
+            guide_commit = (plan.result or {}).get("guide_commit") if plan is not None else None
 
         capture = RunLogCapture(threading.get_ident())
         root = logging.getLogger()
@@ -427,7 +448,10 @@ class JobRunner:
                 config.force_dry_run(settings)
             # only what a run needs is passed, plain runs are run_job(job, settings)
             kwargs: dict[str, Any] = {}
-            if approved is not None:
+            if approved is not None and job == "trash_sync":
+                kwargs["approved"] = {a["key"]: a["fingerprint"] for a in approved}
+                kwargs["guide_commit"] = guide_commit
+            elif approved is not None:
                 # only submit_apply queues these, checked again in case anything else does
                 if not self.allow_apply:
                     raise ApplyRefused("REMOVERS_ALLOW_APPLY is off, not applying the plan")
@@ -446,6 +470,12 @@ class JobRunner:
                 kwargs["movie_plays"] = self.movie_plays(settings)
             if job == "empty_trash" and (removed := self.removed_files()):
                 kwargs["removed_files"] = removed
+            if job == "trash_sync":
+                from web.guides import loader
+
+                kwargs["guides"] = loader(self.engine)
+                # a forced dry run applies no format fixes either
+                kwargs["auto_formats"] = not dry_run
             if job == "clear_stuck":
                 from web.queue_cleanup import IncidentClock
 

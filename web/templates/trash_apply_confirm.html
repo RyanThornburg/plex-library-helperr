@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Apply plan #{{ run.id }}? · Helperr{% endblock %}
+{% block content %}
+{% set kinds = {"format_add": "new custom format", "format_update": "custom format", "profile": "quality profile", "sizes": "quality sizes"} %}
+<section class="dialog dialog-wide" aria-labelledby="dialog-title">
+<header class="dialog-head">
+  <h1 id="dialog-title">Apply plan #{{ run.id }}?</h1>
+  {{ ui.mode_tag("apply") }}
+</header>
+<div class="dialog-body">
+{% if problem %}
+<p class="banner banner-bad">{{ problem }}</p>
+{% else %}
+{% set n = selected | length %}
+<p class="banner banner-live">This <strong>changes {{ n }} setting{{ "s" if n != 1 }}</strong> in Radarr/Sonarr to match TRaSH Guides. Each is planned again first from fresh data and the same guides: one that changed since this plan is skipped and reported. Nothing is deleted.</p>
+{% endif %}
+{% if selected %}
+<table class="stack">
+  <thead><tr><th>Change</th><th>What changes</th></tr></thead>
+  <tbody>
+    {% for item in selected %}
+    <tr>
+      <td class="long first lead">{{ item.title }} <span class="tag">{{ item.service | title }}</span><br><span class="muted">{{ kinds.get(item.kind, item.kind) }}</span></td>
+      <td class="long" data-label="What changes">
+        {% if item.lines | length > 4 %}
+        <details><summary>{{ item.lines | length }} changes</summary><ul class="items">{% for line in item.lines %}<li>{{ line }}</li>{% endfor %}</ul></details>
+        {% else %}
+        <ul class="items">{% for line in item.lines %}<li>{{ line }}</li>{% endfor %}</ul>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+</div>
+<footer class="dialog-foot">
+  <a class="button button-secondary" href="/runs/{{ run.id }}">{{ "Back to the plan" if problem else "Cancel" }}</a>
+  {% if not problem %}
+  <form method="post" action="/runs/{{ run.id }}/apply?{{ query }}"><button type="submit" class="button-danger">Apply {{ selected | length }} change{{ "s" if selected | length != 1 }}</button></form>
+  {% endif %}
+</footer>
+</section>
+{% endblock %}

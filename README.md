@@ -207,6 +207,18 @@ A blocked or failed run is tried again after another `stuck_for`.
 
 Radarr and Sonarr call a single file they refused to import (not an upgrade, a sample, a title they can't match) *import pending*, not *import blocked*: only a release of several files where some won't import is *import blocked*. To remove those too, add Import pending. Sonarr imports an episode with a TBA title by itself 48 hours after it airs, so give Sonarr a `stuck_for` over 2 days if you add it there.
 
+## TRaSH Guides
+
+The **TRaSH Guides sync** job keeps Radarr's and Sonarr's custom formats, quality profiles and quality sizes in line with [TRaSH Guides](https://trash-guides.info/), like Recyclarr or Notifiarr's sync, but planned for your review first, like removers.
+
+Settings → TRaSH Guides downloads the guides' data (about 25 MB from GitHub, once; after that only when the guides' JSON changes) and sets up each arr:
+
+- **Custom formats:** every custom format named as in the guides gets the guides' conditions, for example when TRaSH fixes a regex. Optionally applied without review (turning that on asks first, like making a job live).
+- **Quality profiles:** link a profile to the guide profile it follows (profiles named as in the guides are suggested), pick a score set (`german` for a German profile, say) and list your own scores, like `Language: Not Original = -30000`, which win. A linked profile gets the guide profile's custom formats and scores, and the guides' score for every custom format it already scores; the rest are left alone. Tick Settings to also bring its allowed qualities, their order, the cutoff, the minimum scores and (Radarr) the language in line. Custom formats a linked profile needs and the arr doesn't have are added.
+- **Quality sizes:** follow one of the guides' sets (movie, series, anime...). Only the qualities the guides size change.
+
+Each run plans the differences, and the run's page lists them for you to tick and apply. Applying reads the arrs again and plans again from the same version of the guides, and sends only a change that's still exactly as planned. Nothing is deleted, and custom formats and profiles the guides don't name are left alone. Schedule it (daily, say) and Activity's badge shows when a plan is waiting. Applying doesn't need `REMOVERS_ALLOW_APPLY`: it doesn't delete anything.
+
 ## Kometa
 
 Kometa has no API, so it reports its runs to Helperr through its webhooks instead. Settings → Webhook has the lines to paste under `webhooks:` in Kometa's `config.yml` (`run_start`, `run_end`, `error` and `version`). Leave out `changes` and `delete`: Helperr doesn't use them, and `changes` carries posters too large to accept. Kometa can't send headers, so the API key goes in the URL as its password, which Kometa sends as basic auth and hides in its own log.
@@ -330,6 +342,17 @@ One set for Radarr (`[radarr.queue_cleanup]`), one for Sonarr (`[sonarr.queue_cl
 | `blocklist` | `none`, `search` (blocklist the release and search for another) or `only` (blocklist, don't search) (default `search`) |
 | `max_per_run` | Remove none when more than this are due at once. `0` means no limit (default `10`) |
 | `dry_run` | List what would be removed, remove nothing. Starts on, whatever the general dry run says |
+
+### TRaSH Guides settings
+
+One set for Radarr (`[radarr.trash]`), one for Sonarr (`[sonarr.trash]`).
+
+| Key | What it does |
+| --- | --- |
+| `formats` | Keep every custom format named as in the guides in line with them (default off) |
+| `auto_formats` | Apply those custom format updates without review (default off, needs `formats`) |
+| `quality_sizes` | The guides' quality sizes to follow: `movie`, `sqp-streaming`, `sqp-uhd`, `anime` (Radarr), `series`, `anime` (Sonarr). Empty leaves them alone |
+| `profiles` | `[[radarr.trash.profiles]]` tables: `profile` (the arr's quality profile, by name), `guide` (the guide profile's trash_id), `score_set` (empty: the guide profile's), `settings` (also qualities, cutoff, minimum scores and language, default off), `scores` (your own scores, `"Custom format = score"`) |
 
 ### Autoscan
 

@@ -22,6 +22,8 @@ from config.models import (
     RemoverRule,
     RemoverSettings,
     SabnzbdConfig,
+    TrashProfile,
+    TrashSettings,
     SeerrConfig,
     TautulliConfig,
     UnraidConfig,
@@ -140,6 +142,7 @@ def _build_arr_config(data: Mapping[str, Any], dry_run: bool, arr_name: str) -> 
             f"[{arr_name}.remover_settings]",
         ),
         "queue_cleanup": _build_queue_cleanup(data.get("queue_cleanup", {}), arr_name),
+        "trash": _build_trash(data.get("trash", {}), arr_name),
         "tag": data.get("tag") or None,
         "public_url": data.get("public_url") or None,
     }
@@ -154,6 +157,20 @@ def _build_queue_cleanup(data: Any, arr_name: str) -> QueueCleanup:
     if "stuck_for" in values:
         values["stuck_for"] = parse_duration(values["stuck_for"], f"{label} stuck_for")
     return _build(QueueCleanup, values, label)
+
+
+def _build_trash(data: Any, arr_name: str) -> TrashSettings:
+    label = f"[{arr_name}.trash]"
+    if not isinstance(data, Mapping):
+        raise ValueError(f"{label} must be a table")
+    values = dict(data)
+    profiles = values.get("profiles", [])
+    if not isinstance(profiles, list) or not all(isinstance(p, Mapping) for p in profiles):
+        raise ValueError(f"{label} profiles must be a list of tables")
+    values["profiles"] = [
+        _build(TrashProfile, p, f"[[{arr_name}.trash.profiles]] #{i}") for i, p in enumerate(profiles, start=1)
+    ]
+    return _build(TrashSettings, values, label)
 
 
 def _build_empty_trash(data: Mapping[str, Any], dry_run: bool) -> EmptyTrashSettings:
@@ -387,6 +404,10 @@ def config_dry_run(job: str, settings: ConfigSettings) -> bool | None:
     auto-approved removers"""
     if job in ("removers", "duplicates"):
         return True
+    if job == "trash_sync":
+        # format fixes some arrs apply without review make it partly live
+        auto = any(arr and arr.trash.auto_formats for arr in (settings.radarr, settings.sonarr))
+        return None if auto else True
     if job == "empty_trash":
         return settings.empty_trash.dry_run
     if job == "clear_stuck":

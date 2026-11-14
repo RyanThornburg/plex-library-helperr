@@ -2,13 +2,10 @@
 
 Planned work and ideas, roughly in order within each section. Nothing here is promised.
 
-## TRaSH Guides sync
+## TRaSH Guides sync, later
 
-- [ ] Keep Radarr's and Sonarr's custom formats, quality profiles, quality sizes and naming in line with [TRaSH Guides](https://trash-guides.info/), like Recyclarr or Notifiarr's sync.
-  - Read the guides' JSON from the TRaSH-Guides/Guides repo (custom formats with their trash ids and scores per profile, quality definitions, naming), pinned to a commit so a change upstream shows up as a diff, not a surprise.
-  - Settings: per arr, which guide profiles to follow, extra custom formats and score overrides.
-  - A run plans the changes (a custom format added or changed, scores, sizes) for review like removers, and applies only what was approved. Custom formats and profiles it didn't create are left alone.
-  - A schedule can check for guide updates and say when there's something to review.
+- [ ] Optional custom format groups (the guides' cf-groups, like `[Unwanted] Unwanted Formats`): offer a group's new custom formats for a linked profile, so a format TRaSH adds to a group you use shows up in the plan.
+- [ ] Naming: the guides' file and folder naming formats.
 
 ## Services I don't use (for other people's setups)
 

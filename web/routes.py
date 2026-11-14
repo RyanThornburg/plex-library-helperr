@@ -63,6 +63,10 @@ JOB_INFO: dict[str, tuple[str, str]] = {
         "Empty Plex trash",
         "Clear trashed items, skipping libraries that are scanning or over max_items.",
     ),
+    "trash_sync": (
+        "TRaSH Guides sync",
+        "Plan bringing Radarr's and Sonarr's custom formats, quality profiles and sizes in line with TRaSH Guides.",
+    ),
     "clear_stuck": (
         "Clear stuck downloads",
         "Remove downloads stuck in the Radarr/Sonarr queue longer than set in Settings → Stuck downloads. The health check runs it when one comes due.",
@@ -482,6 +486,7 @@ def run_page(request: Request, run_id: int) -> HTMLResponse:
             "run": run,
             "active": run.status in ACTIVE,
             "removals": removals,
+            "plan": result.get("plan", []),
             "changes": changes,
             "selectable": bool(approvable(run)) and problem is None,
             "apply_problem": problem,
@@ -500,6 +505,19 @@ def apply_confirm(
         problem = error or runner(request).apply_problem(session, run)
     if problem is None and (not selected or len(selected) != len(set(items))):
         problem = "Select at least one item from the plan."
+    if run.job == "trash_sync":
+        return templates.TemplateResponse(
+            request,
+            "trash_apply_confirm.html",
+            {
+                "user": request.state.user,
+                "run": run,
+                "selected": selected,
+                "problem": problem,
+                "query": urlencode([("item", removal_key(r)) for r in selected]),
+            },
+            status_code=400 if error else 200,
+        )
     # each arr's removals and files (plex's: duplicate versions), checked against its own
     # max_deletes
     arrs: list[dict[str, Any]] = []
@@ -809,8 +827,8 @@ class ApplyRequest(BaseModel):
 
 @router.post("/api/runs/{run_id}/apply", status_code=202)
 def api_apply_plan(request: Request, run_id: int, body: ApplyRequest) -> JSONResponse:
-    """removes the approved series/movies of a removers run's plan, or the approved
-    versions of a duplicates run's"""
+    """removes the approved series/movies of a removers run's plan, the approved
+    versions of a duplicates run's, or applies a TRaSH Guides plan's approved changes"""
     try:
         new_id = runner(request).submit_apply(run_id, body.items, "api", request.state.user)
     except LookupError:

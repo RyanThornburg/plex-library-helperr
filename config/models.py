@@ -1,5 +1,6 @@
 """models.py - the settings a config document builds"""
 
+import re
 from dataclasses import dataclass, field, fields
 from datetime import timedelta
 from types import NoneType, UnionType
@@ -376,6 +377,85 @@ class QueueCleanup:
         return {state for key in self.states for state in QUEUE_STATES[key]}
 
 
+# a profile's score override, "custom format name = score"
+SCORE_OVERRIDE = re.compile(r"^(?P<name>.+?)\s*=\s*(?P<score>[+-]?\d+)$")
+
+
+def parse_score_override(text: str) -> tuple[str, int]:
+    """("Language: Not Original", -30000) from "Language: Not Original = -30000" """
+    match = SCORE_OVERRIDE.match(text.strip())
+    if not match:
+        raise ValueError(f"score override '{text}' must be 'custom format name = score'")
+    return match["name"].strip(), int(match["score"])
+
+
+@dataclass
+class TrashProfile:
+    """
+    [[radarr.trash.profiles]] / [[sonarr.trash.profiles]]: an arr quality profile kept in
+    line with a TRaSH Guides quality profile (trash_guides).
+    profile: (str) The arr's quality profile, by name
+    guide: (str) The guide profile's trash_id
+    score_set: (str) Which of the guide's score sets to score with (e.g. german), empty
+        is the guide profile's own
+    settings: (bool) Also its qualities, cutoff, minimum scores and language. Off: only
+        custom format scores
+    scores: (list[str]) "custom format name = score" overrides, which win over the guide
+    """
+
+    profile: str
+    guide: str
+    score_set: str = ""
+    settings: bool = False
+    scores: list[str] = field(default_factory=list[str])
+
+    def __post_init__(self):
+        check_types(self)
+        if not self.profile.strip():
+            raise ValueError("profile is required")
+        if not self.guide.strip():
+            raise ValueError("guide is required")
+        names = [parse_score_override(s)[0].casefold() for s in self.scores]
+        if len(names) != len(set(names)):
+            raise ValueError("a custom format has more than one score override")
+
+    def overrides(self) -> dict[str, int]:
+        """custom format name (casefolded) -> score"""
+        return {name.casefold(): score for name, score in map(parse_score_override, self.scores)}
+
+
+@dataclass
+class TrashSettings:
+    """
+    [radarr.trash] / [sonarr.trash]: keep the arr in line with TRaSH Guides. Every change
+    is planned for review by the trash_sync job.
+    formats: (bool) Keep the definitions of custom formats named as in the guides in line
+        (the ones linked profiles score are added either way)
+    auto_formats: (bool) Apply custom format definition updates without review (adding
+        one, and every score, still waits for review)
+    quality_sizes: (str) The guide's quality sizes to follow (movie, series, anime...),
+        empty leaves the arr's alone
+    profiles: (list[TrashProfile]) Quality profiles kept in line with a guide profile
+    """
+
+    formats: bool = False
+    auto_formats: bool = False
+    quality_sizes: str = ""
+    profiles: list[TrashProfile] = field(default_factory=list[TrashProfile])
+
+    def __post_init__(self):
+        check_types(self)
+        names = [p.profile.casefold() for p in self.profiles]
+        if len(names) != len(set(names)):
+            raise ValueError("a quality profile is linked more than once")
+        if self.auto_formats and not self.formats:
+            raise ValueError("auto_formats needs formats on")
+
+    @property
+    def enabled(self) -> bool:
+        return self.formats or bool(self.quality_sizes) or bool(self.profiles)
+
+
 @dataclass
 class EmptyTrashSettings:
     """
@@ -597,6 +677,7 @@ class ArrConfig:
     )
     remover_settings: RemoverSettings = field(default_factory=RemoverSettings)
     queue_cleanup: QueueCleanup = field(default_factory=QueueCleanup)
+    trash: TrashSettings = field(default_factory=TrashSettings)
     dry_run: bool = False
     # where the status page links to away from home, baseurl is the local one
     public_url: str | None = None
@@ -615,7 +696,8 @@ class ArrConfig:
                 | list[ProfileRule]
                 | list[RemoverRule | MovieRemoverRule]
                 | RemoverSettings
-                | QueueCleanup,
+                | QueueCleanup
+                | TrashSettings,
             ]
         ] = [
             ("baseurl", self.baseurl or None),
@@ -626,6 +708,7 @@ class ArrConfig:
             ("removers", self.removers or None),
             ("remover_settings", self.remover_settings if self.removers else None),
             ("queue_cleanup", self.queue_cleanup if self.queue_cleanup.enabled else None),
+            ("trash", self.trash if self.trash.enabled else None),
             ("dry_run", self.dry_run),
             ("tag", self.tag or None),
         ]

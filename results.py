@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 # done: applied, dry_run: planned only, blocked: a safety check stopped it, failed: an api call failed
 Status = Literal["done", "dry_run", "blocked", "failed"]
 
-JOBS = ("movers", "removers", "duplicates", "empty_trash", "clear_stuck")
+JOBS = ("movers", "removers", "duplicates", "empty_trash", "clear_stuck", "trash_sync")
 
 
 def utc_now() -> datetime:
@@ -54,6 +54,23 @@ class PlannedRemoval:
 
 
 @dataclass
+class PlannedChange:
+    """one change to an arr's settings a trash_sync run planned (trash_guides): a custom
+    format to add or update, a quality profile's scores/settings, or the quality sizes.
+    Approved by key, and applied only when the change worked out again from fresh data
+    still has the same fingerprint, so what's applied is what was reviewed"""
+
+    service: str  # RADARR or SONARR
+    key: str  # radarr:format:<trash id>, radarr:profile:<profile id>, radarr:sizes
+    kind: str  # format_add, format_update, profile, sizes
+    title: str
+    lines: list[str]
+    fingerprint: str
+    status: Status
+    detail: str = ""
+
+
+@dataclass
 class TrashedItem:
     """a fully deleted plex item (no version left) that emptying the trash removes from
     the library. Upgrade leftovers, items with a version still there, are only counted"""
@@ -77,10 +94,13 @@ class JobResult:
     errors: list[str] = field(default_factory=list[str])
     removals: list[PlannedRemoval] = field(default_factory=list[PlannedRemoval])
     trash: list[TrashedItem] = field(default_factory=list[TrashedItem])
+    # trash_sync: the planned or applied changes, and the guides' commit they're from
+    plan: list[PlannedChange] = field(default_factory=list[PlannedChange])
+    guide_commit: str | None = None
 
     @property
     def failed(self) -> bool:
-        return bool(self.errors) or any(c.status == "failed" for c in self.changes)
+        return bool(self.errors) or any(c.status == "failed" for c in [*self.changes, *self.plan])
 
     def to_dict(self) -> dict[str, Any]:
         """json-safe, for storing with a job run"""
@@ -92,6 +112,8 @@ class JobResult:
             "errors": list(self.errors),
             "removals": [asdict(r) for r in self.removals],
             "trash": [asdict(t) for t in self.trash],
+            "plan": [asdict(p) for p in self.plan],
+            "guide_commit": self.guide_commit,
         }
 
     def log_summary(self) -> None:

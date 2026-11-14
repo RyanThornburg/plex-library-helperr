@@ -931,3 +931,7 @@ td.row-actions { text-align: right; }
   /* a log is mostly routine lines: messages at regular weight, the level says what matters */
   table.stack.events td.lead { font-weight: 400; }
 }
+
+/* Settings → TRaSH Guides: a row per quality profile */
+.guide-links select { max-width: 220px; }
+.guide-links textarea { width: 100%; min-width: 180px; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
