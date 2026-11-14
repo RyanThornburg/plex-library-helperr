@@ -43,6 +43,8 @@ SORTS = {
     "requester": "Requester",
 }
 DEFAULT_SORT = "idle"
+# the requester filter's other values: requested by anyone, or by no one
+ANY_REQUESTER = "any"
 NO_REQUESTER = "none"
 SHOWN = 100
 
@@ -55,7 +57,7 @@ class Filters:
     seasons: bool = False
     watch: str = DEFAULT_WATCH
     days: int = DEFAULT_DAYS
-    # a seerr requester id, or NO_REQUESTER
+    # a seerr requester id, ANY_REQUESTER or NO_REQUESTER; None is either
     requester: str | None = None
     sort: str = DEFAULT_SORT
     reverse: bool = False
@@ -106,8 +108,10 @@ def parse_filters(request: Request) -> Filters:
         if filters.days < 0:
             raise HTTPException(status_code=422, detail="days must be a whole number of days")
     if requester := params.get("requester"):
-        if requester != NO_REQUESTER and not requester.isdigit():
-            raise HTTPException(status_code=422, detail=f"requester must be a requester's id or {NO_REQUESTER}")
+        if requester not in (ANY_REQUESTER, NO_REQUESTER) and not requester.isdigit():
+            raise HTTPException(
+                status_code=422, detail=f"requester must be a requester's id, {ANY_REQUESTER} or {NO_REQUESTER}"
+            )
         filters.requester = requester
     filters.seasons = params.get("seasons") in ("1", "true", "on")
     filters.reverse = params.get("reverse") in ("1", "true", "on")
@@ -225,17 +229,20 @@ def load_rows(request: Request, filters: Filters, now: datetime) -> tuple[list[R
     libraries = sorted({i.library for i in items}, key=str.casefold)
     scoped = [Row(i, state(i, filters, now), requesters.of(i)) for i in items if filters.in_scope(i)]
     wanted = WATCH_STATES[filters.watch]
-    shown = [
-        r
-        for r in scoped
-        if r.state in wanted
-        and (
-            filters.requester is None
-            or (filters.requester == NO_REQUESTER and not r.requesters)
-            or any(str(id) == filters.requester for id, _ in r.requesters)
-        )
-    ]
+    shown = [r for r in scoped if r.state in wanted and requested_by(r, filters.requester)]
     return scoped, sort_rows(shown, filters.sort, filters.reverse), libraries
+
+
+def requested_by(row: Row, requester: str | None) -> bool:
+    """the requester filter: None either way, ANY_REQUESTER by someone, NO_REQUESTER by
+    no one, else by that seerr id"""
+    if requester is None:
+        return True
+    if requester == ANY_REQUESTER:
+        return bool(row.requesters)
+    if requester == NO_REQUESTER:
+        return not row.requesters
+    return any(str(id) == requester for id, _ in row.requesters)
 
 
 def summaries(rows: list[Row]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -320,6 +327,7 @@ def library_page(request: Request) -> HTMLResponse:
             "requesters": requesters,
             "now": now,
             "days_since": days_since,
+            "ANY_REQUESTER": ANY_REQUESTER,
             "NO_REQUESTER": NO_REQUESTER,
             "STATES": STATES,
             "WATCH": WATCH,

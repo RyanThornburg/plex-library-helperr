@@ -115,6 +115,8 @@ class TestLibraryApi:
             ("type=show&days=100", ["Survivor"]),
             ("days=500", []),
             ("requester=none", ["Declined", "Stale"]),
+            ("requester=any", ["4K", "Never", "Survivor"]),
+            ("requester=any&watch=all&type=movie", ["4K", "Never"]),
             ("requester=8&watch=all", ["4K", "Never", "Survivor"]),
             ("sort=title&reverse=1", ["Survivor", "Stale", "Never", "Declined", "4K"]),
         ],
@@ -159,6 +161,12 @@ class TestLibraryPage:
         page = client.get("/library?days=90", headers=auth()).text
         assert "/library?watch=never&amp;days=90&amp;requester=8" in page
         assert "/library/export.csv?days=90" in page
+
+    def test_requester_choices(self, client):
+        page = client.get("/library?requester=any", headers=auth()).text
+        assert '<option value="any" selected>Anyone</option>' in page
+        assert '<option value="none">No one</option>' in page and '<option value="">Requested or not</option>' in page
+        assert '<optgroup label="Requested by">' in page and '<option value="8">Sam</option>' in page
 
     def test_a_season_is_named(self, client):
         page = client.get("/library?seasons=1&type=show&watch=all", headers=auth()).text

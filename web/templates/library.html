@@ -36,9 +36,12 @@
   </label>
   <label>Requester
     <select name="requester">
-      <option value="">Anyone or no one</option>
-      <option value="{{ NO_REQUESTER }}"{% if filters.requester == NO_REQUESTER %} selected{% endif %}>No request</option>
+      <option value="">Requested or not</option>
+      <option value="{{ ANY_REQUESTER }}"{% if filters.requester == ANY_REQUESTER %} selected{% endif %}>Anyone</option>
+      <option value="{{ NO_REQUESTER }}"{% if filters.requester == NO_REQUESTER %} selected{% endif %}>No one</option>
+      <optgroup label="Requested by">
       {% for id, name in requesters %}<option value="{{ id }}"{% if filters.requester == id | string %} selected{% endif %}>{{ name }}</option>{% endfor %}
+      </optgroup>
     </select>
   </label>
   <label>Sort
