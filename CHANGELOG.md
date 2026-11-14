@@ -2,7 +2,7 @@
 
 What changed in each release. Versions are `MAJOR.MINOR.PATCH`: the major number goes up when upgrading needs you to do something (a new required setting, a removed feature, a change that breaks the API), the minor number for new features, the patch number for fixes.
 
-## Unreleased
+## 2.2.0 (2026-11-13)
 
 ### New
 
