@@ -1020,6 +1020,12 @@ td.row-actions { text-align: right; }
   table.stack.events td.lead { font-weight: 400; }
 }
 
-/* Settings → TRaSH Guides: a row per quality profile */
-.guide-links select { max-width: 220px; }
-.guide-links textarea { width: 100%; min-width: 180px; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+/* Settings → TRaSH Guides: a block per quality profile, spanning the form */
+.form > .guide-links { grid-column: 1 / -1; contain: inline-size; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--border); }
+.guide-links > li { display: grid; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.guide-link-name { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.guide-link-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px 16px; align-items: start; }
+.guide-link-fields > label { display: grid; gap: 4px; min-width: 0; }
+.guide-link-fields > .guide-link-scores { grid-column: 1 / -1; }
+.guide-link-fields .label { font-weight: 600; font-size: 13px; }
+.guide-link-fields textarea { width: 100%; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }

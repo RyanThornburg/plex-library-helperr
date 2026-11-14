@@ -35,41 +35,47 @@
     <p class="hint">Only the qualities the guides size are changed.</p>
   </div>
 
-  <span class="label">Quality profiles</span>
-  <div>
-    {% if v.rows %}
-    <table class="stack guide-links">
-      <thead><tr><th>Profile</th><th>Follows</th><th>Score set</th><th>Settings</th><th>Your scores</th></tr></thead>
-      <tbody>
-        {% for row in v.rows %}
-        {% set i = loop.index0 %}
-        <tr>
-          <td class="long first lead">{{ row.profile }}<input type="hidden" name="profile" value="{{ row.profile }}">{% if row.missing %} <span class="tag tag-warn">not in {{ a.label }}</span>{% endif %}{% if row.suggested %} <span class="tag">suggested</span>{% endif %}</td>
-          <td data-label="Follows">
-            <select name="guide_{{ i }}" aria-label="Guide profile {{ row.profile }} follows">
-              <option value="">Not linked</option>
-              {% set chosen = row.guide or row.suggested %}
-              {% for trash_id, name in a.guide_profiles %}<option value="{{ trash_id }}"{% if chosen == trash_id %} selected{% endif %}>{{ name }}</option>{% endfor %}
-              {% if row.guide and row.guide not in a.guide_profiles | map("first") | list %}<option value="{{ row.guide }}" selected>{{ row.guide }} (not in the stored guides)</option>{% endif %}
-            </select>
-          </td>
-          <td data-label="Score set">
-            <select name="score_set_{{ i }}" aria-label="Score set for {{ row.profile }}">
-              <option value="">The guide profile's</option>
-              {% for name in a.score_sets %}<option value="{{ name }}"{% if row.score_set == name %} selected{% endif %}>{{ name }}</option>{% endfor %}
-            </select>
-          </td>
-          <td data-label="Settings"><label class="check"><input type="checkbox" name="settings_{{ i }}" value="1"{% if row.settings %} checked{% endif %}> qualities, cutoff, minimum scores</label></td>
-          <td data-label="Your scores"><textarea name="scores_{{ i }}" rows="2" spellcheck="false" aria-label="Score overrides for {{ row.profile }}" placeholder="Custom format = score">{{ row.scores }}</textarea></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <p class="muted">No quality profiles to show.</p>
-    {% endif %}
-    <p class="hint">A linked profile gets the guide profile's custom formats and scores, and the guides' score for every custom format it already scores (by the score set chosen: pick german for a German profile, for example). Your scores win, one per line like <code>Language: Not Original = -30000</code>. Settings also brings its allowed qualities, their order, the cutoff, the minimum scores and (Radarr) the language in line.</p>
-  </div>
+  <h3 class="form-heading">Quality profiles</h3>
+  <p class="form-note hint">A linked profile gets the guide profile's custom formats and scores, and the guides' score for every custom format it already scores, by the score set chosen (german for a German profile, for example). Your scores win, one per line like <code>Language: Not Original = -30000</code>.</p>
+  {% if v.rows %}
+  <ul class="guide-links">
+    {% for row in v.rows %}
+    {% set i = loop.index0 %}
+    {% set chosen = row.guide or row.suggested %}
+    <li>
+      <div class="guide-link-name">
+        <strong>{{ row.profile }}</strong><input type="hidden" name="profile" value="{{ row.profile }}">
+        {% if row.missing %}<span class="tag tag-warn">not in {{ a.label }}</span>{% endif %}
+        {% if row.suggested %}<span class="tag">suggested, not saved yet</span>{% endif %}
+      </div>
+      <div class="guide-link-fields">
+        <label>
+          <span class="label">Follows</span>
+          <select name="guide_{{ i }}">
+            <option value="">Not linked</option>
+            {% for trash_id, name in a.guide_profiles %}<option value="{{ trash_id }}"{% if chosen == trash_id %} selected{% endif %}>{{ name }}</option>{% endfor %}
+            {% if row.guide and row.guide not in a.guide_profiles | map("first") | list %}<option value="{{ row.guide }}" selected>{{ row.guide }} (not in the stored guides)</option>{% endif %}
+          </select>
+        </label>
+        <label>
+          <span class="label">Score set</span>
+          <select name="score_set_{{ i }}">
+            <option value="">The guide profile's</option>
+            {% for name in a.score_sets %}<option value="{{ name }}"{% if row.score_set == name %} selected{% endif %}>{{ name }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="guide-link-scores">
+          <span class="label">Your scores</span>
+          <textarea name="scores_{{ i }}" rows="2" spellcheck="false" placeholder="Custom format = score">{{ row.scores }}</textarea>
+        </label>
+      </div>
+      <label class="check"><input type="checkbox" name="settings_{{ i }}" value="1"{% if row.settings %} checked{% endif %}> <span>Also its allowed qualities and their order, cutoff, minimum scores{% if a.arr == "radarr" %} and language{% endif %}</span></label>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="form-note muted">No quality profiles to show.</p>
+  {% endif %}
   <span></span>
   <div class="actions"><button type="submit">Save {{ a.label }}</button></div>
 </form>
