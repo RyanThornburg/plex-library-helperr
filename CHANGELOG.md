@@ -2,7 +2,7 @@
 
 What changed in each release. Versions are `MAJOR.MINOR.PATCH`: the major number goes up when upgrading needs you to do something (a new required setting, a removed feature, a change that breaks the API), the minor number for new features, the patch number for fixes.
 
-## Unreleased
+## 2.5.0 (2026-11-16)
 
 ### New
 
@@ -11,6 +11,15 @@ What changed in each release. Versions are `MAJOR.MINOR.PATCH`: the major number
 - TRaSH Guides: each linked profile opens to a table of every custom format it scores, with the arr's score now, the guide's and yours, the ones the sync would change first, and its settings and allowed qualities next to the guide's (whether or not you follow them). Your own scores are set right there: empty follows the guide, and other custom formats are picked from a list, so a misspelled name can't happen. It replaces the "Your scores" text box.
 - TRaSH Guides: apply part of a change. On a run's plan every score, setting and the allowed qualities of a quality profile (and each quality size) has its own checkbox; untick one to leave it as it is for now, and it's planned again next time. To keep your value for good, set it in the profile's table on Settings → TRaSH Guides.
 - TRaSH Guides: differences are tables instead of lines of text, on the settings page (compared with each arr right now, before you run anything), on a run's plan and when applying it: a custom format's regex with the words it adds or removes marked, a profile's scores that differ next to the guide's, quality sizes as min, preferred and max.
+- Status: a Right now band between the cards that need you and the healthy services, with what Plex is playing and what's downloading. Each stream shows where it is, its tracks and what Plex sends; a transcode is outlined with why and what to change, as on Playback. Each download is one row (Radarr's or Sonarr's title, a season pack as one, with SABnzbd's progress and time left), and a running parity check shows there too.
+
+### Changed
+
+- The [wiki](https://github.com/RyanThornburg/plex-library-helperr/wiki) walks through every page with screenshots.
+
+### Fixed
+
+- `opentelemetry-api` 1.45.2 (GHSA-mf5v-w3w3-f6cg), which FastAPI uses for tracing. Helperr wasn't open to it: it only reads trace context from HTTP headers, which can't hold the newline the attack needs.
 
 ## 2.4.0 (2026-11-14)
 
