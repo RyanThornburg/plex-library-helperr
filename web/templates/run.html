@@ -94,7 +94,7 @@
 {% endif %}
 
 {% if plan %}
-{% set kinds = {"format_add": "new custom format", "format_update": "custom format", "profile": "quality profile", "sizes": "quality sizes"} %}
+{% import "_trash_diff.html" as td %}
 <h2>{{ "Applied" if run.plan_run_id else "Planned changes" }}</h2>
 {% if run.result.guide_commit %}<p class="muted">From TRaSH Guides at <a href="https://github.com/TRaSH-Guides/Guides/commits/{{ run.result.guide_commit }}" rel="noopener noreferrer">{{ run.result.guide_commit[:7] }}</a>.</p>{% endif %}
 {% if applied_by %}
@@ -118,9 +118,10 @@
       {% if selectable %}
       <td class="first">{% if item.status in APPROVABLE %}<input type="checkbox" name="item" value="{{ removal_key(item) }}" aria-label="Apply {{ item.title }}">{% endif %}</td>
       {% endif %}
-      <td class="long first lead">{{ item.title }} <span class="tag">{{ item.service | title }}</span><br><span class="muted">{{ kinds.get(item.kind, item.kind) }}</span></td>
-      <td class="long" data-label="What changes">
-        {% if item.lines | length > 4 %}
+      <td class="long first lead">{{ item.title }} <span class="tag">{{ item.service | title }}</span><br><span class="muted">{{ td.KINDS.get(item.kind, item.kind) }}</span></td>
+      <td class="long row" data-label="What changes">
+        {% if item.diff %}{{ td.fold(item, item.service | title) }}
+        {% elif item.lines | length > 4 %}
         <details><summary>{{ item.lines | length }} changes</summary><ul class="items">{% for line in item.lines %}<li>{{ line }}</li>{% endfor %}</ul></details>
         {% elif item.lines %}
         <ul class="items">{% for line in item.lines %}<li>{{ line }}</li>{% endfor %}</ul>

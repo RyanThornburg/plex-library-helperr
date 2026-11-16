@@ -61,13 +61,17 @@ class PlannedChange:
     still has the same fingerprint, so what's applied is what was reviewed"""
 
     service: str  # RADARR or SONARR
-    key: str  # radarr:format:<trash id>, radarr:profile:<profile id>, radarr:sizes
-    kind: str  # format_add, format_update, profile, sizes
+    # radarr:format:<trash id>, radarr:profile:<profile id>, radarr:profile_add:<name>, radarr:sizes
+    key: str
+    kind: str  # format_add, format_update, profile, profile_add, sizes
     title: str
     lines: list[str]
     fingerprint: str
     status: Status
     detail: str = ""
+    # the same change as data for the pages' tables (trash_guides' *_diff); runs from
+    # before it have only lines
+    diff: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

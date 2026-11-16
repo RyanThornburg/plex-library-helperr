@@ -1029,3 +1029,109 @@ td.row-actions { text-align: right; }
 .guide-link-fields > .guide-link-scores { grid-column: 1 / -1; }
 .guide-link-fields .label { font-weight: 600; font-size: 13px; }
 .guide-link-fields textarea { width: 100%; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+/* TRaSH Guides: how an arr compares with the guides now (_trash_diff.html), on Settings,
+   a run's plan and the apply dialog. Yours against the guide's, only what differs */
+.trash-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 16px; }
+.trash-verdict { margin: 0; color: var(--muted); font-variant-numeric: tabular-nums; }
+.trash-verdict strong { color: var(--text); }
+.card > .trash-problems { margin: 0; padding-left: 32px; }
+.form > .trash-changes { grid-column: -2 / -1; margin: -4px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--border); }
+.trash-changes > li { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.trash-change-name { margin: 0; }
+
+.tdiff-fold > summary, .trash-rest > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 0;
+  cursor: pointer;
+  list-style: none;
+  font-variant-numeric: tabular-nums;
+}
+.tdiff-fold > summary::-webkit-details-marker, .trash-rest > summary::-webkit-details-marker { display: none; }
+.tdiff-fold > summary::before, .trash-rest > summary::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: translateY(-2px) rotate(-45deg);
+}
+.tdiff-fold[open] > summary::before, .trash-rest[open] > summary::before { transform: translateY(-4px) rotate(45deg); }
+.tdiff-fold > summary:hover, .trash-rest > summary:hover { color: var(--link); }
+.trash-rest > summary { color: var(--muted); }
+.tdiff-fold > summary > span { min-width: 0; }
+.form > .trash-rest { grid-column: 1 / -1; contain: inline-size; }
+.trash-rest > .guide-links { margin: 8px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--border); }
+td .tdiff-fold { display: block; }
+
+.tdiff-body { display: grid; gap: 12px; justify-items: start; margin: 8px 0 4px 14px; }
+.tdiff-body > * { max-width: 100%; }
+table.tdiff { width: auto; min-width: min(100%, 26rem); }
+.tdiff th, .tdiff td { padding: 6px 12px; vertical-align: baseline; }
+.tdiff tbody th { color: var(--text); font-weight: 400; font-size: 15px; white-space: normal; overflow-wrap: anywhere; }
+.tdiff .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tdiff-want { font-weight: 600; }
+.tdiff-why { font-size: 13px; white-space: nowrap; }
+.tdiff-old { color: var(--muted); }
+.tdiff-num { font-variant-numeric: tabular-nums; }
+.tdiff-note, .tdiff-inline { margin: 0; color: var(--muted); font-size: 13px; }
+.tdiff-value code { font-size: 12px; overflow-wrap: anywhere; }
+
+/* qualities, best first, as chips: the guide's extras added, yours it drops struck */
+.tdiff-qualities { display: grid; gap: 6px; margin: 0; }
+.tdiff-qualities dt { font-weight: 600; font-size: 13px; }
+.tdiff-qualities dd { display: grid; grid-template-columns: 3.5rem minmax(0, 1fr); gap: 8px; align-items: baseline; margin: 0; }
+.tdiff-qualities dd:only-of-type { grid-template-columns: minmax(0, 1fr); }
+.tdiff-side { color: var(--muted); font-size: 13px; }
+.qchips { display: flex; flex-wrap: wrap; gap: 4px 6px; margin: 0; padding: 0; list-style: none; }
+.qchip { max-width: 100%; padding: 1px 8px; border: 1px solid var(--border); border-radius: 999px; font-size: 13px; overflow-wrap: anywhere; }
+.qchip-members { color: var(--muted); }
+.qchip-added { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, var(--surface)); }
+.qchip-removed { border-color: var(--bad); color: var(--muted); text-decoration: line-through; }
+
+/* a condition's value, the words that differ marked like a diff's lines */
+.tdiff-conditions { display: grid; gap: 12px; width: 100%; margin: 0; padding: 0; list-style: none; }
+.tdiff-cond-head { margin: 0 0 6px; }
+.tdiff-pair {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 12px;
+  align-items: baseline;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.tdiff-pair dt { color: var(--muted); font-size: 13px; }
+.tdiff-pair dd { min-width: 0; margin: 0; }
+.tdiff-pair code { font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+.tdiff-pair del, .tdiff-pair ins { color: inherit; text-decoration-thickness: 1px; }
+.tdiff-pair del { background: color-mix(in srgb, var(--bad) 18%, transparent); }
+.tdiff-pair ins { background: color-mix(in srgb, var(--ok) 18%, transparent); text-underline-offset: 3px; }
+
+/* importing guide profiles: a table to choose from, under the arr's own form */
+.trash-import { margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--border); }
+.trash-import > .hint { max-width: 75ch; margin-bottom: 12px; }
+.trash-import-table td { vertical-align: baseline; }
+.trash-import-table label { font-weight: 600; }
+
+@media (max-width: 700px) {
+  .tdiff-body { margin-left: 0; }
+  .tdiff-why { white-space: normal; }
+  .tdiff-body > table.tdiff { width: 100%; }
+  .tdiff th, .tdiff td { padding: 4px 8px; }
+  table.stack td > details.tdiff-fold { display: block; }
+  /* a diff's own tables stay tables inside a stacked row */
+  table.stack table.tdiff { display: table; }
+  table.stack table.tdiff thead { display: table-header-group; }
+  table.stack table.tdiff tbody { display: table-row-group; }
+  table.stack table.tdiff tr { display: table-row; padding: 0; }
+  table.stack table.tdiff th, table.stack table.tdiff td { display: table-cell; padding: 4px 8px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  table.stack table.tdiff td[data-label]::before { content: none; }
+}
+/* a plan row holding a change's details reads from its top */
+tr:has(> td > .tdiff-fold[open]) > td { vertical-align: top; }

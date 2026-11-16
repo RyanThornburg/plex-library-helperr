@@ -7,6 +7,8 @@ What changed in each release. Versions are `MAJOR.MINOR.PATCH`: the major number
 ### New
 
 - TRaSH Guides sync (Runs, Settings → TRaSH Guides): keeps Radarr's and Sonarr's custom formats, quality profiles and quality sizes in line with TRaSH Guides, planned for review like removers. Link each quality profile to the guide profile it follows, with a score set and your own scores, which win. Each run lists what differs from the guides (a fixed regex, a new score, a quality size), you tick what to apply, and applying sends only what's still exactly as planned. Custom format fixes can be applied without review. Nothing is deleted. The guides are downloaded from GitHub once, then only when they change.
+- TRaSH Guides: import a guide profile the arr doesn't have yet. Tick it on Settings → TRaSH Guides and the sync plans making it in the arr with the guide's qualities, cutoff, minimum scores and scores, for review like every other change.
+- TRaSH Guides: differences are tables instead of lines of text, on the settings page (compared with each arr right now, before you run anything), on a run's plan and when applying it. A profile shows only the scores that differ, yours next to the guide's, with how many already match; its settings and allowed qualities side by side; a custom format's regex with the words it adds or removes marked; quality sizes as min, preferred and max.
 
 ## 2.4.0 (2026-11-14)
 

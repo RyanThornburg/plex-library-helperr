@@ -1,8 +1,57 @@
 {% extends "settings/_layout.html" %}
 {% import "settings/_fields.html" as f with context %}
+{% import "_trash_diff.html" as td %}
 {% set tab = "guides" %}
+
+{# a quality profile's block: its link, then how it compares with its guide profile now #}
+{% macro profile_row(a, row, i) %}
+{% set chosen = row.guide or row.suggested %}
+{% set change = a.compared.profiles.get(row.profile | lower) if a.compared else none %}
+<li>
+  <div class="guide-link-name">
+    <strong>{{ row.profile }}</strong><input type="hidden" name="profile" value="{{ row.profile }}">
+    {% if row.missing and row.create %}<span class="tag tag-info">new, made when you apply</span><input type="hidden" name="create_{{ i }}" value="1">
+    {% elif row.missing %}<span class="tag tag-warn">not in {{ a.label }}</span>{% endif %}
+    {% if row.suggested %}<span class="tag">suggested, not saved yet</span>{% endif %}
+  </div>
+  <div class="guide-link-fields">
+    <label>
+      <span class="label">Follows</span>
+      <select name="guide_{{ i }}">
+        <option value="">Not linked</option>
+        {% for trash_id, name in a.guide_profiles %}<option value="{{ trash_id }}"{% if chosen == trash_id %} selected{% endif %}>{{ name }}</option>{% endfor %}
+        {% if row.guide and row.guide not in a.guide_profiles | map("first") | list %}<option value="{{ row.guide }}" selected>{{ row.guide }} (not in the stored guides)</option>{% endif %}
+      </select>
+    </label>
+    <label>
+      <span class="label">Score set</span>
+      <select name="score_set_{{ i }}">
+        <option value="">The guide profile's</option>
+        {% for name in a.score_sets %}<option value="{{ name }}"{% if row.score_set == name %} selected{% endif %}>{{ name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="guide-link-scores">
+      <span class="label">Your scores</span>
+      <textarea name="scores_{{ i }}" rows="2" spellcheck="false" placeholder="Custom format = score">{{ row.scores }}</textarea>
+    </label>
+  </div>
+  {% if row.missing and row.create %}
+  <p class="hint">Made with the guide profile's qualities, cutoff and minimum scores.</p>
+  {% else %}
+  <label class="check"><input type="checkbox" name="settings_{{ i }}" value="1"{% if row.settings %} checked{% endif %}> <span>Also its allowed qualities and their order, cutoff, minimum scores{% if a.arr == "radarr" %} and language{% endif %}</span></label>
+  {% endif %}
+  {% if change %}
+  {{ td.fold(change, a.label) }}
+  {% elif row.linked and a.compared %}
+  <p class="tdiff-inline">In line with {{ (a.guide_profiles | selectattr("0", "equalto", row.guide) | map("last") | first) or "its guide profile" }}.</p>
+  {% elif row.suggested and a.compared %}
+  <p class="hint">Save to compare it with the guide profile.</p>
+  {% endif %}
+</li>
+{% endmacro %}
+
 {% block settings %}
-<p class="muted">Keep Radarr's and Sonarr's custom formats, quality profiles and quality sizes in line with <a href="https://trash-guides.info/" rel="noopener noreferrer">TRaSH Guides</a>. The <a href="/runs">TRaSH Guides sync</a> job compares them with the guides and plans each difference for you to review, like removers; schedule it to hear about guide updates. Nothing is ever deleted, and custom formats and profiles the guides don't name are left alone.</p>
+<p class="muted">Keep Radarr's and Sonarr's custom formats, quality profiles and quality sizes in line with <a href="https://trash-guides.info/" rel="noopener noreferrer">TRaSH Guides</a>. Each section below compares what's saved here with the arr right now. The <a href="/runs">TRaSH Guides sync</a> job plans those differences for you to review, like removers; schedule it to hear about guide updates. Nothing is ever deleted, and custom formats and profiles the guides don't name are left alone.</p>
 
 <div class="key-row">
   <p class="muted">{% if guide %}Guides stored: <a href="https://github.com/TRaSH-Guides/Guides/commits/{{ guide.commit }}" rel="noopener noreferrer">{{ guide.commit[:7] }}</a>{% if status.checked_at %}, last checked {{ status.checked_at | relative }}{% endif %}.{% else %}The guides haven't been downloaded yet (about 25 MB, once; after that only when they change).{% endif %}</p>
@@ -15,9 +64,24 @@
 {% endif %}
 {% for a in arrs %}
 {% set v = a["values"] %}
-<section class="card" id="{{ a.arr }}">
-<div class="heading"><h2>{{ a.label }}</h2></div>
+{% set cmp = a.compared %}
+<section class="card trash-arr" id="{{ a.arr }}">
+<div class="trash-head">
+  <h2>{{ a.label }}</h2>
+  {% if cmp and cmp.enabled %}
+  <p class="trash-verdict">
+    {%- if cmp.count %}<strong>{{ td.plural(cmp.count, "difference") }}</strong> from the guides · <a href="/jobs/trash_sync/confirm">Plan them for review</a>
+    {%- else %}In line with the guides{% endif -%}
+  </p>
+  {% elif cmp %}
+  <p class="trash-verdict muted">Not following the guides yet</p>
+  {% endif %}
+</div>
 {% if a.problem %}<p class="banner banner-warn">{{ a.problem }}</p>{% endif %}
+{% if cmp and cmp.problems %}
+<ul class="banner banner-warn trash-problems">{% for p in cmp.problems %}<li>{{ p }}</li>{% endfor %}</ul>
+{% endif %}
+
 <form method="post" action="/settings/trash-guides/{{ a.arr }}#{{ a.arr }}" class="form">
   {{ f.version_field() }}
   <span class="label">Custom formats</span>
@@ -25,6 +89,16 @@
     <label class="check check-row"><input type="checkbox" name="formats" value="1"{% if v.formats %} checked{% endif %}> <span>Keep custom formats in line <span class="muted">· every custom format named as in the guides gets the guides' conditions, when TRaSH fixes a regex for example</span></span></label>
     <label class="check check-row"><input type="checkbox" name="auto_formats" value="1"{% if v.auto_formats %} checked{% endif %}> <span>Apply those without review <span class="muted">· runs update their conditions straight away; new custom formats, scores and sizes still wait for review</span></span></label>
   </div>
+  {% if cmp and cmp.formats %}
+  <ul class="trash-changes">
+    {% for c in cmp.formats %}
+    <li>
+      <p class="trash-change-name"><strong>{{ c.title }}</strong> <span class="muted">{{ "new custom format" if c.kind == "format_add" else "conditions differ" }}</span></p>
+      {{ td.fold(c, a.label) }}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
 
   <label for="{{ a.arr }}-sizes">Quality sizes</label>
   <div>
@@ -33,52 +107,61 @@
       {% for size in a.sizes | list + ([v.quality_sizes] if v.quality_sizes and v.quality_sizes not in a.sizes else []) %}<option value="{{ size }}"{% if v.quality_sizes == size %} selected{% endif %}>The guides' {{ size }} sizes</option>{% endfor %}
     </select>
     <p class="hint">Only the qualities the guides size are changed.</p>
+    {% if cmp and cmp.sizes %}{{ td.fold(cmp.sizes, a.label) }}
+    {% elif cmp and v.quality_sizes %}<p class="tdiff-inline">In line with the guides' {{ v.quality_sizes }} sizes.</p>{% endif %}
   </div>
 
   <h3 class="form-heading">Quality profiles</h3>
   <p class="form-note hint">A linked profile gets the guide profile's custom formats and scores, and the guides' score for every custom format it already scores, by the score set chosen (german for a German profile, for example). Your scores win, one per line like <code>Language: Not Original = -30000</code>.</p>
-  {% if v.rows %}
+  {% set shown = v.rows | selectattr("shown") | list %}
+  {% set rest = v.rows | rejectattr("shown") | list %}
+  {% if shown %}
   <ul class="guide-links">
-    {% for row in v.rows %}
-    {% set i = loop.index0 %}
-    {% set chosen = row.guide or row.suggested %}
-    <li>
-      <div class="guide-link-name">
-        <strong>{{ row.profile }}</strong><input type="hidden" name="profile" value="{{ row.profile }}">
-        {% if row.missing %}<span class="tag tag-warn">not in {{ a.label }}</span>{% endif %}
-        {% if row.suggested %}<span class="tag">suggested, not saved yet</span>{% endif %}
-      </div>
-      <div class="guide-link-fields">
-        <label>
-          <span class="label">Follows</span>
-          <select name="guide_{{ i }}">
-            <option value="">Not linked</option>
-            {% for trash_id, name in a.guide_profiles %}<option value="{{ trash_id }}"{% if chosen == trash_id %} selected{% endif %}>{{ name }}</option>{% endfor %}
-            {% if row.guide and row.guide not in a.guide_profiles | map("first") | list %}<option value="{{ row.guide }}" selected>{{ row.guide }} (not in the stored guides)</option>{% endif %}
-          </select>
-        </label>
-        <label>
-          <span class="label">Score set</span>
-          <select name="score_set_{{ i }}">
-            <option value="">The guide profile's</option>
-            {% for name in a.score_sets %}<option value="{{ name }}"{% if row.score_set == name %} selected{% endif %}>{{ name }}</option>{% endfor %}
-          </select>
-        </label>
-        <label class="guide-link-scores">
-          <span class="label">Your scores</span>
-          <textarea name="scores_{{ i }}" rows="2" spellcheck="false" placeholder="Custom format = score">{{ row.scores }}</textarea>
-        </label>
-      </div>
-      <label class="check"><input type="checkbox" name="settings_{{ i }}" value="1"{% if row.settings %} checked{% endif %}> <span>Also its allowed qualities and their order, cutoff, minimum scores{% if a.arr == "radarr" %} and language{% endif %}</span></label>
-    </li>
-    {% endfor %}
+    {% for row in shown %}{{ profile_row(a, row, loop.index0) }}{% endfor %}
   </ul>
-  {% else %}
+  {% elif not rest %}
   <p class="form-note muted">No quality profiles to show.</p>
+  {% endif %}
+  {% if rest %}
+  <details class="trash-rest"{% if not shown %} open{% endif %}>
+    <summary>{{ td.plural(rest | length, "other profile") }}, not linked: {{ rest | map(attribute="profile") | join(", ") }}</summary>
+    <ul class="guide-links">
+      {% for row in rest %}{{ profile_row(a, row, shown | length + loop.index0) }}{% endfor %}
+    </ul>
+  </details>
   {% endif %}
   <span></span>
   <div class="actions"><button type="submit">Save {{ a.label }}</button></div>
 </form>
+
+{% if a.importable %}
+<form method="post" action="/settings/trash-guides/{{ a.arr }}/import" class="trash-import">
+  {{ f.version_field() }}
+  <h3>Import a guide profile</h3>
+  <p class="hint">Adds a new quality profile to {{ a.label }}, named and set up like the guide's: its qualities, cutoff, minimum scores and every custom format it scores. Importing only links it here; the TRaSH Guides sync plans making it, for your review, and adds any custom format it needs.</p>
+  <table class="stack trash-import-table">
+    <thead>
+      <tr>
+        <th class="keep"><span class="visually-hidden">Import</span></th>
+        <th>Guide profile</th><th>Qualities, best first</th><th>Upgrade until</th><th class="num">Custom formats</th><th>Score set</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in a.importable %}
+      <tr>
+        <td class="first"><input type="checkbox" id="{{ a.arr }}-import-{{ loop.index }}" name="guide" value="{{ p.guide }}"></td>
+        <td class="lead"><label for="{{ a.arr }}-import-{{ loop.index }}">{{ p.name }}</label></td>
+        <td class="long" data-label="Qualities">{{ td.quality_row(p.qualities, none, "") }}</td>
+        <td data-label="Upgrade until">{{ p.cutoff }}</td>
+        <td class="num" data-label="Custom formats">{{ p.formats }}</td>
+        <td data-label="Score set">{{ p.score_set }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div class="actions table-actions"><button type="submit">Import selected</button></div>
+</form>
+{% endif %}
 </section>
 {% endfor %}
 {% endblock %}

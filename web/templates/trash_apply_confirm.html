@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Apply plan #{{ run.id }}? · Helperr{% endblock %}
 {% block content %}
-{% set kinds = {"format_add": "new custom format", "format_update": "custom format", "profile": "quality profile", "sizes": "quality sizes"} %}
+{% import "_trash_diff.html" as td %}
 <section class="dialog dialog-wide" aria-labelledby="dialog-title">
 <header class="dialog-head">
   <h1 id="dialog-title">Apply plan #{{ run.id }}?</h1>
@@ -20,9 +20,10 @@
   <tbody>
     {% for item in selected %}
     <tr>
-      <td class="long first lead">{{ item.title }} <span class="tag">{{ item.service | title }}</span><br><span class="muted">{{ kinds.get(item.kind, item.kind) }}</span></td>
-      <td class="long" data-label="What changes">
-        {% if item.lines | length > 4 %}
+      <td class="long first lead">{{ item.title }} <span class="tag">{{ item.service | title }}</span><br><span class="muted">{{ td.KINDS.get(item.kind, item.kind) }}</span></td>
+      <td class="long row" data-label="What changes">
+        {% if item.diff %}{{ td.fold(item, item.service | title) }}
+        {% elif item.lines | length > 4 %}
         <details><summary>{{ item.lines | length }} changes</summary><ul class="items">{% for line in item.lines %}<li>{{ line }}</li>{% endfor %}</ul></details>
         {% else %}
         <ul class="items">{% for line in item.lines %}<li>{{ line }}</li>{% endfor %}</ul>

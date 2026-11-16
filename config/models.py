@@ -401,6 +401,8 @@ class TrashProfile:
     settings: (bool) Also its qualities, cutoff, minimum scores and language. Off: only
         custom format scores
     scores: (list[str]) "custom format name = score" overrides, which win over the guide
+    create: (bool) Imported: when the arr has no profile by this name, the sync plans
+        making it from the guide profile. Needs settings on
     """
 
     profile: str
@@ -408,6 +410,7 @@ class TrashProfile:
     score_set: str = ""
     settings: bool = False
     scores: list[str] = field(default_factory=list[str])
+    create: bool = False
 
     def __post_init__(self):
         check_types(self)
@@ -415,6 +418,8 @@ class TrashProfile:
             raise ValueError("profile is required")
         if not self.guide.strip():
             raise ValueError("guide is required")
+        if self.create and not self.settings:
+            raise ValueError("create needs settings on: a new profile needs its qualities")
         names = [parse_score_override(s)[0].casefold() for s in self.scores]
         if len(names) != len(set(names)):
             raise ValueError("a custom format has more than one score override")

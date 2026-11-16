@@ -1,0 +1,243 @@
+{# A TRaSH Guides sync change (results.PlannedChange as a dict) as tables: yours against the
+   guide's, only what differs. Used by Settings → TRaSH Guides, a run's plan and the apply
+   dialog. Changes from runs before `diff` existed show their lines. #}
+
+{% set KINDS = {
+  "format_add": "new custom format",
+  "format_update": "custom format",
+  "profile": "quality profile",
+  "profile_add": "new quality profile",
+  "sizes": "quality sizes",
+} %}
+
+{% set WHAT = {
+  "renaming": "include in renaming",
+  "added": "new condition",
+  "removed": "condition removed",
+  "implementation": "condition type",
+  "negate": "negate",
+  "required": "required",
+  "value": "value",
+} %}
+
+{% macro plural(n, word, words=None) -%}
+{{ "{:,}".format(n) }} {{ word if n == 1 else (words or word ~ "s") }}
+{%- endmacro %}
+
+{# a value as people read it: yes/no, thousands separators, a dash for nothing #}
+{% macro value(v) -%}
+{%- if v is none %}<span class="muted">none</span>
+{%- elif v is sameas true %}yes
+{%- elif v is sameas false %}no
+{%- elif v is integer %}{{ "{:,}".format(v) }}
+{%- else %}{{ v }}{% endif -%}
+{%- endmacro %}
+
+{# a condition's type, ReleaseTitleSpecification as "release title" #}
+{% macro kind_name(implementation) -%}
+{%- set words = (implementation or "") | replace("Specification", "") -%}
+{%- for ch in words -%}{% if ch.isupper() and not loop.first %} {% endif %}{{ ch | lower }}{%- endfor -%}
+{%- endmacro %}
+
+{# one line saying what a change does, for a folded row #}
+{% macro summary(c) -%}
+{%- set d = c.diff or {} -%}
+{%- if not d -%}{{ plural(c.lines | length, "change") }}
+{%- elif c.kind == "profile" -%}
+  {%- set parts = [] -%}
+  {%- if d.scores %}{% set _ = parts.append(plural(d.scores | length, "score")) %}{% endif -%}
+  {%- if d.settings %}{% set _ = parts.append(plural(d.settings | length, "setting")) %}{% endif -%}
+  {%- if d.qualities %}{% set _ = parts.append("the qualities") %}{% endif -%}
+  {%- set one = parts | length == 1 and (d.scores | length) + (d.settings | length) == 1 -%}
+  {{ parts[:-1] | join(", ") }}{% if parts | length > 1 %} and {% endif %}{{ parts[-1] }} {{ "differs" if one else "differ" }}
+  {%- if d.matching %} · {{ "{:,}".format(d.matching) }} already match{% endif %}
+{%- elif c.kind == "profile_add" -%}
+  new profile · {{ plural(d.scores | length, "custom format") }} scored
+{%- elif c.kind == "format_update" -%}
+  {%- set added = [] %}{% set removed = [] -%}
+  {%- for r in d.conditions %}{% if r.text %}{% set _ = added.extend(r.text.added) %}{% set _ = removed.extend(r.text.removed) %}{% endif %}{% endfor -%}
+  {%- if added or removed -%}
+    {%- if added %}adds {{ added | join(", ") }}{% endif %}{% if added and removed %}; {% endif %}{% if removed %}removes {{ removed | join(", ") }}{% endif -%}
+  {%- else -%}{{ plural(d.conditions | length, "condition change") }}{%- endif -%}
+{%- elif c.kind == "format_add" -%}
+  {{ plural(d.conditions | length, "condition") }}{% if d.scored_by %} · scored by {{ d.scored_by | join(", ") }}{% endif %}
+{%- elif c.kind == "sizes" -%}
+  {{ plural(d.sizes | length, "quality", "qualities") }}
+{%- else -%}{{ plural(c.lines | length, "change") }}{%- endif -%}
+{%- endmacro %}
+
+{# qualities, best first, as a row of chips; `other` marks what the other side lacks #}
+{% macro quality_row(items, other, mark) -%}
+{%- set names = (other or []) | map(attribute="name") | list -%}
+<ol class="qchips">
+  {%- for q in items %}
+  <li class="qchip{% if other is not none and q.name not in names %} qchip-{{ mark }}{% endif %}">
+    {%- if other is not none and q.name not in names %}<span class="visually-hidden">{{ "added: " if mark == "added" else "removed: " }}</span>{% endif -%}
+    {{ q.name }}{% if q["items"] %} <span class="qchip-members">{{ q["items"] | join(", ") }}</span>{% endif -%}
+  </li>
+  {%- else %}
+  <li class="muted">none allowed</li>
+  {%- endfor %}
+</ol>
+{%- endmacro %}
+
+{# a value with what changed marked: del on yours, ins on the guide's #}
+{% macro segments(parts, tag) -%}
+{%- for s in parts %}{% if s.changed %}<{{ tag }}>{{ s.text }}</{{ tag }}>{% else %}{{ s.text }}{% endif %}{% endfor -%}
+{%- endmacro %}
+
+{% macro profile_body(c, arr_label) %}
+{% set d = c.diff %}
+{% set new = c.kind == "profile_add" %}
+{% if d.scores %}
+<table class="tdiff">
+  <thead>
+    <tr>
+      <th scope="col">Custom format</th>
+      {% if not new %}<th scope="col" class="num">Yours</th>{% endif %}
+      <th scope="col" class="num">{{ "Score" if new else "Guide" }}</th>
+      <th scope="col"><span class="visually-hidden">Note</span></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in d.scores %}
+    <tr>
+      <th scope="row">{{ r.name }}</th>
+      {% if not new %}<td class="num">{% if r.have is none %}<span class="muted">not scored</span>{% else %}{{ value(r.have) }}{% endif %}</td>{% endif %}
+      <td class="num tdiff-want">{{ value(r.want) }}</td>
+      <td class="tdiff-why">
+        {%- if r.yours %}<span class="tag">your score</span>
+        {%- elif r.have is none and not new %}<span class="muted">added to {{ arr_label }} first</span>{% endif -%}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% if d.matching or d.yours %}
+<p class="tdiff-note">
+  {%- if d.matching and not new %}{{ "{:,}".format(d.matching) }} other score{{ "s" if d.matching != 1 }} already match the guide.{% endif %}
+  {%- if d.yours %} Your scores, kept: {% for y in d.yours %}{{ y.name }} <span class="tdiff-num">{{ value(y.score) }}</span>{{ ", " if not loop.last }}{% endfor %}.{% endif -%}
+</p>
+{% endif %}
+{% if d.settings %}
+<table class="tdiff">
+  <thead>
+    <tr>
+      <th scope="col">Setting</th>
+      {% if not new %}<th scope="col">Yours</th>{% endif %}
+      <th scope="col">{{ "Value" if new else "Guide" }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in d.settings %}
+    <tr>
+      <th scope="row">{{ r.setting }}</th>
+      {% if not new %}<td>{{ value(r.have) }}</td>{% endif %}
+      <td class="tdiff-want">{{ value(r.want) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% if d.qualities %}
+<dl class="tdiff-qualities">
+  <dt>Qualities{% if new %}, best first{% endif %}</dt>
+  {% if new %}
+  <dd>{{ quality_row(d.qualities.want, none, "") }}</dd>
+  {% else %}
+  <dd><span class="tdiff-side">Yours</span>{{ quality_row(d.qualities.have, d.qualities.want, "removed") }}</dd>
+  <dd><span class="tdiff-side">Guide</span>{{ quality_row(d.qualities.want, d.qualities.have, "added") }}</dd>
+  {% endif %}
+</dl>
+{% endif %}
+{% endmacro %}
+
+{% macro format_update_body(c) %}
+{# the summary already says which words change; a lone value of a condition named as the
+   custom format needs no heading of its own #}
+{% set lone = c.diff.conditions | length == 1 and c.diff.conditions[0].condition == c.title and c.diff.conditions[0].what == "value" %}
+<ul class="tdiff-conditions">
+  {% for r in c.diff.conditions %}
+  <li>
+    {% if not lone %}
+    <p class="tdiff-cond-head">
+      {%- if r.condition %}<strong>{{ r.condition }}</strong> {% endif %}<span class="muted">{{ WHAT.get(r.what, r.what) }}</span>
+    </p>
+    {% endif %}
+    {% if r.text %}
+    <dl class="tdiff-pair">
+      <dt>Yours</dt><dd><code>{{ segments(r.text.have, "del") }}</code></dd>
+      <dt>Guide</dt><dd><code>{{ segments(r.text.want, "ins") }}</code></dd>
+    </dl>
+    {% elif r.what == "added" %}
+    <dl class="tdiff-pair"><dt>Guide</dt><dd><code><ins>{{ r.want }}</ins></code></dd></dl>
+    {% elif r.what == "removed" %}
+    <dl class="tdiff-pair"><dt>Yours</dt><dd><code><del>{{ r.have }}</del></code></dd></dl>
+    {% elif r.what == "implementation" %}
+    <dl class="tdiff-pair"><dt>Yours</dt><dd>{{ kind_name(r.have) }}</dd><dt>Guide</dt><dd>{{ kind_name(r.want) }}</dd></dl>
+    {% else %}
+    <dl class="tdiff-pair"><dt>Yours</dt><dd>{{ value(r.have) }}</dd><dt>Guide</dt><dd>{{ value(r.want) }}</dd></dl>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% endmacro %}
+
+{% macro format_add_body(c) %}
+<table class="tdiff">
+  <thead><tr><th scope="col">Condition</th><th scope="col">Type</th><th scope="col">Matches</th></tr></thead>
+  <tbody>
+    {% for r in c.diff.conditions %}
+    <tr>
+      <th scope="row">{{ r.condition }}{% if r.required %} <span class="tag">required</span>{% endif %}</th>
+      <td>{{ kind_name(r.implementation) }}</td>
+      <td class="tdiff-value">{% if r.negate %}<span class="muted">not </span>{% endif %}<code>{{ r.value }}</code></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
+
+{% macro sizes_body(c) %}
+<table class="tdiff">
+  <thead>
+    <tr><th scope="col">Quality</th><th scope="col" class="num">Min</th><th scope="col" class="num">Preferred</th><th scope="col" class="num">Max</th></tr>
+  </thead>
+  <tbody>
+    {% for r in c.diff.sizes %}
+    <tr>
+      <th scope="row">{{ r.quality }}</th>
+      {% for i in range(3) %}
+      <td class="num">
+        {%- if r.have[i] == r.want[i] %}<span class="muted">{{ r.want[i] }}</span>
+        {%- else %}<span class="tdiff-old">{{ value(r.have[i]) }}</span> <span class="muted" aria-label="to">→</span> <span class="tdiff-want">{{ value(r.want[i]) }}</span>{% endif -%}
+      </td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p class="tdiff-note">Sizes in MB per minute.</p>
+{% endmacro %}
+
+{# the change's details #}
+{% macro body(c, arr_label="the arr") %}
+<div class="tdiff-body">
+{% if not c.diff %}
+  <ul class="items">{% for line in c.lines %}<li>{{ line }}</li>{% endfor %}</ul>
+{% elif c.kind in ("profile", "profile_add") %}{{ profile_body(c, arr_label) }}
+{% elif c.kind == "format_update" %}{{ format_update_body(c) }}
+{% elif c.kind == "format_add" %}{{ format_add_body(c) }}
+{% elif c.kind == "sizes" %}{{ sizes_body(c) }}
+{% endif %}
+</div>
+{% endmacro %}
+
+{# a folded change: its summary line opens its details #}
+{% macro fold(c, arr_label="the arr", open=False) %}
+<details class="tdiff-fold"{% if open %} open{% endif %}>
+  <summary><span>{{ summary(c) }}</span></summary>
+  {{ body(c, arr_label) }}
+</details>
+{% endmacro %}

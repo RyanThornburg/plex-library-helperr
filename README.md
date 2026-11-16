@@ -216,6 +216,9 @@ Settings → TRaSH Guides downloads the guides' data (about 25 MB from GitHub, o
 - **Custom formats:** every custom format named as in the guides gets the guides' conditions, for example when TRaSH fixes a regex. Optionally applied without review (turning that on asks first, like making a job live).
 - **Quality profiles:** link a profile to the guide profile it follows (profiles named as in the guides are suggested), pick a score set (`german` for a German profile, say) and list your own scores, like `Language: Not Original = -30000`, which win. A linked profile gets the guide profile's custom formats and scores, and the guides' score for every custom format it already scores; the rest are left alone. Tick Settings to also bring its allowed qualities, their order, the cutoff, the minimum scores and (Radarr) the language in line. Custom formats a linked profile needs and the arr doesn't have are added.
 - **Quality sizes:** follow one of the guides' sets (movie, series, anime...). Only the qualities the guides size change.
+- **Import a guide profile:** tick guide profiles the arr doesn't have yet (Remux + WEB 2160p, say) to make them in the arr, named and set up like the guide's: qualities, cutoff, minimum scores and every custom format they score. Importing only links them; the sync plans making them, for your review, and adds the custom formats they need first. Once made they're linked like any other profile.
+
+The page compares what's saved with each arr as it is now, so you see the differences before running anything: each custom format whose conditions differ with the words its regex adds or removes, each profile's scores that differ (yours and the guide's, how many already match, your own scores kept), its settings and qualities side by side, and the quality sizes that differ.
 
 Each run plans the differences, and the run's page lists them for you to tick and apply. Applying reads the arrs again and plans again from the same version of the guides, and sends only a change that's still exactly as planned. Nothing is deleted, and custom formats and profiles the guides don't name are left alone. Schedule it (daily, say) and Activity's badge shows when a plan is waiting. Applying doesn't need `REMOVERS_ALLOW_APPLY`: it doesn't delete anything.
 
@@ -352,7 +355,7 @@ One set for Radarr (`[radarr.trash]`), one for Sonarr (`[sonarr.trash]`).
 | `formats` | Keep every custom format named as in the guides in line with them (default off) |
 | `auto_formats` | Apply those custom format updates without review (default off, needs `formats`) |
 | `quality_sizes` | The guides' quality sizes to follow: `movie`, `sqp-streaming`, `sqp-uhd`, `anime` (Radarr), `series`, `anime` (Sonarr). Empty leaves them alone |
-| `profiles` | `[[radarr.trash.profiles]]` tables: `profile` (the arr's quality profile, by name), `guide` (the guide profile's trash_id), `score_set` (empty: the guide profile's), `settings` (also qualities, cutoff, minimum scores and language, default off), `scores` (your own scores, `"Custom format = score"`) |
+| `profiles` | `[[radarr.trash.profiles]]` tables: `profile` (the arr's quality profile, by name), `guide` (the guide profile's trash_id), `score_set` (empty: the guide profile's), `settings` (also qualities, cutoff, minimum scores and language, default off), `scores` (your own scores, `"Custom format = score"`), `create` (imported: make the profile when the arr doesn't have one by that name, needs `settings`; default off) |
 
 ### Autoscan
 

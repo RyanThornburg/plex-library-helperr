@@ -14,9 +14,11 @@ import hashlib
 import io
 import json
 import logging
+import re
 import tarfile
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 from typing import Any, Protocol
 
 import requests
@@ -159,6 +161,9 @@ class ArrState:
     profiles: list[dict[str, Any]]
     definitions: list[dict[str, Any]]
     languages: list[dict[str, Any]] = field(default_factory=list)
+    # a new quality profile as the arr makes it (every quality and custom format), what
+    # an imported guide profile starts from
+    schema: dict[str, Any] | None = None
 
     def format_named(self, name: str) -> dict[str, Any] | None:
         return next((f for f in self.formats if f["name"].casefold() == name.casefold()), None)
@@ -172,6 +177,7 @@ class ArrSettingsApi(Protocol):
     def add_format(self, body: dict[str, Any]) -> None: ...
     def update_format(self, format_id: int, body: dict[str, Any]) -> None: ...
     def update_profile(self, profile_id: int, body: dict[str, Any]) -> None: ...
+    def add_profile(self, body: dict[str, Any]) -> None: ...
     def update_definitions(self, body: list[dict[str, Any]]) -> None: ...
 
 
@@ -189,6 +195,7 @@ class ArrSettings(ArrV3):
             definitions=self._request("GET", "qualitydefinition"),
             # sonarr v4's profiles have no language
             languages=self._request("GET", "language") if self.log_name == "RADARR" else [],
+            schema=self._request("GET", "qualityprofile/schema"),
         )
 
     def add_format(self, body: dict[str, Any]) -> None:
@@ -199,6 +206,9 @@ class ArrSettings(ArrV3):
 
     def update_profile(self, profile_id: int, body: dict[str, Any]) -> None:
         self._request("PUT", f"qualityprofile/{profile_id}", json=body)
+
+    def add_profile(self, body: dict[str, Any]) -> None:
+        self._request("POST", "qualityprofile", json=body)
 
     def update_definitions(self, body: list[dict[str, Any]]) -> None:
         self._request("PUT", "qualitydefinition/update", json=body)
@@ -236,30 +246,101 @@ def _short(value: Any) -> str:
     return text if len(text) <= SHOWN else text[: SHOWN - 1] + "…"
 
 
-def spec_changes(have: dict[str, Any], want: dict[str, Any]) -> list[str]:
-    """how an arr custom format differs from the guide's, in words. Fields the guide
-    doesn't set aren't compared: the arr adds its own defaults (exceptLanguage: false)"""
-    lines = []
+# a regex or value compared word by word: escapes (\b), names, numbers and punctuation
+# one at a time
+TOKENS = re.compile(r"\\.|[\w.'+-]+|\s+|.", re.S)
+WORD = re.compile(r"\w[\w.'+-]*")
+
+
+def _text(value: Any) -> str:
+    return value if isinstance(value, str) else json.dumps(value)
+
+
+def text_diff(old: str, new: str) -> dict[str, Any]:
+    """two values as segments ({text, changed}) for showing what differs, and the words
+    one has that the other hasn't (a release group moved between tiers, say)"""
+    a, b = TOKENS.findall(old), TOKENS.findall(new)
+    have: list[dict[str, Any]] = []
+    want: list[dict[str, Any]] = []
+    added: list[str] = []
+    removed: list[str] = []
+
+    def push(segments: list[dict[str, Any]], text: str, changed: bool) -> None:
+        if not text:
+            return
+        if segments and segments[-1]["changed"] == changed:
+            segments[-1]["text"] += text
+        else:
+            segments.append({"text": text, "changed": changed})
+
+    for op, i1, i2, j1, j2 in SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
+        if op == "equal":
+            push(have, "".join(a[i1:i2]), False)
+            push(want, "".join(b[j1:j2]), False)
+            continue
+        push(have, "".join(a[i1:i2]), True)
+        push(want, "".join(b[j1:j2]), True)
+        removed += [t for t in a[i1:i2] if WORD.fullmatch(t)]
+        added += [t for t in b[j1:j2] if WORD.fullmatch(t)]
+    # a word moved within the value is neither
+    moved = set(added) & set(removed)
+    return {
+        "have": have,
+        "want": want,
+        "added": [w for w in added if w not in moved],
+        "removed": [w for w in removed if w not in moved],
+    }
+
+
+def spec_diff(have: Mapping[str, Any], want: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """how an arr custom format differs from the guide's, a row per difference:
+    condition, what (renaming, added, removed, implementation, negate, required or a
+    field's name), have and want. Fields the guide doesn't set aren't compared: the arr
+    adds its own defaults (exceptLanguage: false)"""
+    rows: list[dict[str, Any]] = []
+
+    def row(condition: str, what: str, old: Any, new: Any) -> None:
+        rows.append({"condition": condition, "what": what, "have": old, "want": new})
+
     if bool(have.get("includeCustomFormatWhenRenaming")) != bool(want.get("includeCustomFormatWhenRenaming")):
-        lines.append(f"Include in renaming: {bool(want.get('includeCustomFormatWhenRenaming'))}")
+        row("", "renaming", bool(have.get("includeCustomFormatWhenRenaming")), bool(want.get("includeCustomFormatWhenRenaming")))
     have_specs = {s.get("name"): s for s in have.get("specifications", [])}
     want_specs = {s.get("name"): s for s in want.get("specifications", [])}
     for name, spec in want_specs.items():
         old = have_specs.get(name)
         if old is None:
-            lines.append(f"Adds condition {name}: {_short(_fields(spec).get('value'))}")
+            row(name, "added", None, _text(_fields(spec).get("value")))
             continue
         if old.get("implementation") != spec.get("implementation"):
-            lines.append(f"Condition {name}: type {old.get('implementation')} → {spec.get('implementation')}")
+            row(name, "implementation", old.get("implementation"), spec.get("implementation"))
         for key in ("negate", "required"):
             if bool(old.get(key)) != bool(spec.get(key)):
-                lines.append(f"Condition {name}: {key} {bool(old.get(key))} → {bool(spec.get(key))}")
+                row(name, key, bool(old.get(key)), bool(spec.get(key)))
         old_fields = _fields(old)
         for key, value in _fields(spec).items():
             if old_fields.get(key) != value:
-                lines.append(f"Condition {name}: {key} {_short(old_fields.get(key))} → {_short(value)}")
-    for name in have_specs.keys() - want_specs.keys():
-        lines.append(f"Removes condition {name}")
+                row(name, key, _text(old_fields.get(key)), _text(value))
+                rows[-1]["text"] = text_diff(_text(old_fields.get(key)), _text(value))
+    for name in sorted(have_specs.keys() - want_specs.keys(), key=str):
+        row(name, "removed", _text(_fields(have_specs[name]).get("value")), None)
+    return rows
+
+
+def spec_changes(have: dict[str, Any], want: dict[str, Any]) -> list[str]:
+    """spec_diff in words"""
+    lines = []
+    for r in spec_diff(have, want):
+        name, what = r["condition"], r["what"]
+        if what == "renaming":
+            lines.append(f"Include in renaming: {r['want']}")
+        elif what == "added":
+            lines.append(f"Adds condition {name}: {_short(r['want'])}")
+        elif what == "removed":
+            lines.append(f"Removes condition {name}")
+        elif what == "implementation":
+            lines.append(f"Condition {name}: type {r['have']} → {r['want']}")
+        else:
+            lines.append(f"Condition {name}: {what} {_short(r['have'])} → {_short(r['want'])}")
     return lines
 
 
@@ -405,13 +486,30 @@ def _items_text(items: list[dict[str, Any]]) -> str:
     return ", ".join(allowed) or "none"
 
 
-def settings_changes(have: dict[str, Any], want: dict[str, Any]) -> list[str]:
-    lines = []
-    for key, label in SETTING_NAMES.items():
-        if key in want and have.get(key) != want[key]:
-            lines.append(f"{label}: {have.get(key)} → {want[key]}")
+def allowed_items(settings: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+    """the allowed qualities, best first, as {name, items}"""
+    return [{"name": i["name"], "items": i["items"]} for i in (settings or {}).get("items", []) if i["allowed"]]
+
+
+def settings_diff(have: Mapping[str, Any] | None, want: Mapping[str, Any]) -> dict[str, Any]:
+    """{"settings": [{setting, have, want}], "qualities": {have, want} or None}, the
+    settings that differ (all of them for a new profile, have None)"""
+    rows = [
+        {"setting": label, "have": (have or {}).get(key), "want": want[key]}
+        for key, label in SETTING_NAMES.items()
+        if key in want and (have is None or have.get(key) != want[key])
+    ]
     # only the allowed qualities and their order matter: the arr never grabs the others
-    if [i for i in have["items"] if i["allowed"]] != [i for i in want["items"] if i["allowed"]]:
+    qualities = None
+    if have is None or allowed_items(have) != allowed_items(want):
+        qualities = {"have": allowed_items(have) if have is not None else None, "want": allowed_items(want)}
+    return {"settings": rows, "qualities": qualities}
+
+
+def settings_changes(have: dict[str, Any], want: dict[str, Any]) -> list[str]:
+    diff = settings_diff(have, want)
+    lines = [f"{r['setting']}: {r['have']} → {r['want']}" for r in diff["settings"]]
+    if diff["qualities"]:
         lines.append(f"Qualities (best first): {_items_text(have['items'])} → {_items_text(want['items'])}")
     return lines
 
@@ -474,10 +572,13 @@ def apply_settings(body: dict[str, Any], want: Mapping[str, Any], state: ArrStat
         body["language"] = next(l for l in state.languages if l.get("name") == want["language"])
 
 
-def size_changes(definitions: list[dict[str, Any]], guide_sizes: Mapping[str, Any]) -> tuple[list[str], list[dict[str, Any]]]:
-    """lines and the definitions to send, for the qualities the guide sizes"""
+def size_changes(
+    definitions: list[dict[str, Any]], guide_sizes: Mapping[str, Any]
+) -> tuple[list[str], list[dict[str, Any]], list[dict[str, Any]]]:
+    """lines, the definitions to send and the diff's rows ({quality, have, want}: min,
+    preferred and max in MB/min), for the qualities the guide sizes"""
     by_name = {d["quality"]["name"]: d for d in definitions}
-    lines, changed = [], []
+    lines, changed, rows = [], [], []
     for q in guide_sizes.get("qualities", []):
         have = by_name.get(q.get("quality"))
         if have is None:
@@ -486,11 +587,42 @@ def size_changes(definitions: list[dict[str, Any]], guide_sizes: Mapping[str, An
         if any(v is not None and have.get(k) != v for k, v in want.items()):
             new = {**have, **{k: v for k, v in want.items() if v is not None}}
             changed.append(new)
+            rows.append({
+                "quality": q["quality"],
+                "have": [have.get("minSize"), have.get("preferredSize"), have.get("maxSize")],
+                "want": [new["minSize"], new["preferredSize"], new["maxSize"]],
+            })
             lines.append(
                 f"{q['quality']}: {have.get('minSize')}–{have.get('preferredSize')}–{have.get('maxSize')} → "
                 f"{new['minSize']}–{new['preferredSize']}–{new['maxSize']} MB/min"
             )
-    return lines, changed
+    return lines, changed, rows
+
+
+def score_diff(current: Mapping[str, int], plan: ProfilePlan, link: TrashProfile) -> dict[str, Any]:
+    """the scores that change ({name, have (None: not scored yet), want, yours}), how
+    many already match and the overrides kept"""
+    overrides = link.overrides()
+    rows, matching = [], 0
+    for name, score in sorted(plan.scores.items(), key=lambda kv: kv[0].casefold()):
+        old = current.get(name.casefold())
+        if old == score:
+            matching += 1
+        else:
+            rows.append({"name": name, "have": old, "want": score, "yours": name.casefold() in overrides})
+    yours = [{"name": n, "score": s} for n, s in sorted(plan.scores.items(), key=lambda kv: kv[0].casefold()) if n.casefold() in overrides]
+    return {"scores": rows, "matching": matching, "yours": yours}
+
+
+def new_profile_body(state: ArrState, name: str, plan: ProfilePlan) -> dict[str, Any]:
+    """an imported guide profile as the arr's json: its new-profile template with the
+    plan's scores and settings. Raises ValueError when it can't be made"""
+    if state.schema is None:
+        raise ValueError("the arr's new profile template couldn't be read")
+    body = json.loads(json.dumps(state.schema))
+    body.pop("id", None)
+    body["name"] = name
+    return profile_body(body, plan, state)
 
 
 def plan_arr(
@@ -502,8 +634,25 @@ def plan_arr(
     steps: list[Step] = []
     problems: list[str] = []
     links: list[tuple[TrashProfile, dict[str, Any], ProfilePlan]] = []
+    imports: list[tuple[TrashProfile, ProfilePlan]] = []
     for link in trash.profiles:
         have = state.profile_named(link.profile)
+        if have is None and link.create:
+            if link.guide not in guide.profiles:
+                problems.append(f"{link.profile}: the guides have no quality profile {link.guide} any more")
+                continue
+            if state.schema is None:
+                problems.append(f"{link.profile}: {service.title()}'s new profile template couldn't be read")
+                continue
+            plan = desired_profile(guide, state, link, state.schema)
+            problems += [f"{link.profile}: {p}" for p in plan.problems]
+            try:
+                apply_settings(json.loads(json.dumps(state.schema)), plan.settings or {}, state)
+            except ValueError as e:
+                problems.append(f"{link.profile} can't be made: {e}")
+                continue
+            imports.append((link, plan))
+            continue
         if have is None:
             problems.append(f"{service.title()} has no quality profile {link.profile}")
             continue
@@ -525,17 +674,20 @@ def plan_arr(
                         PlannedChange(
                             service, f"{arr}:format:{guide_cf['trash_id']}", "format_update", guide_cf["name"], lines,
                             fingerprint(format_body(guide_cf)), "dry_run",
+                            diff={"conditions": spec_diff(arr_cf, guide_cf)},
                         ),
                         lambda api, _, i=arr_cf["id"], b=body: api.update_format(i, b),
                     )
                 )
 
-    # the custom formats linked profiles score that the arr doesn't have yet
+    # the custom formats linked and imported profiles score that the arr doesn't have yet
     missing: dict[str, dict[str, Any]] = {}
-    for _, _, plan in links:
+    scored_by: dict[str, list[str]] = {}
+    for link, plan in [(link, plan) for link, _, plan in links] + imports:
         for name in plan.scores:
             if state.format_named(name) is None and (cf := guide.format_named(name)):
                 missing.setdefault(cf["trash_id"], cf)
+                scored_by.setdefault(cf["trash_id"], []).append(link.profile)
     for trash_id, cf in sorted(missing.items(), key=lambda kv: kv[1]["name"].casefold()):
         body = format_body(cf)
         conditions = [f"{s['name']}: {_short(s['fields'][0]['value'] if s['fields'] else '')}" for s in body["specifications"]]
@@ -545,10 +697,27 @@ def plan_arr(
                     service, f"{arr}:format:{trash_id}", "format_add", cf["name"],
                     [f"New custom format, conditions: {'; '.join(conditions) or 'none'}"],
                     fingerprint(body), "dry_run",
+                    diff={
+                        "conditions": [
+                            {
+                                "condition": s["name"],
+                                "implementation": s["implementation"],
+                                "value": _text(_fields(s).get("value")),
+                                "negate": s["negate"],
+                                "required": s["required"],
+                            }
+                            for s in body["specifications"]
+                        ],
+                        "scored_by": scored_by[trash_id],
+                    },
                 ),
                 lambda api, _, b=body: api.add_format(b),
             )
         )
+
+    def follows(link: TrashProfile) -> dict[str, str]:
+        profile = guide.profiles[link.guide]
+        return {"follows": profile["name"], "score_set": link.score_set or profile.get("trash_score_set") or "default"}
 
     for link, have, plan in links:
         current = {f["name"].casefold(): f.get("score", 0) for f in have.get("formatItems", [])}
@@ -565,6 +734,9 @@ def plan_arr(
             lines += settings_changes(current_settings(have), plan.settings)
         if not lines:
             continue
+        diff = {**follows(link), **score_diff(current, plan, link), "settings": [], "qualities": None}
+        if plan.settings is not None:
+            diff.update(settings_diff(current_settings(have), plan.settings))
         guide_name = guide.profiles[link.guide]["name"]
         steps.append(
             Step(
@@ -572,9 +744,31 @@ def plan_arr(
                     service, f"{arr}:profile:{have['id']}", "profile", have["name"], lines,
                     fingerprint({"scores": plan.scores, "settings": plan.settings, "from": [current.get(n.casefold()) for n in plan.scores]}),
                     "dry_run", f"follows {guide_name}" + (f", {link.score_set} scores" if link.score_set else ""),
+                    diff=diff,
                 ),
                 lambda api, st, p=have["id"], pl=plan: api.update_profile(p, profile_body(_profile(st, p), pl, st)),
                 needs,
+            )
+        )
+
+    for link, plan in imports:
+        guide_name = guide.profiles[link.guide]["name"]
+        settings = plan.settings or {}
+        diff = {**follows(link), **score_diff({}, plan, link), **settings_diff(None, settings)}
+        lines = [
+            f"New quality profile from {guide_name}: {len(plan.scores)} custom formats scored, "
+            f"qualities (best first) {_items_text(settings.get('items', []))}, upgrade until {settings.get('cutoff')}"
+        ]
+        steps.append(
+            Step(
+                PlannedChange(
+                    service, f"{arr}:profile_add:{link.profile.casefold()}", "profile_add", link.profile, lines,
+                    fingerprint({"name": link.profile, "scores": plan.scores, "settings": plan.settings}),
+                    "dry_run", f"follows {guide_name}" + (f", {link.score_set} scores" if link.score_set else ""),
+                    diff=diff,
+                ),
+                lambda api, st, n=link.profile, pl=plan: api.add_profile(new_profile_body(st, n, pl)),
+                [name for name in plan.scores if state.format_named(name) is None],
             )
         )
 
@@ -583,14 +777,14 @@ def plan_arr(
         if sizes is None:
             problems.append(f"The guides have no {trash.quality_sizes} quality sizes")
         else:
-            lines, changed = size_changes(state.definitions, sizes)
+            lines, changed, rows = size_changes(state.definitions, sizes)
             if changed:
                 steps.append(
                     Step(
                         PlannedChange(
                             service, f"{arr}:sizes", "sizes", f"Quality sizes ({trash.quality_sizes})", lines,
                             fingerprint([(d["quality"]["name"], d["minSize"], d["preferredSize"], d["maxSize"]) for d in changed]),
-                            "dry_run",
+                            "dry_run", diff={"sizes": rows},
                         ),
                         lambda api, _, c=changed: api.update_definitions(c),
                     )
@@ -646,7 +840,7 @@ def sync_arr(
         logger.info("%s\t TRaSH: %s changes planned", log_name, sum(s.change.status == "dry_run" for s in steps))
         return
     planned = {s.change.key: s for s in steps}
-    order = {"format_update": 0, "format_add": 1, "sizes": 2, "profile": 3}
+    order = {"format_update": 0, "format_add": 1, "sizes": 2, "profile": 3, "profile_add": 3}
     chosen = []
     for key, print_ in approved.items():
         step = planned.get(key)
@@ -662,7 +856,7 @@ def sync_arr(
             chosen.append(step)
     fresh = None
     for step in sorted(chosen, key=lambda s: order[s.change.kind]):
-        if step.change.kind == "profile":
+        if step.change.kind in ("profile", "profile_add"):
             # read once after the formats were sent, for their ids
             fresh = fresh or api.state()
             have = {f["name"].casefold() for f in fresh.formats}
