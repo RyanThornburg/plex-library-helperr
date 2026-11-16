@@ -13,7 +13,7 @@ from starlette.concurrency import run_in_threadpool
 import trash_guides
 from config.models import parse_score_override
 from logging_config import failure_text
-from trash_guides import ArrGuide, ArrState, allowed_items, plan_arr, suggest_links
+from trash_guides import ArrGuide, ArrState, allowed_items, plan_arr, profile_table, suggest_links
 from web import guides
 from web.routes import loaded_settings
 from web.settings_common import FormLists, commit, first, page, store
@@ -53,6 +53,18 @@ def comparison(arr: str, config: Any, state: ArrState | None, guide: ArrGuide | 
         "sizes": next((c for c in changes if c["kind"] == "sizes"), None),
         "profiles": {c["title"].casefold(): c for c in changes if c["kind"] in ("profile", "profile_add")},
     }
+
+
+def tables(config: Any, state: ArrState | None, guide: ArrGuide | None) -> dict[str, dict[str, Any]]:
+    """each saved link's custom format table (trash_guides.profile_table), by profile
+    name casefolded"""
+    if config is None or state is None or guide is None:
+        return {}
+    found = {}
+    for link in config.trash.profiles:
+        if (table := profile_table(guide, state, link)) is not None:
+            found[link.profile.casefold()] = table
+    return found
 
 
 def importable(guide: ArrGuide | None, state: ArrState | None, section: dict[str, Any]) -> list[dict[str, Any]]:
@@ -134,9 +146,11 @@ def guides_page(
         }
         try:
             compared = comparison(arr, config, state, arr_guide)
+            profile_tables = tables(config, state, arr_guide)
         except Exception as e:
             logger.warning("TRASH\t Comparing %s with the guides failed: %s", label, failure_text(e))
-            compared, problem = None, f"Couldn't compare {label} with the guides: {failure_text(e)}"
+            compared, profile_tables = None, {}
+            problem = f"Couldn't compare {label} with the guides: {failure_text(e)}"
         arrs.append(
             {
                 "arr": arr,
@@ -144,6 +158,7 @@ def guides_page(
                 "values": values,
                 "problem": problem,
                 "compared": compared,
+                "tables": profile_tables,
                 "importable": importable(arr_guide, state, section),
                 "guide_profiles": sorted(
                     ((t, p["name"]) for t, p in arr_guide.profiles.items()), key=lambda tp: tp[1].casefold()
@@ -158,6 +173,36 @@ def guides_page(
         {"arrs": arrs, "guide": guide, "status": guides.status(request.app.state.engine)},
         errors,
     )
+
+
+def table_scores(fields: dict[str, list[str]], i: int, saved: str) -> tuple[list[str], list[str]]:
+    """a profile's overrides ("name = score") and what's wrong with them. Its table
+    sends cf_<i>/score_<i> pairs (an empty score follows the guide) and add_cf_<i>/
+    add_score_<i>; without a table (the arr couldn't be read) the saved ones come back
+    as scores_<i>"""
+    names, values = fields.get(f"cf_{i}"), fields.get(f"score_{i}", [])
+    pairs = list(zip(names, values)) if names is not None else []
+    if add := first(fields, f"add_cf_{i}").strip():
+        pairs.append((add, first(fields, f"add_score_{i}")))
+        if not first(fields, f"add_score_{i}").strip():
+            return [], [f"give {add} a score to add it"]
+    if names is None:
+        lines = [line.strip() for line in saved.splitlines() if line.strip()]
+    else:
+        lines = []
+        for name, value in pairs:
+            if value.strip():
+                try:
+                    lines.append(f"{name.strip()} = {int(value.strip())}")
+                except ValueError:
+                    return [], [f"{name}'s score must be a whole number, not '{value}'"]
+    problems = []
+    for line in lines:
+        try:
+            parse_score_override(line)
+        except ValueError as e:
+            problems.append(str(e))
+    return lines, problems
 
 
 @router.get("/settings/trash-guides", response_class=HTMLResponse)
@@ -203,12 +248,9 @@ def save_trash_guides(request: Request, arr: str, fields: FormLists) -> Response
         form_rows.append(row)
         if not row["guide"]:
             continue
-        scores = [line.strip() for line in row["scores"].splitlines() if line.strip()]
-        for line in scores:
-            try:
-                parse_score_override(line)
-            except ValueError as e:
-                errors.append(f"{label} {row['profile']}: {e}")
+        scores, problems = table_scores(fields, i, row["scores"])
+        errors += [f"{label} {row['profile']}: {p}" for p in problems]
+        row["scores"] = "\n".join(scores)
         link: dict[str, Any] = {"profile": row["profile"], "guide": row["guide"]}
         if row["score_set"]:
             link["score_set"] = row["score_set"]

@@ -1135,3 +1135,22 @@ table.tdiff { width: auto; min-width: min(100%, 26rem); }
 }
 /* a plan row holding a change's details reads from its top */
 tr:has(> td > .tdiff-fold[open]) > td { vertical-align: top; }
+
+/* a linked profile's custom formats: the arr's score now, the guide's and yours */
+.cf-fold { margin-top: 4px; }
+.cf-fold > .tdiff-body { grid-template-columns: minmax(0, 1fr); }
+/* on a phone the table scrolls sideways in its own box, never the page */
+.cf-scroll { max-width: 100%; overflow-x: auto; }
+@media (max-width: 700px) {
+  .cf-table td.cf-score { width: 5.5rem; }
+}
+.cf-table { min-width: min(100%, 32rem); }
+.cf-table tbody tr.cf-differs, .tdiff tbody tr.cf-differs { background: color-mix(in srgb, var(--accent) 9%, var(--surface)); }
+.cf-table td.cf-score { width: 7.5rem; padding-top: 3px; padding-bottom: 3px; }
+.cf-table .cf-score input { width: 100%; padding: 4px 8px; font-variant-numeric: tabular-nums; text-align: right; }
+.cf-table .cf-score input::placeholder { color: var(--muted); opacity: 1; }
+.cf-table tfoot th, .cf-table tfoot td { border-bottom: 0; }
+.cf-table tfoot select { width: 100%; }
+.cf-note { color: var(--muted); font-size: 13px; }
+.copy-score { padding: 0; border: 0; border-radius: 0; background: none; color: inherit; font: inherit; font-weight: 400; text-decoration: underline dotted var(--muted); text-underline-offset: 3px; cursor: pointer; }
+.copy-score:hover { color: var(--link); }

@@ -3,10 +3,11 @@
 {% import "_trash_diff.html" as td %}
 {% set tab = "guides" %}
 
-{# a quality profile's block: its link, then how it compares with its guide profile now #}
+{# a quality profile's block: its link, then a table of its custom formats (the arr's
+   score now, the guide's and yours) with its qualities and settings, folded #}
 {% macro profile_row(a, row, i) %}
 {% set chosen = row.guide or row.suggested %}
-{% set change = a.compared.profiles.get(row.profile | lower) if a.compared else none %}
+{% set t = a.tables.get(row.profile | lower) if row.linked else none %}
 <li>
   <div class="guide-link-name">
     <strong>{{ row.profile }}</strong><input type="hidden" name="profile" value="{{ row.profile }}">
@@ -30,24 +31,115 @@
         {% for name in a.score_sets %}<option value="{{ name }}"{% if row.score_set == name %} selected{% endif %}>{{ name }}</option>{% endfor %}
       </select>
     </label>
-    <label class="guide-link-scores">
-      <span class="label">Your scores</span>
-      <textarea name="scores_{{ i }}" rows="2" spellcheck="false" placeholder="Custom format = score">{{ row.scores }}</textarea>
-    </label>
   </div>
   {% if row.missing and row.create %}
   <p class="hint">Made with the guide profile's qualities, cutoff and minimum scores.</p>
   {% else %}
   <label class="check"><input type="checkbox" name="settings_{{ i }}" value="1"{% if row.settings %} checked{% endif %}> <span>Also its allowed qualities and their order, cutoff, minimum scores{% if a.arr == "radarr" %} and language{% endif %}</span></label>
   {% endif %}
-  {% if change %}
-  {{ td.fold(change, a.label) }}
-  {% elif row.linked and a.compared %}
-  <p class="tdiff-inline">In line with {{ (a.guide_profiles | selectattr("0", "equalto", row.guide) | map("last") | first) or "its guide profile" }}.</p>
-  {% elif row.suggested and a.compared %}
-  <p class="hint">Save to compare it with the guide profile.</p>
+  {% if t %}{{ format_table(a, row, i, t) }}
+  {% else %}
+  <input type="hidden" name="scores_{{ i }}" value="{{ row.scores }}">
+  {% if row.scores %}<p class="hint">Your scores: {{ row.scores.splitlines() | join(", ") }}. They can be changed once {{ a.label }} and the guides can be read.</p>{% endif %}
+  {% if row.suggested and a.compared %}<p class="hint">Save to see its custom formats next to the guide's.</p>{% endif %}
   {% endif %}
 </li>
+{% endmacro %}
+
+{# a value with what the sync makes it, when that differs #}
+{% macro now_cell(now, wanted, differs, copy_to=none) -%}
+{%- if now is none %}<span class="muted">none</span>
+{%- elif copy_to %}<span data-copy-score="{{ now }}" data-copy-to="{{ copy_to }}">{{ td.value(now) }}</span>
+{%- else %}{{ td.value(now) }}{% endif -%}
+{%- if differs and wanted is not none %} <span class="muted" aria-label="becomes">→</span> <strong>{{ td.value(wanted) }}</strong>{% endif -%}
+{%- endmacro %}
+
+{% macro format_table(a, row, i, t) %}
+{% set new = not t.exists %}
+<details class="tdiff-fold cf-fold">
+  <summary><span>
+    {{- td.plural(t.rows | length, "custom format") }} scored
+    {%- if new %}, made when you apply
+    {%- else %} · {% if t.differ %}<strong>{{ t.differ }} to change</strong>{% else %}in line{% endif %}{% endif %}
+    {%- if t.yours %} · {{ t.yours }} of yours{% endif %}
+    {%- set n = t.settings | selectattr("differs") | list | length -%}
+    {%- if not new and (n or t.qualities.differs) %} · {% if n %}{{ td.plural(n, "setting") }}{% if t.qualities.differs %} and the qualities{% endif %}{% else %}the qualities{% endif %} {{ "differs" if n == 1 and not t.qualities.differs else "differ" }}{% if not row.settings %} (not followed){% endif %}{% endif -%}
+  </span></summary>
+  <div class="tdiff-body">
+    <div class="cf-scroll">
+    <table class="tdiff cf-table">
+      <thead>
+        <tr>
+          <th scope="col">Custom format</th>
+          <th scope="col" class="num">{{ "New profile" if new else a.label ~ " now" }}</th>
+          <th scope="col" class="num">Guide</th>
+          <th scope="col">Your score</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in t.rows %}
+        {% set id = a.arr ~ "-" ~ i ~ "-score-" ~ loop.index0 %}
+        {% set wanted = r.yours if r.yours is not none else r.guide %}
+        <tr{% if r.differs and not new %} class="cf-differs"{% endif %}>
+          <th scope="row">{{ r.name }}
+            {%- if not r.known %} <span class="tag tag-warn">no custom format by this name</span>
+            {%- elif not r.in_arr %} <span class="cf-note">added to {{ a.label }} first</span>{% endif -%}
+          </th>
+          <td class="num">{% if new %}{{ td.value(wanted) }}{% else %}{{ now_cell(r.now, wanted, r.differs, id) }}{% endif %}</td>
+          <td class="num">{% if r.guide is none %}<span class="muted">not scored</span>{% else %}{{ td.value(r.guide) }}{% endif %}</td>
+          <td class="cf-score">
+            <input type="hidden" name="cf_{{ i }}" value="{{ r.name }}">
+            <input type="number" step="1" id="{{ id }}" name="score_{{ i }}" value="{{ r.yours if r.yours is not none else '' }}" placeholder="{{ r.guide if r.guide is not none else '' }}" aria-label="Your score for {{ r.name }}">
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      {% if t.options %}
+      <tfoot>
+        <tr>
+          <th scope="row" colspan="3">
+            <select name="add_cf_{{ i }}" aria-label="Score another custom format">
+              <option value="">Score another custom format…</option>
+              {% for name in t.options %}<option value="{{ name }}">{{ name }}</option>{% endfor %}
+            </select>
+          </th>
+          <td class="cf-score"><input type="number" step="1" name="add_score_{{ i }}" aria-label="Its score"></td>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+    </div>
+    <p class="tdiff-note">An empty score follows the guide, shown greyed; type one to keep your own, clear it to follow the guide again.{% if not new %} → is what the sync makes it.{% endif %}</p>
+
+    <table class="tdiff">
+      <thead>
+        <tr>
+          <th scope="col">{{ "Settings" if new else ("Settings, followed" if row.settings else "Settings, not followed") }}</th>
+          {% if not new %}<th scope="col">{{ a.label }} now</th>{% endif %}
+          <th scope="col">Guide</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in t.settings if a.arr == "radarr" or r.setting != "Language" %}
+        <tr{% if r.differs and not new %} class="cf-differs"{% endif %}>
+          <th scope="row">{{ r.setting }}</th>
+          {% if not new %}<td>{{ td.value(r.now) }}</td>{% endif %}
+          <td{% if r.differs and not new %} class="tdiff-want"{% endif %}>{{ td.value(r.guide) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <dl class="tdiff-qualities">
+      <dt>Allowed qualities, best first{% if not new and not t.qualities.differs %}: the same{% endif %}</dt>
+      {% if new %}
+      <dd>{{ td.quality_row(t.qualities.guide, none, "") }}</dd>
+      {% else %}
+      <dd><span class="tdiff-side">{{ a.label }}</span>{{ td.quality_row(t.qualities.now, t.qualities.guide if t.qualities.differs else none, "removed") }}</dd>
+      {% if t.qualities.differs %}<dd><span class="tdiff-side">Guide</span>{{ td.quality_row(t.qualities.guide, t.qualities.now, "added") }}</dd>{% endif %}
+      {% endif %}
+    </dl>
+  </div>
+</details>
 {% endmacro %}
 
 {% block settings %}
@@ -112,7 +204,7 @@
   </div>
 
   <h3 class="form-heading">Quality profiles</h3>
-  <p class="form-note hint">A linked profile gets the guide profile's custom formats and scores, and the guides' score for every custom format it already scores, by the score set chosen (german for a German profile, for example). Your scores win, one per line like <code>Language: Not Original = -30000</code>.</p>
+  <p class="form-note hint">A linked profile gets the guide profile's custom formats and scores, and the guides' score for every custom format it already scores, by the score set chosen (german for a German profile, for example). Open its custom formats to see them next to the guide's and set your own scores, which win.</p>
   {% set shown = v.rows | selectattr("shown") | list %}
   {% set rest = v.rows | rejectattr("shown") | list %}
   {% if shown %}

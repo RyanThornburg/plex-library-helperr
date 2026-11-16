@@ -282,6 +282,33 @@ class TestDiff:
         assert step.change.diff == {"sizes": [{"quality": "Bluray-1080p", "have": [20, 1999, 2000], "want": [50.4, 1999, 2000]}]}
 
 
+class TestProfileTable:
+    """Settings → TRaSH Guides' editor: every custom format a profile scores"""
+
+    def test_rows(self):
+        link = TrashProfile("HD Bluray + WEB", "p-hd", score_set="sqp-1-1080p", scores=["dv = 5"])
+        t = trash_guides.profile_table(guide(), arr_state(), link)
+        assert [(r["name"], r["now"], r["guide"], r["yours"], r["differs"]) for r in t["rows"]] == [
+            ("DV", 0, None, 5, True),  # an override, named as the arr names it
+            ("LQ", -10000, -20000, None, True),
+            ("AMZN", 70, 70, None, False),
+        ]
+        assert (t["differ"], t["yours"], t["exists"]) == (2, 1, True)
+        assert t["options"] == ["German DL", "Language: Not Original", "My own"]
+        assert not any(r["differs"] for r in t["settings"]) and not t["qualities"]["differs"]
+
+    def test_an_unknown_override_is_listed_to_clear(self):
+        t = trash_guides.profile_table(guide(), arr_state(), TrashProfile("HD Bluray + WEB", "p-hd", scores=["Nope = 1"]))
+        [row] = [r for r in t["rows"] if r["name"] == "Nope"]
+        assert (row["known"], row["now"], row["guide"], row["yours"]) == (False, None, None, 1)
+
+    def test_a_profile_to_make(self):
+        link = TrashProfile("New one", "p-hd", settings=True, create=True)
+        t = trash_guides.profile_table(guide(), arr_state(), link)
+        assert t["exists"] is False and {r["now"] for r in t["rows"]} == {None}
+        assert t["qualities"]["now"] is None and [q["name"] for q in t["qualities"]["guide"]] == ["Bluray-1080p", "WEB 1080p"]
+
+
 class TestImport:
     """a guide profile the arr doesn't have yet, made from its new-profile template"""
 
@@ -611,8 +638,34 @@ class TestPages:
         page = client.get("/settings/trash-guides", headers=auth()).text
         assert "2 differences</strong> from the guides" in page
         assert "adds yify; removes old" in page  # LQ's regex; its \b isn't a word
-        assert "1 score differs · 1 already match" in page and "AMZN" in page
+        assert "2 custom formats scored · <strong>1 to change</strong>" in page
+        assert 'data-copy-score="0" data-copy-to="radarr-0-score-0"' in page  # AMZN, 0 → 70
         assert "In line with the guides' movie sizes" in page
+
+    def test_scores_from_the_table(self, client):
+        connect_radarr(client)
+        post(client, "/settings/trash-guides/check", {})
+        fields = {
+            "version": version(client), "profile": ["HD Bluray + WEB"], "guide_0": "p-hd",
+            "cf_0": ["AMZN", "LQ", "DV"], "score_0": ["", "-30000", ""],  # empty follows the guide
+            "add_cf_0": "My own", "add_score_0": "50",
+        }
+        assert post(client, "/settings/trash-guides/radarr", fields).status_code == 303
+        assert document(client)["radarr"]["trash"]["profiles"][0]["scores"] == ["LQ = -30000", "My own = 50"]
+        page = client.get("/settings/trash-guides", headers=auth()).text
+        assert "2 of yours" in page and 'name="score_0" value="-30000"' in page and 'name="score_0" value="50"' in page
+        # cleared, it follows the guide again
+        fields.update({"version": version(client), "cf_0": ["LQ", "My own"], "score_0": ["", ""], "add_cf_0": "", "add_score_0": ""})
+        assert post(client, "/settings/trash-guides/radarr", fields).status_code == 303
+        assert "scores" not in document(client)["radarr"]["trash"]["profiles"][0]
+
+    def test_a_score_must_be_a_number(self, client):
+        connect_radarr(client)
+        fields = {"version": version(client), "profile": ["HD Bluray + WEB"], "guide_0": "p-hd", "cf_0": ["LQ"], "score_0": ["lots"]}
+        response = post(client, "/settings/trash-guides/radarr", fields)
+        assert response.status_code == 400 and "LQ&#39;s score must be a whole number" in response.text
+        fields = {"version": version(client), "profile": ["HD Bluray + WEB"], "guide_0": "p-hd", "cf_0": [], "add_cf_0": "DV"}
+        assert "give DV a score to add it" in post(client, "/settings/trash-guides/radarr", fields).text
 
     def test_import_a_guide_profile(self, client):
         connect_radarr(client)
@@ -626,7 +679,7 @@ class TestPages:
             {"profile": "HD Bluray + WEB", "guide": "p-hd", "settings": True, "create": True}
         ]
         page = client.get("/settings/trash-guides", headers=auth()).text
-        assert "new, made when you apply" in page and "new profile · 2 custom formats scored" in page
+        assert "new, made when you apply" in page and "2 custom formats scored, made when you apply" in page
         assert 'name="guide" value="p-hd"' not in page
         # saving the arr's form keeps it an import
         fields = {"version": version(client), "profile": ["Mine", "HD Bluray + WEB"], "guide_1": "p-hd", "create_1": "1"}

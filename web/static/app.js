@@ -320,3 +320,20 @@ for (const table of document.querySelectorAll("table[data-sortable]")) {
     });
   });
 }
+
+// TRaSH Guides: a profile's score in the arr now copies into its "your score" field, so
+// keeping the current one is a click
+for (const now of document.querySelectorAll("[data-copy-to]")) {
+  const input = document.getElementById(now.dataset.copyTo);
+  if (!input) continue;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "copy-score";
+  button.title = "Keep this score";
+  button.append(...now.childNodes);
+  button.addEventListener("click", () => {
+    input.value = now.dataset.copyScore;
+    input.focus();
+  });
+  now.append(button);
+}

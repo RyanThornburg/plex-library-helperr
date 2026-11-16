@@ -17,14 +17,14 @@ import logging
 import re
 import tarfile
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from difflib import SequenceMatcher
 from typing import Any, Protocol
 
 import requests
 
 from arr_client import ArrV3
-from config.models import ArrConfig, ConfigSettings, TrashProfile, TrashSettings
+from config.models import ArrConfig, ConfigSettings, TrashProfile, TrashSettings, parse_score_override
 from logging_config import failure_text
 from results import JobResult, PlannedChange
 
@@ -905,6 +905,73 @@ def run_trash_sync(
         except Exception as e:
             logger.error("%s\t TRaSH Guides sync failed: %s", log_name, failure_text(e))
             result.errors.append(f"{log_name.title()} TRaSH Guides sync failed: {failure_text(e)}")
+
+
+def profile_table(guide: ArrGuide, state: ArrState, link: TrashProfile) -> dict[str, Any] | None:
+    """every custom format a linked profile scores, for Settings → TRaSH Guides' editor:
+    the arr's score now (None: the arr lacks the format, or the profile is still to be
+    made), the guide's (None: not a guide format of this profile) and yours (the
+    override, None: follow the guide), differing ones first; and the formats it could
+    score too (options). None when the guide profile is gone"""
+    if link.guide not in guide.profiles:
+        return None
+    have = state.profile_named(link.profile)
+    exists = have is not None
+    if have is None:
+        if state.schema is None:
+            return None
+        have = state.schema
+    base = desired_profile(guide, state, replace(link, scores=[]), have)
+    guide_scores = {name.casefold(): score for name, score in base.scores.items()}
+    names = {name.casefold(): name for name in base.scores}
+    overrides: dict[str, int] = {}
+    for line in link.scores:
+        name, score = parse_score_override(line)
+        real = (state.format_named(name) or guide.format_named(name) or {}).get("name", name)
+        names.setdefault(name.casefold(), real)
+        overrides[name.casefold()] = score
+    current = {f["name"].casefold(): f.get("score", 0) for f in have.get("formatItems", [])} if exists else {}
+    in_arr = {f["name"].casefold() for f in state.formats}
+    rows = []
+    for key, name in names.items():
+        yours = overrides.get(key)
+        wanted = yours if yours is not None else guide_scores.get(key)
+        now = current.get(key, 0) if exists and key in in_arr else None
+        rows.append(
+            {
+                "name": name,
+                "now": now,
+                "guide": guide_scores.get(key),
+                "yours": yours,
+                "in_arr": key in in_arr,
+                "known": key in in_arr or guide.format_named(name) is not None,
+                "differs": now != wanted,
+            }
+        )
+    rows.sort(key=lambda r: (not r["differs"], r["name"].casefold()))
+    known = {f["name"] for f in state.formats} | {cf["name"] for cf in guide.formats.values()}
+    # the guide profile's settings, shown whether or not the link follows them
+    want = profile_settings(guide.profiles[link.guide], state, [])
+    now = current_settings(have) if exists else None
+    settings = [
+        {"setting": label, "now": (now or {}).get(key), "guide": want[key], "differs": now is None or now.get(key) != want[key]}
+        for key, label in SETTING_NAMES.items()
+        if key in want
+    ]
+    qualities = {
+        "now": allowed_items(now) if now is not None else None,
+        "guide": allowed_items(want),
+        "differs": now is None or allowed_items(now) != allowed_items(want),
+    }
+    return {
+        "rows": rows,
+        "exists": exists,
+        "differ": sum(r["differs"] for r in rows),
+        "yours": len(overrides),
+        "options": sorted((n for n in known if n.casefold() not in names), key=str.casefold),
+        "settings": settings,
+        "qualities": qualities,
+    }
 
 
 def score_set_names(guide: ArrGuide) -> list[str]:
