@@ -15,6 +15,8 @@ The web app adds a status page for all your services, request and watch stats, a
 
 **Test with dry run on until you like the results.** A new install starts in dry run.
 
+The [wiki](https://github.com/RyanThornburg/plex-library-helperr/wiki) walks through every page with screenshots: installing, first dry runs, syncing TRaSH Guides, reviewing removers and the rest.
+
 ## Screenshots
 
 All of the data in these is made up.
@@ -111,7 +113,7 @@ Service URLs can't use `localhost` (inside the container that's the container it
 
 The token is there so whoever opens the page first can't take over the app. Only someone who can see the server's logs can create the login. Restarting the container before then writes a new token.
 
-After that, you change the password under **Settings > Login**, where you can also sign out every other browser. Five wrong passwords within 15 minutes lock sign-in for a while. Behind a proxy that counts for everyone coming through it, but browsers already signed in carry on. Browsers stay signed in for 30 days after you last used them, and 90 days at most.
+After that, you change the password under **Settings > Login**, where you can also sign out every other browser. Five wrong passwords within 15 minutes lock sign-in until the first of them is 15 minutes old (15 minutes at most; the sign-in page says how long is left, and restarting the container clears it). Behind a proxy that counts for everyone coming through it, but browsers already signed in carry on. Browsers stay signed in for 30 days after you last used them, and 90 days at most.
 
 To use it away from home, put it behind a reverse proxy with HTTPS (Nginx Proxy Manager, SWAG, Traefik, a Cloudflare Tunnel) rather than opening the port on your router. When the proxy says the connection is HTTPS (the `X-Forwarded-Proto` header, which those all send), the sign-in cookie is marked HTTPS only.
 
