@@ -1062,7 +1062,7 @@ td.row-actions { text-align: right; }
 .tdiff-fold[open] > summary::before, .trash-rest[open] > summary::before { transform: translateY(-4px) rotate(45deg); }
 .tdiff-fold > summary:hover, .trash-rest > summary:hover { color: var(--link); }
 .trash-rest > summary { color: var(--muted); }
-.tdiff-fold > summary > span { min-width: 0; }
+.tdiff-fold > summary > span { min-width: 0; white-space: normal; }
 .form > .trash-rest { grid-column: 1 / -1; contain: inline-size; }
 .trash-rest > .guide-links { margin: 8px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--border); }
 td .tdiff-fold { display: block; }
@@ -1075,6 +1075,10 @@ table.tdiff { width: auto; min-width: min(100%, 26rem); }
 .tdiff .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .tdiff-want { font-weight: 600; }
 .tdiff-why { font-size: 13px; white-space: nowrap; }
+.tdiff-why-under { display: none; }
+.tdiff .tdiff-pick { width: 1%; padding-right: 0; vertical-align: middle; }
+.tdiff-pick input, .tdiff-pick-label input { margin: 0; }
+.tdiff-pick-label { display: inline-flex; align-items: center; gap: 8px; }
 .tdiff-old { color: var(--muted); }
 .tdiff-num { font-variant-numeric: tabular-nums; }
 .tdiff-note, .tdiff-inline { margin: 0; color: var(--muted); font-size: 13px; }
@@ -1132,6 +1136,13 @@ table.tdiff { width: auto; min-width: min(100%, 26rem); }
   table.stack table.tdiff tr { display: table-row; padding: 0; }
   table.stack table.tdiff th, table.stack table.tdiff td { display: table-cell; padding: 4px 8px; border-bottom: 1px solid var(--border); font-size: 13px; }
   table.stack table.tdiff td[data-label]::before { content: none; }
+  /* a plan's row checkboxes take a column: the narrow cells give it back */
+  table.stack table.tdiff .tdiff-pick { padding: 4px 0 4px 6px; }
+  table.stack table.tdiff .num { padding-left: 4px; }
+  /* a row's note goes under its name, a column of its own is too narrow here */
+  table.tdiff .tdiff-why, table.stack table.tdiff .tdiff-why { display: none; }
+  .tdiff-why-under { display: block; margin-top: 2px; font-size: 12px; }
+  table.stack td > details.tdiff-fold { contain: inline-size; }
 }
 /* a plan row holding a change's details reads from its top */
 tr:has(> td > .tdiff-fold[open]) > td { vertical-align: top; }

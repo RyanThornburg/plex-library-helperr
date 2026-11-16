@@ -3,7 +3,7 @@
 import logging
 import queue
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Mapping
 from datetime import timedelta
 from pathlib import PurePosixPath
 from typing import Any
@@ -16,6 +16,7 @@ from config.models import ConfigSettings, WebDefaults
 from logging_config import SecretFilter, redacted
 from movie_remover import PlayLookup
 from results import JOBS, JobResult, utc_now  # noqa: F401 (utc_now: web modules import it from here)
+from trash_guides import change_parts
 from web.db import JobRun, RemoverRuleSetting
 
 logger = logging.getLogger(__name__)
@@ -113,6 +114,30 @@ def approvable(run: JobRun) -> list[dict[str, Any]]:
     result = run.result or {}
     items = result.get("plan", []) if run.job == "trash_sync" else result.get("removals", [])
     return [r for r in items if r["status"] in APPROVABLE]
+
+
+def chosen_parts(
+    changes: Mapping[str, dict[str, Any]], chosen: Iterable[str], parts: Mapping[str, list[str]]
+) -> dict[str, list[str]]:
+    """the rows approved of each change applied in part, {key: sorted row ids}; a change
+    with every row approved (or none named) is left out, it applies whole. Raises
+    ApplyRefused for rows of a change that isn't selected, that it doesn't have, or a
+    change with none of its rows left"""
+    chosen = set(chosen)
+    if extra := set(parts) - chosen:
+        raise ApplyRefused(f"Rows were selected in {', '.join(changes[k]['title'] if k in changes else k for k in sorted(extra))} without selecting it.")
+    partly: dict[str, list[str]] = {}
+    for key, ids in parts.items():
+        every = change_parts(changes[key])
+        if not every:
+            raise ApplyRefused(f"{changes[key]['title']} applies whole, its rows can't be picked.")
+        if set(ids) - set(every):
+            raise ApplyRefused(f"Some selected rows of {changes[key]['title']} aren't in this plan.")
+        if not ids:
+            raise ApplyRefused(f"Nothing in {changes[key]['title']} is selected: untick it, or pick at least one of its rows.")
+        if set(ids) != set(every):
+            partly[key] = sorted(set(ids))
+    return partly
 
 
 def hide_in(value: Any) -> Any:
@@ -315,11 +340,18 @@ class JobRunner:
         return None
 
     def submit_apply(
-        self, plan_run_id: int, keys: list[str], trigger: str, requested_by: str | None
+        self,
+        plan_run_id: int,
+        keys: list[str],
+        trigger: str,
+        requested_by: str | None,
+        parts: Mapping[str, list[str]] | None = None,
     ) -> int:
         """queue a live run of the plan's job that removes the approved series/movies (or
-        duplicate versions) of a plan, selected by removal_key(). Raises ApplyRefused, AlreadyActive, or LookupError when
-        there's no such run"""
+        duplicate versions) of a plan, selected by removal_key(), or applies the approved
+        TRaSH Guides changes: `parts` {key: row ids} approves only those rows of a change
+        (trash_guides.change_parts(), a key left out is approved whole). Raises
+        ApplyRefused, AlreadyActive, or LookupError when there's no such run"""
         with self._submit_lock, Session(self.engine) as session:
             plan = session.get(JobRun, plan_run_id)
             if plan is None:
@@ -332,13 +364,17 @@ class JobRunner:
                 raise ApplyRefused("Select at least one item to remove.")
             if chosen - removals.keys():
                 raise ApplyRefused("Some selected items aren't in this plan.")
+            if parts and plan.job != "trash_sync":
+                raise ApplyRefused("Only a TRaSH Guides plan can be approved in part.")
             if plan.job == "trash_sync":
+                partly = chosen_parts(removals, chosen, parts or {})
                 approved = [
                     {
                         "service": removals[key]["service"],
                         "key": key,
                         "title": removals[key]["title"],
                         "fingerprint": removals[key]["fingerprint"],
+                        **({"parts": partly[key]} if key in partly else {}),
                     }
                     for key in sorted(chosen)
                 ]
@@ -451,6 +487,8 @@ class JobRunner:
             if approved is not None and job == "trash_sync":
                 kwargs["approved"] = {a["key"]: a["fingerprint"] for a in approved}
                 kwargs["guide_commit"] = guide_commit
+                if partly := {a["key"]: frozenset(a["parts"]) for a in approved if "parts" in a}:
+                    kwargs["trash_parts"] = partly
             elif approved is not None:
                 # only submit_apply queues these, checked again in case anything else does
                 if not self.allow_apply:

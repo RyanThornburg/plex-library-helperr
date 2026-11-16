@@ -102,9 +102,9 @@
 {% elif apply_problem %}
 <p class="banner banner-warn">{{ apply_problem }}</p>
 {% elif selectable %}
-<p class="muted">Select what to change, then review. Applying reads Radarr and Sonarr again, plans again from the same guides and only sends a change that's still exactly as planned. A score or setting you keep on purpose belongs in the profile's overrides (Settings → TRaSH Guides), so it stops being planned.</p>
+<p class="muted">Select what to change, then review. Inside a quality profile or the sizes every row has its own checkbox: untick one to leave it as it is for now. Applying reads Radarr and Sonarr again, plans again from the same guides and only sends a change that's still exactly as planned. A score or setting you keep on purpose belongs in the profile's table (Settings → TRaSH Guides), so it stops being planned.</p>
 {% endif %}
-{% if selectable %}<form method="get" action="/runs/{{ run.id }}/apply">{% endif %}
+{% if selectable %}<form method="post" action="/runs/{{ run.id }}/apply/review"><input type="hidden" name="parts" value="1">{% endif %}
 <table class="stack">
   <thead>
     <tr>
@@ -120,7 +120,7 @@
       {% endif %}
       <td class="long first lead">{{ item.title }} <span class="tag">{{ item.service | title }}</span><br><span class="muted">{{ td.KINDS.get(item.kind, item.kind) }}</span></td>
       <td class="long row" data-label="What changes">
-        {% if item.diff %}{{ td.fold(item, item.service | title) }}
+        {% if item.diff %}{{ td.fold(item, item.service | title, pick=removal_key(item) if selectable and item.status in APPROVABLE else None) }}
         {% elif item.lines | length > 4 %}
         <details><summary>{{ item.lines | length }} changes</summary><ul class="items">{% for line in item.lines %}<li>{{ line }}</li>{% endfor %}</ul></details>
         {% elif item.lines %}

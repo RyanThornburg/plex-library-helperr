@@ -267,11 +267,12 @@ class TestDiff:
         diff = step.change.diff
         assert (diff["follows"], diff["score_set"]) == ("HD Bluray + WEB", "default")
         assert diff["scores"] == [
-            {"name": "AMZN", "have": 0, "want": 70, "yours": False},
-            {"name": "DV", "have": None, "want": 5, "yours": True},
+            {"name": "AMZN", "have": 0, "want": 70, "yours": False, "part": "score:amzn"},
+            {"name": "DV", "have": None, "want": 5, "yours": True, "part": "score:dv"},
         ]
         assert diff["matching"] == 1 and diff["yours"] == [{"name": "DV", "score": 5}, {"name": "LQ", "score": -30000}]
-        assert diff["settings"] == [{"setting": "Minimum custom format score", "have": -5000, "want": 0}]
+        assert diff["settings"] == [{"setting": "Minimum custom format score", "have": -5000, "want": 0, "part": "setting:minFormatScore"}]
+        assert diff["qualities"]["part"] == "qualities"
         assert [q["name"] for q in diff["qualities"]["have"]] == ["WEB 1080p", "Bluray-1080p"]
         assert [q["name"] for q in diff["qualities"]["want"]] == ["Bluray-1080p", "WEB 1080p"]
 
@@ -279,7 +280,7 @@ class TestDiff:
         state = arr_state()
         state.definitions[0]["minSize"] = 20
         [step], _ = plan_arr("RADARR", guide(), state, TrashSettings(quality_sizes="movie"))
-        assert step.change.diff == {"sizes": [{"quality": "Bluray-1080p", "have": [20, 1999, 2000], "want": [50.4, 1999, 2000]}]}
+        assert step.change.diff == {"sizes": [{"quality": "Bluray-1080p", "part": "size:Bluray-1080p", "have": [20, 1999, 2000], "want": [50.4, 1999, 2000]}]}
 
 
 class TestProfileTable:
@@ -325,8 +326,8 @@ class TestImport:
         change = step.change
         assert (change.key, change.kind, change.title) == ("radarr:profile_add:hd bluray + web (new)", "profile_add", "HD Bluray + WEB (new)")
         assert change.diff["scores"] == [
-            {"name": "AMZN", "have": None, "want": 70, "yours": False},
-            {"name": "LQ", "have": None, "want": -10000, "yours": False},
+            {"name": "AMZN", "have": None, "want": 70, "yours": False, "part": "score:amzn"},
+            {"name": "LQ", "have": None, "want": -10000, "yours": False, "part": "score:lq"},
         ]
         assert change.diff["qualities"]["have"] is None
         assert [q["name"] for q in change.diff["qualities"]["want"]] == ["Bluray-1080p", "WEB 1080p"]
@@ -405,6 +406,77 @@ def drifted():
     state.formats[1] = arr_format(2, "LQ", "old")
     state.profiles = [arr_profile(formatItems=[{"format": 1, "name": "AMZN", "score": 0}, {"format": 2, "name": "LQ", "score": -10000}])]
     return state
+
+
+class TestPartly:
+    """a profile's or the sizes' rows approved one by one: the rest stay as they are"""
+
+    LINK = TrashProfile("HD Bluray + WEB", "p-hd", settings=True)
+
+    def state(self):
+        state = drifted()
+        items = arr_profile()["items"]
+        state.profiles[0].update(minFormatScore=-5000, items=[items[0], items[2], items[1]])
+        return state
+
+    def plan(self, fake):
+        result = JobResult("trash_sync")
+        run_trash_sync(config(profiles=[self.LINK]), result, lambda commit: GUIDES, apis={"radarr": fake})
+        return next(p for p in result.plan if p.kind == "profile")
+
+    def apply(self, fake, change, parts):
+        result = JobResult("trash_sync")
+        run_trash_sync(
+            config(profiles=[self.LINK]), result, lambda commit: GUIDES, {change.key: change.fingerprint},
+            GUIDES.commit, apis={"radarr": fake}, parts={change.key: frozenset(parts)},
+        )
+        return result.plan
+
+    def allowed(self, profile):
+        return [i.get("name") or i["quality"]["name"] for i in reversed(profile["items"]) if i["allowed"]]
+
+    def test_rows_have_ids(self):
+        change = self.plan(FakeArr(self.state()))
+        assert trash_guides.change_parts({"kind": change.kind, "diff": change.diff}) == ["score:amzn", "setting:minFormatScore", "qualities"]
+        assert trash_guides.change_parts({"kind": "format_update", "diff": {"conditions": []}}) == []
+        # a plan from before rows had ids applies whole
+        assert trash_guides.change_parts({"kind": "profile", "diff": {"scores": [{"name": "AMZN"}]}}) == []
+
+    def test_only_the_approved_setting_is_sent(self):
+        fake = FakeArr(self.state())
+        change = self.plan(fake)
+        [applied] = self.apply(fake, change, {"setting:minFormatScore"})
+        assert applied.status == "done" and applied.detail.endswith("2 of 3 left for a later plan")
+        assert applied.diff["scores"] == [] and applied.diff["qualities"] is None
+        assert applied.lines == ["Minimum custom format score: -5000 → 0"]
+        profile = fake.current.profiles[0]
+        assert fake.sent == [("profile", 6, {"AMZN": 0, "LQ": -10000})]
+        assert profile["minFormatScore"] == 0 and self.allowed(profile) == ["WEB 1080p", "Bluray-1080p"]
+        # the rest is planned again
+        again = self.plan(fake)
+        assert trash_guides.change_parts({"kind": again.kind, "diff": again.diff}) == ["score:amzn", "qualities"]
+
+    def test_only_the_approved_score_and_qualities(self):
+        fake = FakeArr(self.state())
+        change = self.plan(fake)
+        self.apply(fake, change, {"score:amzn", "qualities"})
+        profile = fake.current.profiles[0]
+        assert fake.sent == [("profile", 6, {"AMZN": 70, "LQ": -10000})]
+        assert profile["minFormatScore"] == -5000 and profile["cutoff"] == 7
+        assert self.allowed(profile) == ["Bluray-1080p", "WEB 1080p"]
+
+    def test_still_checked_against_the_whole_plan(self):
+        fake = FakeArr(self.state())
+        change = self.plan(fake)
+        fake.current.profiles[0]["formatItems"][1]["score"] = -100  # LQ, a row not approved
+        [applied] = self.apply(fake, change, {"score:amzn"})
+        assert applied.status == "blocked" and fake.sent == []
+
+    def test_new_qualities_without_the_cutoff_need_it_approved(self):
+        state = arr_state()
+        body = copy.deepcopy(arr_profile())
+        with pytest.raises(ValueError, match="approve Upgrade until too"):
+            trash_guides.apply_settings(body, {"items": [{"name": "Bluray-720p", "allowed": True, "items": []}]}, state)
 
 
 class TestJob:
@@ -630,6 +702,40 @@ class TestPages:
         assert client.fake.sent == [("profile", 6, {"AMZN": 70, "LQ": -10000})]
         applied = client.get(response.headers["location"], headers=auth()).text
         assert "Applied" in applied and "status-done" in applied
+
+    def test_apply_some_rows_of_a_profile(self, client):
+        link_hd(client, settings_0="1")
+        client.fake.current.profiles[0]["minFormatScore"] = -5000
+        run = client.post("/api/jobs/trash_sync", json={"dry_run": False}, headers={**auth(), "Origin": "http://testserver"}).json()
+        wait(client)
+        page = client.get(f"/runs/{run['id']}", headers=auth()).text
+        assert 'action="/runs/%d/apply/review"' % run["id"] in page
+        assert 'name="part" value="radarr:profile:6|score:amzn" checked' in page
+        assert 'name="part" value="radarr:profile:6|setting:minFormatScore" checked' in page
+        # the profile ticked, its score row unticked
+        review = post(client, f"/runs/{run['id']}/apply/review", {"parts": "1", "item": "radarr:profile:6", "part": "radarr:profile:6|setting:minFormatScore"})
+        assert review.status_code == 200 and "1 of 2 rows, the rest left as they are" in review.text
+        assert '<th scope="row">AMZN</th>' not in review.text and "Minimum custom format score" in review.text
+        assert 'name="part" value="radarr:profile:6|setting:minFormatScore"' in review.text
+        response = post(client, f"/runs/{run['id']}/apply", {"item": "radarr:profile:6", "part": "radarr:profile:6|setting:minFormatScore"})
+        assert response.status_code == 303
+        wait(client)
+        assert client.fake.sent == [("profile", 6, {"AMZN": 0, "LQ": -10000})]
+        assert client.fake.current.profiles[0]["minFormatScore"] == 0
+        applied = client.get(response.headers["location"], headers=auth()).text
+        assert "1 of 2 left for a later plan" in applied
+
+    def test_a_profile_with_no_rows_ticked_is_refused(self, client):
+        link_hd(client, settings_0="1")
+        run = client.post("/api/jobs/trash_sync", json={"dry_run": False}, headers={**auth(), "Origin": "http://testserver"}).json()
+        wait(client)
+        review = post(client, f"/runs/{run['id']}/apply/review", {"parts": "1", "item": "radarr:profile:6"})
+        assert "Nothing in HD Bluray + WEB is selected" in review.text and "Apply 1 change" not in review.text
+        # rows of a change that isn't selected, or that it doesn't have
+        api = client.post(f"/api/runs/{run['id']}/apply", json={"items": ["radarr:profile:6"], "parts": {"radarr:profile:6": ["score:nope"]}}, headers={**auth(), "Origin": "http://testserver"})
+        assert api.status_code == 422 and "aren't in this plan" in api.json()["error"]
+        api = client.post(f"/api/runs/{run['id']}/apply", json={"items": [], "parts": {"radarr:profile:6": ["score:amzn"]}}, headers={**auth(), "Origin": "http://testserver"})
+        assert api.status_code == 422
 
     def test_settings_compare_with_the_arr_now(self, client):
         connect_radarr(client)

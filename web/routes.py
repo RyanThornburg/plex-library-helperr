@@ -7,6 +7,7 @@ from typing import Annotated, Any
 from urllib.parse import parse_qs, urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from starlette.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
@@ -15,6 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 import config
+import trash_guides
 from config.models import ConfigSettings, MovieRemoverRule, RemoverRule
 from results import JOBS
 from version import VERSION
@@ -28,6 +30,7 @@ from web.jobs import (
     JobRunner,
     PLAN_JOBS,
     approvable,
+    chosen_parts,
     configured_mode,
     removal_key,
     run_mode,
@@ -145,6 +148,8 @@ templates.env.globals["ui"] = templates.env.get_template("_shell.html").module
 
 # a schedule form is a few short fields
 MAX_FORM_BYTES = 10_000
+# a TRaSH Guides plan's form has a checkbox per row of every change
+MAX_PLAN_FORM_BYTES = 500_000
 
 
 def runner(request: Request) -> JobRunner:
@@ -328,13 +333,13 @@ def schedule_to_dict(schedule: Schedule, now: datetime) -> dict[str, Any]:
     }
 
 
-async def form_lists(request: Request) -> dict[str, list[str]]:
+async def form_lists(request: Request, limit: int = MAX_FORM_BYTES) -> dict[str, list[str]]:
     """a urlencoded form body with every value of each field, without python-multipart.
     Unchecked boxes are absent"""
     body = b""
     async for chunk in request.stream():
         body += chunk
-        if len(body) > MAX_FORM_BYTES:
+        if len(body) > limit:
             raise HTTPException(status_code=413)
     return parse_qs(body.decode("utf-8", "replace"), keep_blank_values=True)
 
@@ -496,8 +501,31 @@ def run_page(request: Request, run_id: int) -> HTMLResponse:
     )
 
 
+def picked_parts(
+    run: JobRun, items: list[str], values: list[str], every_offered: bool
+) -> dict[str, list[str]]:
+    """the rows picked in a TRaSH Guides plan's form, {key: row ids}, from its `part`
+    values (`key|row id`). `every_offered`: the form showed a checkbox for every row of
+    each change, so a selected change none came with has none picked (the confirm page
+    only sends the rows of changes applied in part)"""
+    picked: dict[str, list[str]] = {}
+    for value in values:
+        key, _, part = value.partition("|")
+        picked.setdefault(key, []).append(part)
+    if every_offered:
+        changes = {removal_key(r): r for r in approvable(run)}
+        for key in items:
+            if key in changes and trash_guides.change_parts(changes[key]):
+                picked.setdefault(key, [])
+    return picked
+
+
 def apply_confirm(
-    request: Request, run_id: int, items: list[str], error: str | None = None
+    request: Request,
+    run_id: int,
+    items: list[str],
+    error: str | None = None,
+    parts: dict[str, list[str]] | None = None,
 ) -> HTMLResponse:
     run = get_run(request, run_id)
     selected = [r for r in approvable(run) if removal_key(r) in set(items)]
@@ -506,15 +534,27 @@ def apply_confirm(
     if problem is None and (not selected or len(selected) != len(set(items))):
         problem = "Select at least one item from the plan."
     if run.job == "trash_sync":
+        partly: dict[str, list[str]] = {}
+        try:
+            partly = chosen_parts({removal_key(r): r for r in approvable(run)}, items, parts or {})
+        except ApplyRefused as e:
+            problem = problem or str(e)
+        shown = []
+        for r in selected:
+            key = removal_key(r)
+            if key in partly:
+                r = {**r, "diff": trash_guides.narrow_diff(r["diff"], partly[key]), "picked": len(partly[key]), "rows": len(trash_guides.change_parts(r))}
+            shown.append(r)
         return templates.TemplateResponse(
             request,
             "trash_apply_confirm.html",
             {
                 "user": request.state.user,
                 "run": run,
-                "selected": selected,
+                "selected": shown,
                 "problem": problem,
-                "query": urlencode([("item", removal_key(r)) for r in selected]),
+                "fields": [("item", removal_key(r)) for r in selected]
+                + [("part", f"{key}|{part}") for key, ids in partly.items() for part in ids],
             },
             status_code=400 if error else 200,
         )
@@ -568,24 +608,49 @@ def apply_confirm_page(
     return apply_confirm(request, run_id, item)
 
 
+@router.post("/runs/{run_id}/apply/review", response_class=HTMLResponse)
+async def apply_review(request: Request, run_id: int) -> HTMLResponse:
+    """a TRaSH Guides plan's form: every row of a change has its own checkbox, too many
+    for a url, so it posts here (nothing is changed) for the confirm page"""
+    form = await form_lists(request, MAX_PLAN_FORM_BYTES)
+    items = form.get("item", [])
+
+    def page() -> HTMLResponse:
+        run = get_run(request, run_id)
+        parts = picked_parts(run, items, form.get("part", []), "parts" in form)
+        return apply_confirm(request, run_id, items, parts=parts)
+
+    return await run_in_threadpool(page)
+
+
 @router.post("/runs/{run_id}/apply", response_model=None)
-def apply_plan_form(
+async def apply_plan_form(
     request: Request, run_id: int, item: list[str] = Query(default=[])
 ) -> Response:
-    try:
-        new_id = runner(request).submit_apply(run_id, item, "manual", request.state.user)
-    except LookupError:
-        raise HTTPException(status_code=404) from None
-    except ApplyRefused as e:
-        return apply_confirm(request, run_id, item, str(e))
-    except AlreadyActive as e:
-        response = apply_confirm(
-            request, run_id, item,
-            f"{JOB_INFO[get_run(request, run_id).job][0]} run #{e.run_id} is active, so the plan wasn't applied. Apply it once that run finishes.",
-        )
-        response.status_code = 409
-        return response
-    return RedirectResponse(f"/runs/{new_id}", status_code=303)
+    # removals come in the query, a TRaSH Guides plan's changes and rows in the body
+    form = await form_lists(request, MAX_PLAN_FORM_BYTES)
+    items = item + form.get("item", [])
+
+    def apply() -> Response:
+        run = get_run(request, run_id)
+        parts = picked_parts(run, items, form.get("part", []), False) or None
+        try:
+            new_id = runner(request).submit_apply(run_id, items, "manual", request.state.user, parts)
+        except LookupError:
+            raise HTTPException(status_code=404) from None
+        except ApplyRefused as e:
+            return apply_confirm(request, run_id, items, str(e), parts)
+        except AlreadyActive as e:
+            response = apply_confirm(
+                request, run_id, items,
+                f"{JOB_INFO[run.job][0]} run #{e.run_id} is active, so the plan wasn't applied. Apply it once that run finishes.",
+                parts,
+            )
+            response.status_code = 409
+            return response
+        return RedirectResponse(f"/runs/{new_id}", status_code=303)
+
+    return await run_in_threadpool(apply)
 
 
 def schedule_form(
@@ -823,6 +888,8 @@ def api_run_job(request: Request, job: str, body: RunRequest) -> JSONResponse:
 class ApplyRequest(BaseModel):
     # removal keys: sonarr:<series id> or radarr:<movie id>
     items: list[str] = []
+    # a TRaSH Guides change applied in part: {key: row ids (trash_guides.change_parts())}
+    parts: dict[str, list[str]] = {}
 
 
 @router.post("/api/runs/{run_id}/apply", status_code=202)
@@ -830,7 +897,7 @@ def api_apply_plan(request: Request, run_id: int, body: ApplyRequest) -> JSONRes
     """removes the approved series/movies of a removers run's plan, the approved
     versions of a duplicates run's, or applies a TRaSH Guides plan's approved changes"""
     try:
-        new_id = runner(request).submit_apply(run_id, body.items, "api", request.state.user)
+        new_id = runner(request).submit_apply(run_id, body.items, "api", request.state.user, body.parts or None)
     except LookupError:
         raise HTTPException(status_code=404) from None
     except ApplyRefused as e:

@@ -12,7 +12,8 @@
 <p class="banner banner-bad">{{ problem }}</p>
 {% else %}
 {% set n = selected | length %}
-<p class="banner banner-live">This <strong>changes {{ n }} setting{{ "s" if n != 1 }}</strong> in Radarr/Sonarr to match TRaSH Guides. Each is planned again first from fresh data and the same guides: one that changed since this plan is skipped and reported. Nothing is deleted.</p>
+{% set partly = selected | selectattr("picked") | list | length %}
+<p class="banner banner-live">This <strong>changes {{ n }} setting{{ "s" if n != 1 }}</strong>{% if partly %} ({{ partly }} only in part){% endif %} in Radarr/Sonarr to match TRaSH Guides. Each is planned again first from fresh data and the same guides: one that changed since this plan is skipped and reported. Nothing is deleted.</p>
 {% endif %}
 {% if selected %}
 <table class="stack">
@@ -20,7 +21,7 @@
   <tbody>
     {% for item in selected %}
     <tr>
-      <td class="long first lead">{{ item.title }} <span class="tag">{{ item.service | title }}</span><br><span class="muted">{{ td.KINDS.get(item.kind, item.kind) }}</span></td>
+      <td class="long first lead">{{ item.title }} <span class="tag">{{ item.service | title }}</span><br><span class="muted">{{ td.KINDS.get(item.kind, item.kind) }}{% if item.picked %} · {{ item.picked }} of {{ item.rows }} rows, the rest left as they are{% endif %}</span></td>
       <td class="long row" data-label="What changes">
         {% if item.diff %}{{ td.fold(item, item.service | title) }}
         {% elif item.lines | length > 4 %}
@@ -38,7 +39,7 @@
 <footer class="dialog-foot">
   <a class="button button-secondary" href="/runs/{{ run.id }}">{{ "Back to the plan" if problem else "Cancel" }}</a>
   {% if not problem %}
-  <form method="post" action="/runs/{{ run.id }}/apply?{{ query }}"><button type="submit" class="button-danger">Apply {{ selected | length }} change{{ "s" if selected | length != 1 }}</button></form>
+  <form method="post" action="/runs/{{ run.id }}/apply">{% for name, value in fields %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}<button type="submit" class="button-danger">Apply {{ selected | length }} change{{ "s" if selected | length != 1 }}</button></form>
   {% endif %}
 </footer>
 </section>

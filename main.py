@@ -505,6 +505,7 @@ def run_job(
     guides: "GuideLoader | None" = None,
     guide_commit: str | None = None,
     auto_formats: bool = True,
+    trash_parts: "Mapping[str, frozenset[str]] | None" = None,
 ) -> JobResult:
     """run one job (movers, removers, duplicates, empty_trash or clear_stuck) and return
     what it changed. `approved` applies a reviewed removers plan ({"SONARR"/"RADARR":
@@ -514,7 +515,8 @@ def run_job(
     when movies were played. `removed_files` maps file names the removers deleted to
     their run, see plex.empty_plex_trash. `stuck_clock` says how long downloads have been
     stuck, see web.queue_cleanup. trash_sync reads TRaSH Guides through `guides` (at
-    `guide_commit` when applying its plan, {key: fingerprint} in `approved`), see
+    `guide_commit` when applying its plan, {key: fingerprint} in `approved`, and
+    `trash_parts` {key: row ids} for changes approved in part), see
     trash_guides.run_trash_sync, whose format fixes `auto_formats` lets through"""
     if job not in JOBS:
         raise ValueError(f"unknown job '{job}', expected one of {', '.join(JOBS)}")
@@ -550,7 +552,7 @@ def run_job(
         logger.info("-" * 90)
         logger.info("STARTING TRASH GUIDES SYNC")
         try:
-            run_trash_sync(settings, result, guides, approved, guide_commit, auto_formats)  # type: ignore[arg-type]
+            run_trash_sync(settings, result, guides, approved, guide_commit, auto_formats, parts=trash_parts)  # type: ignore[arg-type]
         except Exception as e:
             failed(e, "TRASH\t TRaSH Guides sync failed")
             result.errors.append(f"TRaSH Guides sync failed: {failure_text(e)}")

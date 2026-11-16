@@ -227,6 +227,8 @@ class Step:
     send: Callable[[ArrSettingsApi, ArrState], None]
     # format names a profile change needs to exist in the arr first
     needs: list[str] = field(default_factory=list)
+    # the step sending only some of its rows (change_parts()), when it can be split
+    partial: "Callable[[frozenset[str]], Step] | None" = None
 
 
 def fingerprint(value: Any) -> str:
@@ -495,14 +497,14 @@ def settings_diff(have: Mapping[str, Any] | None, want: Mapping[str, Any]) -> di
     """{"settings": [{setting, have, want}], "qualities": {have, want} or None}, the
     settings that differ (all of them for a new profile, have None)"""
     rows = [
-        {"setting": label, "have": (have or {}).get(key), "want": want[key]}
+        {"setting": label, "have": (have or {}).get(key), "want": want[key], "part": f"setting:{key}"}
         for key, label in SETTING_NAMES.items()
         if key in want and (have is None or have.get(key) != want[key])
     ]
     # only the allowed qualities and their order matter: the arr never grabs the others
     qualities = None
     if have is None or allowed_items(have) != allowed_items(want):
-        qualities = {"have": allowed_items(have) if have is not None else None, "want": allowed_items(want)}
+        qualities = {"have": allowed_items(have) if have is not None else None, "want": allowed_items(want), "part": "qualities"}
     return {"settings": rows, "qualities": qualities}
 
 
@@ -535,13 +537,41 @@ def profile_body(have: Mapping[str, Any], plan: ProfilePlan, state: ArrState) ->
 
 
 def apply_settings(body: dict[str, Any], want: Mapping[str, Any], state: ArrState) -> None:
+    """the guide's settings onto the arr's profile json. `want` may hold only some of
+    them (a plan applied in part): without items the qualities stay as they are"""
+    if "items" in want:
+        named = _apply_items(body, want["items"], state)
+    else:
+        named = {}
+        for item in body.get("items", []):
+            if item.get("quality"):
+                named[item["quality"]["name"]] = item["quality"]["id"]
+            elif item.get("id") is not None:
+                named[item.get("name")] = item["id"]
+    if "cutoff" in want:
+        if want["cutoff"] not in named:
+            raise ValueError(f"the cutoff {want['cutoff']} isn't in the profile's qualities")
+        body["cutoff"] = named[want["cutoff"]]
+    elif body.get("cutoff") not in named.values():
+        upgrade_until = SETTING_NAMES["cutoff"]
+        raise ValueError(f"the profile's {upgrade_until.casefold()} isn't one of the new qualities: approve {upgrade_until} too")
+    for key in ("upgradeAllowed", "minFormatScore", "cutoffFormatScore", "minUpgradeFormatScore"):
+        if key in want:
+            body[key] = want[key]
+    if "language" in want:
+        body["language"] = next(l for l in state.languages if l.get("name") == want["language"])
+
+
+def _apply_items(body: dict[str, Any], want_items: list[dict[str, Any]], state: ArrState) -> dict[str, int]:
+    """the profile's qualities as the guide orders them (best first), returning each
+    allowed quality's or group's id by name"""
     qualities = _quality_ids(state, body)
     groups = {i.get("name"): i.get("id") for i in body.get("items", []) if not i.get("quality")}
     next_id = max([1000, *[i for i in groups.values() if isinstance(i, int)]]) + 1
     items = []
     named: dict[str, int] = {}
     listed: set[str] = set()
-    for item in want["items"]:
+    for item in want_items:
         if item["items"]:
             members = []
             for name in item["items"]:
@@ -563,13 +593,7 @@ def apply_settings(body: dict[str, Any], want: Mapping[str, Any], state: ArrStat
     # qualities the guide leaves out stay, not allowed, at the bottom
     rest = [{"quality": q, "items": [], "allowed": False} for name, q in qualities.items() if name not in listed]
     body["items"] = rest + list(reversed(items))
-    if want.get("cutoff") not in named:
-        raise ValueError(f"the cutoff {want.get('cutoff')} isn't in the profile's qualities")
-    body["cutoff"] = named[want["cutoff"]]
-    for key in ("upgradeAllowed", "minFormatScore", "cutoffFormatScore", "minUpgradeFormatScore"):
-        body[key] = want[key]
-    if "language" in want:
-        body["language"] = next(l for l in state.languages if l.get("name") == want["language"])
+    return named
 
 
 def size_changes(
@@ -589,6 +613,7 @@ def size_changes(
             changed.append(new)
             rows.append({
                 "quality": q["quality"],
+                "part": f"size:{q['quality']}",
                 "have": [have.get("minSize"), have.get("preferredSize"), have.get("maxSize")],
                 "want": [new["minSize"], new["preferredSize"], new["maxSize"]],
             })
@@ -609,9 +634,68 @@ def score_diff(current: Mapping[str, int], plan: ProfilePlan, link: TrashProfile
         if old == score:
             matching += 1
         else:
-            rows.append({"name": name, "have": old, "want": score, "yours": name.casefold() in overrides})
+            rows.append({"name": name, "have": old, "want": score, "yours": name.casefold() in overrides, "part": f"score:{name.casefold()}"})
     yours = [{"name": n, "score": s} for n, s in sorted(plan.scores.items(), key=lambda kv: kv[0].casefold()) if n.casefold() in overrides]
     return {"scores": rows, "matching": matching, "yours": yours}
+
+
+# kinds whose rows can be approved one by one: a profile's scores, settings and allowed
+# qualities (one row, their order only makes sense whole), and the quality sizes
+SPLITTABLE = ("profile", "sizes")
+
+
+def change_parts(change: Mapping[str, Any]) -> list[str]:
+    """the ids of a planned change's rows that can be approved on their own
+    (score:<format casefolded>, setting:<key>, qualities, size:<quality>), none for a
+    change that only applies whole or was planned before rows had ids"""
+    diff = change.get("diff") or {}
+    if change.get("kind") == "profile":
+        rows = [*diff.get("scores", []), *diff.get("settings", []), *([diff["qualities"]] if diff.get("qualities") else [])]
+    elif change.get("kind") == "sizes":
+        rows = diff.get("sizes", [])
+    else:
+        return []
+    return [r["part"] for r in rows if "part" in r]
+
+
+def narrow_diff(diff: Mapping[str, Any], parts: Iterable[str]) -> dict[str, Any]:
+    """a change's diff with only the approved rows"""
+    chosen = set(parts)
+    narrowed = dict(diff)
+    for key in ("scores", "settings", "sizes"):
+        if key in diff:
+            narrowed[key] = [r for r in diff[key] if r.get("part") in chosen]
+    if diff.get("qualities"):
+        narrowed["qualities"] = diff["qualities"] if diff["qualities"].get("part") in chosen else None
+    return narrowed
+
+
+def _narrowed(change: PlannedChange, parts: frozenset[str]) -> PlannedChange:
+    """the change as applied in part: its diff and lines only the approved rows, the
+    detail saying how many were left for a later plan"""
+    every = change_parts({"kind": change.kind, "diff": change.diff})
+    diff = narrow_diff(change.diff, parts)
+    rows = [*diff.get("scores", []), *diff.get("settings", []), *diff.get("sizes", [])]
+    starts = [f"{r.get('name') or r.get('setting') or r.get('quality')}:" for r in rows]
+    if diff.get("qualities"):
+        starts.append("Qualities")
+    lines = [line for line in change.lines if line.startswith(tuple(starts))] if starts else []
+    left = len(every) - len(parts)
+    note = f"{left} of {len(every)} left for a later plan"
+    return replace(change, lines=lines, diff=diff, detail=f"{change.detail}; {note}" if change.detail else note)
+
+
+def restricted_plan(plan: ProfilePlan, parts: frozenset[str]) -> ProfilePlan:
+    """a profile's plan with only the approved scores and settings: the rest stay as
+    the arr has them"""
+    scores = {name: score for name, score in plan.scores.items() if f"score:{name.casefold()}" in parts}
+    settings = None
+    if plan.settings is not None:
+        settings = {k: v for k, v in plan.settings.items() if k != "items" and f"setting:{k}" in parts}
+        if "qualities" in parts:
+            settings["items"] = plan.settings["items"]
+        settings = settings or None
+    return ProfilePlan(scores, settings, plan.problems)
 
 
 def new_profile_body(state: ArrState, name: str, plan: ProfilePlan) -> dict[str, Any]:
@@ -750,6 +834,7 @@ def plan_arr(
                 needs,
             )
         )
+        steps[-1].partial = _profile_partial(steps[-1], have["id"], plan)
 
     for link, plan in imports:
         guide_name = guide.profiles[link.guide]["name"]
@@ -789,7 +874,28 @@ def plan_arr(
                         lambda api, _, c=changed: api.update_definitions(c),
                     )
                 )
+                steps[-1].partial = _sizes_partial(steps[-1], changed)
     return steps, problems
+
+
+def _profile_partial(step: Step, profile_id: int, plan: ProfilePlan) -> Callable[[frozenset[str]], Step]:
+    def partial(parts: frozenset[str]) -> Step:
+        narrow = restricted_plan(plan, parts)
+        return Step(
+            _narrowed(step.change, parts),
+            lambda api, st: api.update_profile(profile_id, profile_body(_profile(st, profile_id), narrow, st)),
+            [n for n in step.needs if f"score:{n.casefold()}" in parts],
+        )
+
+    return partial
+
+
+def _sizes_partial(step: Step, changed: list[dict[str, Any]]) -> Callable[[frozenset[str]], Step]:
+    def partial(parts: frozenset[str]) -> Step:
+        chosen = [d for d in changed if f"size:{d['quality']['name']}" in parts]
+        return Step(_narrowed(step.change, parts), lambda api, _: api.update_definitions(chosen))
+
+    return partial
 
 
 def _profile(state: ArrState, profile_id: int) -> dict[str, Any]:
@@ -824,9 +930,12 @@ def sync_arr(
     approved: Mapping[str, str] | None,
     auto: bool,
     api: ArrSettingsApi,
+    parts: Mapping[str, frozenset[str]] | None = None,
 ) -> None:
     """plan one arr, then apply what was approved (or, planning, what auto_formats lets
-    through). Approved changes go formats first, so a profile's new format exists"""
+    through). Approved changes go formats first, so a profile's new format exists.
+    `parts` approves only some rows of a change ({key: change_parts() ids}), the others
+    are left as they are and planned again next time"""
     state = api.state()
     steps, problems = plan_arr(log_name, guide, state, arr.trash)
     for problem in problems:
@@ -852,6 +961,8 @@ def sync_arr(
             step.change.status = "blocked"
             step.change.detail = "Changed since the plan was made, nothing sent. Run TRaSH Guides sync again for a fresh plan"
             result.plan.append(step.change)
+        elif (only := (parts or {}).get(key)) is not None and step.partial is not None:
+            chosen.append(step.partial(frozenset(only)))
         else:
             chosen.append(step)
     fresh = None
@@ -877,9 +988,10 @@ def run_trash_sync(
     commit: str | None = None,
     auto: bool = True,
     apis: Mapping[str, ArrSettingsApi] | None = None,
+    parts: Mapping[str, frozenset[str]] | None = None,
 ) -> None:
     """plan (approved None) or apply a reviewed plan ({key: fingerprint}, at the plan's
-    commit). `auto` lets each arr's auto_formats apply format fixes while planning; a
+    commit; `parts` {key: row ids} applies only those rows of a change). `auto` lets each arr's auto_formats apply format fixes while planning; a
     forced dry run passes False"""
     arrs = [(name, getattr(settings, name)) for name in ARRS]
     arrs = [(name, arr) for name, arr in arrs if arr is not None and arr.trash.enabled]
@@ -901,7 +1013,7 @@ def run_trash_sync(
         api = (apis or {}).get(name) or ArrSettings(arr.baseurl, arr.apikey, log_name)
         mine = None if approved is None else {k: v for k, v in approved.items() if k.startswith(f"{name}:")}
         try:
-            sync_arr(log_name, arr, loaded.arr(name), result, mine, auto and arr.trash.auto_formats, api)
+            sync_arr(log_name, arr, loaded.arr(name), result, mine, auto and arr.trash.auto_formats, api, parts)
         except Exception as e:
             logger.error("%s\t TRaSH Guides sync failed: %s", log_name, failure_text(e))
             result.errors.append(f"{log_name.title()} TRaSH Guides sync failed: {failure_text(e)}")

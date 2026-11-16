@@ -66,6 +66,13 @@
 {%- else -%}{{ plural(c.lines | length, "change") }}{%- endif -%}
 {%- endmacro %}
 
+{# a row's own checkbox on a plan (pick = the change's key), ticked: it only counts when its
+   change is selected too #}
+{% macro pick_cell(pick, r, label) -%}
+{%- if pick and r.part %}<td class="tdiff-pick"><input type="checkbox" name="part" value="{{ pick }}|{{ r.part }}" checked aria-label="Apply {{ label }}"></td>
+{%- elif pick %}<td class="tdiff-pick"></td>{% endif -%}
+{%- endmacro %}
+
 {# qualities, best first, as a row of chips; `other` marks what the other side lacks #}
 {% macro quality_row(items, other, mark) -%}
 {%- set names = (other or []) | map(attribute="name") | list -%}
@@ -86,29 +93,32 @@
 {%- for s in parts %}{% if s.changed %}<{{ tag }}>{{ s.text }}</{{ tag }}>{% else %}{{ s.text }}{% endif %}{% endfor -%}
 {%- endmacro %}
 
-{% macro profile_body(c, arr_label) %}
+{% macro profile_body(c, arr_label, pick=None) %}
 {% set d = c.diff %}
 {% set new = c.kind == "profile_add" %}
 {% if d.scores %}
 <table class="tdiff">
   <thead>
     <tr>
+      {% if pick %}<th scope="col" class="tdiff-pick"><span class="visually-hidden">Apply</span></th>{% endif %}
       <th scope="col">Custom format</th>
       {% if not new %}<th scope="col" class="num">Yours</th>{% endif %}
       <th scope="col" class="num">{{ "Score" if new else "Guide" }}</th>
-      <th scope="col"><span class="visually-hidden">Note</span></th>
+      <th scope="col" class="tdiff-why"><span class="visually-hidden">Note</span></th>
     </tr>
   </thead>
   <tbody>
     {% for r in d.scores %}
     <tr>
-      <th scope="row">{{ r.name }}</th>
-      {% if not new %}<td class="num">{% if r.have is none %}<span class="muted">not scored</span>{% else %}{{ value(r.have) }}{% endif %}</td>{% endif %}
-      <td class="num tdiff-want">{{ value(r.want) }}</td>
-      <td class="tdiff-why">
+      {{ pick_cell(pick, r, r.name) }}
+      {% set note -%}
         {%- if r.yours %}<span class="tag">your score</span>
         {%- elif r.have is none and not new %}<span class="muted">added to {{ arr_label }} first</span>{% endif -%}
-      </td>
+      {%- endset %}
+      <th scope="row">{{ r.name }}{% if note %}<span class="tdiff-why-under" aria-hidden="true">{{ note }}</span>{% endif %}</th>
+      {% if not new %}<td class="num">{% if r.have is none %}<span class="muted">not scored</span>{% else %}{{ value(r.have) }}{% endif %}</td>{% endif %}
+      <td class="num tdiff-want">{{ value(r.want) }}</td>
+      <td class="tdiff-why">{{ note }}</td>
     </tr>
     {% endfor %}
   </tbody>
@@ -124,6 +134,7 @@
 <table class="tdiff">
   <thead>
     <tr>
+      {% if pick %}<th scope="col" class="tdiff-pick"><span class="visually-hidden">Apply</span></th>{% endif %}
       <th scope="col">Setting</th>
       {% if not new %}<th scope="col">Yours</th>{% endif %}
       <th scope="col">{{ "Value" if new else "Guide" }}</th>
@@ -132,6 +143,7 @@
   <tbody>
     {% for r in d.settings %}
     <tr>
+      {{ pick_cell(pick, r, r.setting) }}
       <th scope="row">{{ r.setting }}</th>
       {% if not new %}<td>{{ value(r.have) }}</td>{% endif %}
       <td class="tdiff-want">{{ value(r.want) }}</td>
@@ -142,7 +154,7 @@
 {% endif %}
 {% if d.qualities %}
 <dl class="tdiff-qualities">
-  <dt>Qualities{% if new %}, best first{% endif %}</dt>
+  <dt>{% if pick and d.qualities.part %}<label class="tdiff-pick-label"><input type="checkbox" name="part" value="{{ pick }}|{{ d.qualities.part }}" checked> Qualities</label>{% else %}Qualities{% endif %}{% if new %}, best first{% endif %}</dt>
   {% if new %}
   <dd>{{ quality_row(d.qualities.want, none, "") }}</dd>
   {% else %}
@@ -199,14 +211,15 @@
 </table>
 {% endmacro %}
 
-{% macro sizes_body(c) %}
+{% macro sizes_body(c, pick=None) %}
 <table class="tdiff">
   <thead>
-    <tr><th scope="col">Quality</th><th scope="col" class="num">Min</th><th scope="col" class="num">Preferred</th><th scope="col" class="num">Max</th></tr>
+    <tr>{% if pick %}<th scope="col" class="tdiff-pick"><span class="visually-hidden">Apply</span></th>{% endif %}<th scope="col">Quality</th><th scope="col" class="num">Min</th><th scope="col" class="num">Preferred</th><th scope="col" class="num">Max</th></tr>
   </thead>
   <tbody>
     {% for r in c.diff.sizes %}
     <tr>
+      {{ pick_cell(pick, r, r.quality) }}
       <th scope="row">{{ r.quality }}</th>
       {% for i in range(3) %}
       <td class="num">
@@ -222,22 +235,26 @@
 {% endmacro %}
 
 {# the change's details #}
-{% macro body(c, arr_label="the arr") %}
+{# the change's details; `pick` (the change's key, on a plan that can be applied) gives
+   each row of a profile or the sizes its own checkbox #}
+{% macro body(c, arr_label="the arr", pick=None) %}
+{% set pick = pick if c.kind in ("profile", "sizes") else None %}
 <div class="tdiff-body">
 {% if not c.diff %}
   <ul class="items">{% for line in c.lines %}<li>{{ line }}</li>{% endfor %}</ul>
-{% elif c.kind in ("profile", "profile_add") %}{{ profile_body(c, arr_label) }}
+{% elif c.kind in ("profile", "profile_add") %}{{ profile_body(c, arr_label, pick) }}
 {% elif c.kind == "format_update" %}{{ format_update_body(c) }}
 {% elif c.kind == "format_add" %}{{ format_add_body(c) }}
-{% elif c.kind == "sizes" %}{{ sizes_body(c) }}
+{% elif c.kind == "sizes" %}{{ sizes_body(c, pick) }}
 {% endif %}
+{% if pick %}<p class="tdiff-note">Untick a row to leave it as it is for now: it's planned again next time. To keep yours for good, set it in the profile's table on Settings → TRaSH Guides.</p>{% endif %}
 </div>
 {% endmacro %}
 
 {# a folded change: its summary line opens its details #}
-{% macro fold(c, arr_label="the arr", open=False) %}
+{% macro fold(c, arr_label="the arr", open=False, pick=None) %}
 <details class="tdiff-fold"{% if open %} open{% endif %}>
   <summary><span>{{ summary(c) }}</span></summary>
-  {{ body(c, arr_label) }}
+  {{ body(c, arr_label, pick) }}
 </details>
 {% endmacro %}
