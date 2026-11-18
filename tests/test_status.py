@@ -434,11 +434,25 @@ def unraid_data(**overrides):
     return data
 
 
-def unraid_run(data=None, errors=None, answer=None):
+def ups(state="ONLINE", charge=97, runtime=1848, load=26, watts=234.0):
+    return {
+        "name": "Back-UPS RS 1500MS2", "status": state,
+        "battery": {"chargeLevel": charge, "estimatedRuntime": runtime},
+        "power": {"loadPercentage": load, "currentPower": watts},
+    }
+
+
+# the api's answer when apcaccess has nothing to say (no UPS set up, apcupsd stopped):
+# upsDevices can't be null, so data is
+NO_UPS = {"data": None, "errors": [{"message": "Failed to get UPS data: No UPS data returned from apcaccess", "path": ["upsDevices"]}]}
+
+
+def unraid_run(data=None, errors=None, answer=None, ups_answer=None):
     body = {"data": unraid_data() if data is None else data}
     if errors:
         body["errors"] = errors
-    with patch.object(status.requests, "post", return_value=answer or response(body)) as post:
+    ups_answer = ups_answer if ups_answer is not None else response({"data": {"upsDevices": [ups()]}})
+    with patch.object(status.requests, "post", side_effect=[answer or response(body), ups_answer]) as post:
         return status.unraid_status(UNRAID), post
 
 
@@ -457,12 +471,16 @@ class TestUnraid:
             "Hottest disk": "cache_nvme, 43°C",
             "Pools": "cache_nvme 716.8 GB free",
             "Last parity check": "2026-11-02, no errors, took 14h 3m",
+            "UPS": "Online, 97% charged, 30m runtime, 26% load (234 W)",
             "Containers": "1 running, 1 stopped",
         }
         assert result.summary == "9.0 TB free of 120.0 TB"
-        assert post.call_args.args[0] == "http://unraid/graphql"
-        assert post.call_args.kwargs["headers"] == {"x-api-key": "unraid-key"}
-        assert post.call_args.kwargs["allow_redirects"] is False
+        for call in post.call_args_list:
+            assert call.args[0] == "http://unraid/graphql"
+            assert call.kwargs["headers"] == {"x-api-key": "unraid-key"}
+            assert call.kwargs["allow_redirects"] is False
+        # the UPS is asked on its own: its error would null the whole answer
+        assert [c.kwargs["json"]["query"] for c in post.call_args_list] == [status.UNRAID_QUERY, status.UPS_QUERY]
 
     def test_sizes_are_decimal_kb(self):
         # a real pool: disks.ini says 723368228 KiB free, the api converts it to KB
@@ -565,6 +583,56 @@ class TestUnraid:
             ("bad", "Notification: Alert [TOWER] - Disk 8 in error state (disk dsbl): ST8000 (sdk)", "notice:Alert [TOWER] - Disk 8 in error state (disk dsbl)|ST8000 (sdk)"),
             ("warn", "Notification: Warning [TOWER] - reallocated sector ct is 8: ST10000 (sdf) see http://x", "notice:Warning [TOWER] - reallocated sector ct is 8|ST10000 (sdf) see http://x/y?key=abc"),
         ]
+
+    @pytest.mark.parametrize("state, charge, problems, fact", [
+        ("ONBATT", 80, [("bad", "The UPS is running on battery: 80% charged, about 30m left", "ups:battery")], "On battery, 80% charged"),
+        ("ONBATT LOWBATT", 9, [("bad", "The UPS is running on battery: 9% charged, about 30m left, and the battery is low", "ups:battery")], "On battery, 9% charged"),
+        ("ONLINE LOWBATT", 9, [("warn", "The UPS battery is low: 9% charged", "ups:low")], "Online, 9% charged"),
+        ("ONLINE REPLBATT", 100, [("warn", "The UPS says its battery needs replacing", "ups:replace")], "Online, 100% charged"),
+        ("ONLINE OVERLOAD", 100, [("bad", "The UPS is overloaded: 26% load", "ups:overload")], "Online, 100% charged"),
+        ("ONBATT SHUTTING DOWN", 5, [
+            ("bad", "The UPS is shutting the server down", "ups:shutdown"),
+            ("bad", "The UPS is running on battery: 5% charged, about 30m left", "ups:battery"),
+        ], "On battery, 5% charged"),
+        ("CAL", 100, [("warn", "The UPS reports CAL", "ups:status")], "Cal, 100% charged"),
+    ])
+    def test_ups(self, state, charge, problems, fact):
+        result, _ = unraid_run(ups_answer=response({"data": {"upsDevices": [ups(state, charge)]}}))
+        assert texts(result) == problems
+        assert dict(result.facts)["UPS"].startswith(fact)
+
+    def test_the_ups_live_state_replaces_its_notifications(self):
+        # unraid never clears apcupsd's alert, and power returning is only a normal notice
+        notes = {"alerts": [
+            {"subject": "UPS Alert", "description": "Power failure on UPS Tower. Running on batteries."},
+            {"subject": "Alert [TOWER] - Disk 8 in error state (disk dsbl)", "description": "ST8000 (sdk)"},
+        ], "warnings": []}
+        result, _ = unraid_run(unraid_data(notifications=notes))
+        assert [p.key for p in result.problems] == ["notice:Alert [TOWER] - Disk 8 in error state (disk dsbl)|ST8000 (sdk)"]
+        # without a live state, unraid's notifications are all there is
+        for answer in (response(NO_UPS), response(code=500), requests.ConnectionError("refused")):
+            result, _ = unraid_run(unraid_data(notifications=notes), ups_answer=answer)
+            assert [p.text for p in result.problems][0] == "Notification: UPS Alert: Power failure on UPS Tower. Running on batteries."
+            assert "UPS" not in dict(result.facts)
+            assert result.error is None
+
+    def test_lost_contact_with_the_ups(self):
+        notes = {"alerts": [{"subject": "UPS Alert", "description": "Communications with UPS Tower lost."}], "warnings": []}
+        result, _ = unraid_run(unraid_data(notifications=notes), ups_answer=response({"data": {"upsDevices": [ups("COMMLOST")]}}))
+        assert texts(result) == [
+            ("bad", "Notification: UPS Alert: Communications with UPS Tower lost.", "notice:UPS Alert|Communications with UPS Tower lost."),
+            ("warn", "Unraid has lost contact with the UPS", "ups:contact"),
+        ]
+        assert dict(result.facts)["UPS"] == "No contact"
+
+    def test_without_a_ups_the_card_is_as_before(self):
+        result, _ = unraid_run(ups_answer=response(NO_UPS))
+        assert (result.state, result.problems, result.error) == ("ok", [], None)
+        assert "UPS" not in dict(result.facts)
+
+    def test_ups_incidents(self):
+        result, _ = unraid_run(ups_answer=response({"data": {"upsDevices": [ups("ONBATT", 60)]}}))
+        assert {i.key: i.level for i in health.issues(result)} == {"ups:battery": "bad"}
 
     def test_what_the_key_cant_read_is_a_warning(self):
         forbidden = {"extensions": {"code": "FORBIDDEN"}}

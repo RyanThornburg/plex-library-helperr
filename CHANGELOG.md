@@ -2,6 +2,16 @@
 
 What changed in each release. Versions are `MAJOR.MINOR.PATCH`: the major number goes up when upgrading needs you to do something (a new required setting, a removed feature, a change that breaks the API), the minor number for new features, the patch number for fixes.
 
+## Unreleased
+
+### New
+
+- Status: Unraid's UPS on its card, read live from Unraid (online or on battery, charge, runtime left, load). Running on battery, a low or worn-out battery, an overload or lost contact with the UPS are problems on the card and in the health history.
+
+### Fixed
+
+- Status: a power cut kept showing "Running on batteries" long after the power came back. Unraid never clears that alert (the "power has returned" one is only a normal notice), so its UPS alerts are left out now that the card has the UPS's live state. Without a UPS, or when Unraid can't read it, they're shown as before.
+
 ## 2.5.0 (2026-11-16)
 
 ### New

@@ -770,6 +770,14 @@ UNRAID_QUERY = f"""query HelperrStatus {{
   }}
   docker {{ containers {{ names state status autoStart }} }}
 }}"""
+# the UPS, as apcupsd reports it. Its own request: upsDevices can't be null, so its error
+# (no UPS set up, apcupsd stopped) would null UNRAID_QUERY's whole answer
+UPS_QUERY = """query HelperrUps {
+  upsDevices { name status battery { chargeLevel estimatedRuntime } power { loadPercentage currentPower } }
+}"""
+# apcupsd's notifications all have this subject ("Power failure…", "Running on batteries",
+# "Power has returned…"), and unraid never clears them: the UPS's live state replaces them
+UPS_NOTICE = "UPS Alert"
 # the array isn't started, in unraid's words (ArrayState)
 ARRAY_STATES = {
     "STOPPED": "The array is stopped",
@@ -916,23 +924,81 @@ def unraid_containers(status: ServiceStatus, docker: dict[str, Any] | None, erro
     status.facts.append(("Containers", f"{running} running" + (f", {stopped} stopped" if stopped else "")))
 
 
-def unraid_notifications(status: ServiceStatus, notes: dict[str, Any] | None, errors: list[dict[str, Any]]) -> None:
+def ups_reading(unraid: UnraidConfig) -> dict[str, Any] | None:
+    """the UPS's live state, or None when there's none to read: no UPS set up, apcupsd
+    stopped, or a key that can't read it. Never downs the card, unraid's own UPS
+    notifications are shown instead"""
+    try:
+        data, _ = unraid_query(unraid.url, unraid.apikey, UPS_QUERY, timeout=TIMEOUT)
+    except UnraidRefused, requests.RequestException, ValueError:
+        return None
+    devices = data.get("upsDevices")
+    if isinstance(devices, list) and devices and isinstance(devices[0], dict):
+        return devices[0]
+    return None
+
+
+def unraid_ups(status: ServiceStatus, ups: dict[str, Any]) -> bool:
+    """the UPS as a fact, and a problem when it isn't on mains power or isn't well. apcupsd's
+    STATUS is words: ONLINE, ONBATT, LOWBATT, REPLBATT, NOBATT, OVERLOAD, COMMLOST, SHUTTING
+    DOWN, several at once. True when unraid has contact with it, so its state is live"""
+    text = str(ups.get("status") or "").strip()
+    flags = set(text.upper().split())
+    battery, power = ups.get("battery") or {}, ups.get("power") or {}
+    charge, load = _int(battery.get("chargeLevel")), _int(power.get("loadPercentage"))
+    left = _hours(_int(battery.get("estimatedRuntime")))
+    if "COMMLOST" in flags:
+        # what apcupsd still says is from before it lost contact
+        status.facts.append(("UPS", "No contact"))
+        status.problem("warn", "Unraid has lost contact with the UPS", "ups:contact")
+        return False
+    if "SHUTTING" in flags:
+        status.problem("bad", "The UPS is shutting the server down", "ups:shutdown")
+    if "ONBATT" in flags:
+        low = ", and the battery is low" if "LOWBATT" in flags else ""
+        status.problem("bad", f"The UPS is running on battery: {charge}% charged, about {left} left{low}", "ups:battery")
+    elif "LOWBATT" in flags:
+        status.problem("warn", f"The UPS battery is low: {charge}% charged", "ups:low")
+    if "NOBATT" in flags:
+        status.problem("bad", "The UPS has no battery, or it's disconnected", "ups:nobattery")
+    if "OVERLOAD" in flags:
+        status.problem("bad", f"The UPS is overloaded: {load}% load", "ups:overload")
+    if "REPLBATT" in flags:
+        status.problem("warn", "The UPS says its battery needs replacing", "ups:replace")
+    if not flags & {"ONLINE", "ONBATT", "SHUTTING"}:
+        status.problem("warn", f"The UPS reports {text or 'no status'}", "ups:status")
+    state = "On battery" if "ONBATT" in flags else "Online" if "ONLINE" in flags else text.title() or "Unknown"
+    watts = _float(power.get("currentPower"))
+    status.facts.append(
+        ("UPS", f"{state}, {charge}% charged, {left} runtime, {load}% load" + (f" ({watts:.0f} W)" if watts else ""))
+    )
+    return True
+
+
+def unraid_notifications(
+    status: ServiceStatus, notes: dict[str, Any] | None, errors: list[dict[str, Any]], ups_live: bool = False
+) -> None:
     """unraid's unread alerts and warnings (smart warnings among them), until they're
-    dismissed in unraid"""
+    dismissed in unraid. apcupsd's are left out while the UPS's live state is on the card"""
     if notes is None:
         status.problem("warn", f"Unraid's notifications can't be read: {error_text(errors, 'notifications')}", "notifications")
         return
     for level, kind in (("bad", "alerts"), ("warn", "warnings")):
         for note in notes.get(kind) or []:
             subject = str(note.get("subject") or "").strip()
+            if ups_live and subject == UPS_NOTICE:
+                continue
             description = str(note.get("description") or "").strip()
             text = f"{subject}: {description}" if subject and description and description != subject else subject or description
             # from plugins too: a url in one might hold a key that isn't ours
             status.problem(level, url_hosts(f"Notification: {text}"), f"notice:{subject}|{description}")
 
 
-def unraid_answers(status: ServiceStatus, data: dict[str, Any], errors: list[dict[str, Any]]) -> None:
-    """unraid's answer to UNRAID_QUERY on its card, the worst problems first"""
+def unraid_answers(
+    status: ServiceStatus, data: dict[str, Any], errors: list[dict[str, Any]], ups: dict[str, Any] | None = None
+) -> None:
+    """unraid's answer to UNRAID_QUERY (and the UPS's to UPS_QUERY, None without one) on
+    its card, the worst problems first"""
     about = data.get("vars") or {}
     status.version = about.get("version")
     display = (data.get("info") or {}).get("display") or {}
@@ -972,7 +1038,8 @@ def unraid_answers(status: ServiceStatus, data: dict[str, Any], errors: list[dic
     # folded: how much room is left, and a parity check while one runs
     checking = [f"{label} {value}" for label, value in status.facts if label in ("Parity check", "Correcting parity check")]
     status.summary = " · ".join([space or ("Array started" if started else "Array stopped"), *checking])
-    unraid_notifications(status, data.get("notifications"), errors)
+    ups_live = unraid_ups(status, ups) if ups is not None else False
+    unraid_notifications(status, data.get("notifications"), errors, ups_live)
     # docker stops with the array
     if started:
         unraid_containers(status, data.get("docker"), errors)
@@ -985,7 +1052,7 @@ def unraid_status(unraid: UnraidConfig | None) -> ServiceStatus:
         status.state = "off"
         return status
     data, errors = unraid_query(unraid.url, unraid.apikey, UNRAID_QUERY, timeout=TIMEOUT)
-    unraid_answers(status, data, errors)
+    unraid_answers(status, data, errors, ups_reading(unraid))
     return status
 
 
