@@ -1,9 +1,8 @@
-{# a chat's conversation and ask form, shared by the Assistant page and the chat popup
-   (assistant_panel.html). Imported with context: chat, turns, set_up, config, models,
-   settings_problem, error, draft and expired come from the page. panel=True adds a
-   panel field to every form, so the post answers with the popup's fragment #}
-
-{% macro panel_field(panel) %}{% if panel %}<input type="hidden" name="panel" value="1">{% endif %}{% endmacro %}
+{# a chat, shared by the Assistant page and the chat popup (assistant_panel.html).
+   Imported with context: chat, turns, set_up, config, models, settings_problem, error,
+   draft, stopping and expired come from the page. Forms post to the page's urls; the
+   script adds panel=1 when it posts them itself, so the answer is this fragment again.
+   panel=True leaves out the ids the page's redirects jump to #}
 
 {% macro notices() %}
 {% if settings_problem %}
@@ -11,6 +10,22 @@
 {% elif not set_up %}
 <p class="banner banner-warn">The assistant isn't set up yet: add an Anthropic API key on <a href="/settings/assistant">Settings → Assistant</a>.</p>
 {% endif %}
+{% endmacro %}
+
+{% macro plural(n, word) %}{{ "{:,}".format(n) }} {{ word }}{{ "s" if n != 1 }}{% endmacro %}
+
+{# what Claude is doing now, under the last question while it works #}
+{% macro progress(turn) %}
+{% set step = turn.steps[-1] if turn.steps else None %}
+<p class="thinking" role="status">
+  <span data-progress>{% if stopping %}Stopping after this step…
+  {% elif live_html %}Writing the answer
+  {% elif step and not step.result %}Looking up <b>{{ TOOL_LABELS.get(step.name, step.name) }}</b>{% if step.label %} <span class="machine">{{ step.label }}</span>{% endif %}
+  {% elif step %}Reading what it found
+  {% else %}Working out where to look
+  {% endif %}</span>
+  {% if turn.steps %}<span class="muted">· {{ plural(turn.steps | length, "lookup") }} so far</span>{% endif %}
+</p>
 {% endmacro %}
 
 {% macro conversation(panel=False) %}
@@ -25,7 +40,7 @@
   </div>
   {% if turn.steps %}
   <details class="steps" data-fold="{{ t }}">
-    <summary>{% if last and running %}Investigating: {% endif %}{{ turn.steps | length }} lookup{{ "s" if turn.steps | length != 1 }}{% set failed = turn.steps | selectattr("error") | list | length %}{% if failed %} <span class="muted">({{ failed }} failed)</span>{% endif %}</summary>
+    <summary>{{ plural(turn.steps | length, "lookup") }}{% set failed = turn.steps | selectattr("error") | list | length %}{% if failed %} <span class="muted">({{ failed }} failed)</span>{% endif %}</summary>
     <ol>
       {% for step in turn.steps %}
       <li>
@@ -39,7 +54,12 @@
   </details>
   {% endif %}
 
-  {% if turn.html %}<div class="answer prose">{{ turn.html | safe }}</div>{% endif %}
+  {% if turn.html %}<div class="answer prose">{{ turn.html | safe }}</div>
+  {% elif not last and not turn.actions %}<p class="muted">No answer: this question was stopped or failed.</p>{% endif %}
+  {% if last and running %}
+  {# what Claude is writing now, where its answer will be: the event stream fills it #}
+  <div class="answer prose" data-live-answer{% if not live_html %} hidden{% endif %}>{{ live_html | safe }}</div>
+  {% endif %}
   {% if turn.note %}<p class="muted">{{ turn.note }}</p>{% endif %}
 
   {% for action in turn.actions %}
@@ -59,8 +79,8 @@
     <p class="muted">Proposed over a day ago, so it can't be confirmed any more: ask again for a fresh look.</p>
     {% else %}
     <div class="actions">
-      <form method="post" action="/assistant/actions/{{ action.id }}/dismiss">{{ panel_field(panel) }}<button type="submit" class="button-secondary">Dismiss</button></form>
-      <form method="post" action="/assistant/actions/{{ action.id }}/confirm">{{ panel_field(panel) }}<button type="submit"{% if danger %} class="button-danger"{% endif %}>{{ words }}</button></form>
+      <form method="post" action="/assistant/actions/{{ action.id }}/dismiss"><button type="submit" class="button-secondary">Dismiss</button></form>
+      <form method="post" action="/assistant/actions/{{ action.id }}/confirm"><button type="submit"{% if danger %} class="button-danger"{% endif %}>{{ words }}</button></form>
     </div>
     {% endif %}
     {% else %}
@@ -69,9 +89,7 @@
   </section>
   {% endfor %}
 
-  {% if last and running %}
-  <p class="thinking">Claude is investigating{% if turn.steps %}, {{ turn.steps | length }} lookup{{ "s" if turn.steps | length != 1 }} so far{% endif %}… <span class="muted">{{ "This updates" if panel else "This page refreshes" }} until it answers.</span></p>
-  {% endif %}
+  {% if last and running %}{{ progress(turn) }}{% endif %}
 </article>
 {% endfor %}
 
@@ -79,19 +97,46 @@
 <p class="banner {{ 'banner-bad' if chat.status == 'failed' else 'banner-warn' }}">{{ chat.error }}</p>
 {% endif %}
 {% if error %}<p class="banner banner-bad">{{ error }}</p>{% endif %}
+{% if chat and not running and chat.tool_calls + chat.output_tokens %}
+<p class="usage muted">
+  {{ plural(chat.tool_calls, "lookup") }} ·
+  {{ "{:,}".format(chat.input_tokens + chat.cache_read_tokens + chat.cache_write_tokens) }} tokens read ({{ "{:,}".format(chat.cache_read_tokens) }} from cache) ·
+  {{ "{:,}".format(chat.output_tokens) }} written
+</p>
+{% endif %}
 {% endmacro %}
 
+{# the question box. While Claude works you can still write the next one; its button
+   is Stop then, which posts to /stop instead (formaction), ending after the current step #}
 {% macro ask_form(panel=False) %}
 {% set running = chat and chat.status == "running" %}
+{% set field = "chat-question" if panel else "question" %}
 {% if set_up %}
 <form method="post" action="/assistant{% if chat %}/{{ chat.id }}{% endif %}" class="ask">
-  {{ panel_field(panel) }}
-  <label for="{{ 'chat-question' if panel else 'question' }}" class="visually-hidden">{{ "Ask a follow-up" if chat else "Your question" }}</label>
-  <textarea id="{{ 'chat-question' if panel else 'question' }}" name="question" rows="{{ 2 if panel else 3 }}" maxlength="8000" required{% if running %} disabled{% endif %} placeholder="{{ 'Ask a follow-up…' if chat else 'What’s wrong?' }}">{{ draft }}</textarea>
-  <div class="actions">
-    <button type="submit"{% if running %} disabled{% endif %}>{{ "Ask" if chat else "Investigate" }}</button>
-    {% if config %}<span class="muted">{{ models.get(config.model, config.model) }}, {{ config.effort }} effort</span>{% endif %}
+  <label for="{{ field }}" class="visually-hidden">{{ "Ask a follow-up" if chat else "Your question" }}</label>
+  <div class="composer">
+    <textarea id="{{ field }}" name="question" rows="1" maxlength="8000" required placeholder="{{ 'Ask a follow-up…' if chat else 'What’s wrong?' }}">{{ draft }}</textarea>
+    {% if running %}
+    <button type="submit" class="button-secondary" formaction="/assistant/{{ chat.id }}/stop" formnovalidate{% if stopping %} disabled{% endif %}>{{ "Stopping…" if stopping else "Stop" }}</button>
+    {% else %}
+    <button type="submit">{{ "Ask" if chat else "Investigate" }}</button>
+    {% endif %}
   </div>
+  <p class="ask-hint muted" data-enter-hint hidden>Enter to send, Shift+Enter for a new line</p>
 </form>
 {% endif %}
+{% endmacro %}
+
+{# the chat as one block the script can replace: what's in caller() shows before the
+   first question (the page's intro, the popup's recent chats) #}
+{% macro fragment(panel=False) %}
+{% set running = chat and chat.status == "running" %}
+<div class="chat-fragment" data-chat-panel data-chat-id="{{ chat.id if chat else '' }}"{% if running %} data-running data-version="{{ live_version }}"{% endif %} data-title="{{ chat.title if chat else 'Assistant' }}">
+  <div class="chat-scroll">
+    {{ notices() }}
+    {% if not chat and caller %}{{ caller() }}{% endif %}
+    {{ conversation(panel) }}
+  </div>
+  {{ ask_form(panel) }}
+</div>
 {% endmacro %}

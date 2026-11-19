@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% import "_assistant.html" as a with context %}
 {% set running = chat and chat.status == "running" %}
-{% block head %}{% if running %}<meta http-equiv="refresh" content="3;url=/assistant/{{ chat.id }}#latest">{% endif %}{% endblock %}
+{# without the script the page refreshes while Claude works; with it, app.js updates the chat in place #}
+{% block head %}{% if running %}<noscript><meta http-equiv="refresh" content="3;url=/assistant/{{ chat.id }}#latest"></noscript>{% endif %}{% endblock %}
 {% block title %}{{ chat.title if chat else "Assistant" }} · Helperr{% endblock %}
 {% block toolbar %}
-<div class="group">{{ ui.tool("plus", "New chat", "/assistant") }}{% if chat %}{{ ui.tool("refresh", "Refresh", "/assistant/" ~ chat.id) }}{% endif %}</div>
+<div class="group">{{ ui.tool("plus", "New chat", "/assistant") }}</div>
 {% if chat and not running %}<div class="group">{{ ui.tool_post("trash", "Delete chat", "/assistant/" ~ chat.id ~ "/delete") }}</div>{% endif %}
 <div class="group end">{{ ui.tool("settings", "Settings", "/settings/assistant") }}</div>
 {% endblock %}
@@ -12,23 +13,11 @@
 <div class="assistant">
 <div class="assistant-main">
 <h1>Assistant</h1>
-
-{{ a.notices() }}
-
-{% if not chat %}
+<div class="chat-host" data-chat-host>
+{% call a.fragment() %}
 <p class="muted">Ask about a problem in plain words, like “S03E04 of The Bear won't play”, “why didn't the new Dune movie download?” or “who transcoded the most this week?”. Claude looks through Sonarr, Radarr, Plex, Tautulli, SABnzbd, Bazarr, Seerr and Helperr's own runs and log, then tells you what it found. It can only read. When it finds a fix it can make (a search, a rescan, removing a stuck download), it proposes it here and nothing happens until you confirm.</p>
-{% endif %}
-
-{{ a.conversation() }}
-{{ a.ask_form() }}
-
-{% if chat %}
-<p class="usage muted">
-  {{ "{:,}".format(chat.tool_calls) }} lookup{{ "s" if chat.tool_calls != 1 }} ·
-  {{ "{:,}".format(chat.input_tokens + chat.cache_read_tokens + chat.cache_write_tokens) }} tokens read ({{ "{:,}".format(chat.cache_read_tokens) }} from cache) ·
-  {{ "{:,}".format(chat.output_tokens) }} written
-</p>
-{% endif %}
+{% endcall %}
+</div>
 </div>
 
 <aside class="assistant-chats" aria-label="Chats">

@@ -408,6 +408,8 @@ def serve() -> None:
         workers=1,
         log_config=None,
         server_header=False,
+        # an assistant chat's event stream is open while Claude answers: don't wait on it
+        timeout_graceful_shutdown=5,
     )
 
 

@@ -1,26 +1,17 @@
-{# the chat popup's body, fetched by static/app.js into the panel on every page. Not a
-   page: no base.html. The data attributes tell the script which chat this is and
-   whether to keep polling #}
+{# the chat popup's body (and the Assistant page's chat when the script updates it),
+   fetched by static/app.js. Not a page: no base.html #}
 {% import "_assistant.html" as a with context %}
-{% set running = chat and chat.status == "running" %}
-<div class="chat-fragment" data-chat-panel data-chat-id="{{ chat.id if chat else '' }}"{% if running %} data-running{% endif %} data-title="{{ chat.title if chat else 'Assistant' }}">
-  <div class="chat-scroll">
-    {{ a.notices() }}
-    {% if not chat %}
-    <p class="muted">Ask about a problem in plain words, like “S03E04 of The Bear won't play” or “why didn't the new Dune movie download?”. Claude looks through your services and tells you what it found. It only reads: a fix it finds waits here until you confirm it.</p>
-    {% if chats %}
-    <div class="chat-recent">
-      <h2>Recent chats</h2>
-      <ul>
-        {% for c in chats[:5] %}
-        <li><a href="/assistant/{{ c.id }}" data-panel-chat="{{ c.id }}">{{ c.title }}</a> <span class="muted">{{ c.updated_at | relative }}{% if c.status == "running" %} · answering{% endif %}</span></li>
-        {% endfor %}
-      </ul>
-      <a href="/assistant">All chats</a>
-    </div>
-    {% endif %}
-    {% endif %}
-    {{ a.conversation(panel=True) }}
-  </div>
-  {{ a.ask_form(panel=True) }}
+{% call a.fragment(panel=True) %}
+<p class="muted">Describe a problem, like “S03E04 of The Bear won't play” or “why didn't the new Dune movie download?”. Claude checks your services and says what it found. A fix it finds waits here until you confirm it.</p>
+{% if chats %}
+<div class="chat-recent">
+  <h2>Recent chats</h2>
+  <ul>
+    {% for c in chats[:5] %}
+    <li><a href="/assistant/{{ c.id }}" data-panel-chat="{{ c.id }}">{{ c.title }}</a> <span class="muted">{{ c.updated_at | relative }}{% if c.status == "running" %} · answering{% endif %}</span></li>
+    {% endfor %}
+  </ul>
+  <a href="/assistant">All chats</a>
 </div>
+{% endif %}
+{% endcall %}

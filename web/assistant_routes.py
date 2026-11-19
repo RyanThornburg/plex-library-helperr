@@ -2,18 +2,22 @@
 investigation and the fixes it proposed, confirm or dismiss them), its json api and
 Settings → Assistant (the Anthropic API key, model, effort and tool budget)"""
 
+import asyncio
+import json
 import logging
+import time
+from collections.abc import AsyncIterator
 from datetime import timedelta
 from typing import Any
 
 from fastapi import APIRouter, Body, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from config.models import ASSISTANT_EFFORTS, ASSISTANT_MODELS, AssistantConfig
 from logging_config import failure_text, redacted
-from web.assistant import TOOL_LABELS, AssistantBusy, AssistantNotSetUp, AssistantRunner, api_failure, turns
+from web.assistant import TOOL_LABELS, AssistantBusy, AssistantNotSetUp, AssistantRunner, api_failure, render_markdown, turns
 from web.assistant_actions import ActionInvalid, button, perform
 from web.db import AssistantAction, AssistantChat, AssistantMessage
 from web.jobs import utc_now
@@ -30,6 +34,13 @@ CHATS_SHOWN = 30
 # a proposal older than this has to be asked for again: what it was based on has moved on
 ACTION_MAX_AGE = timedelta(hours=24)
 SECRET = "assistant.apikey"
+# a chat's event stream: how often it looks for news, how long one connection lasts (the
+# browser reconnects; a short one never holds up a restart) and how often it says it's
+# alive: the page gives up on streaming when it hears nothing for a while, in case a
+# proxy holds events back
+STREAM_TICK = 0.2
+STREAM_FOR = 25
+STREAM_PING = 5
 EFFORT_HINTS = {
     "low": "low: quickest and cheapest, for simple lookups",
     "medium": "medium",
@@ -75,10 +86,11 @@ def chat_page(
 ) -> HTMLResponse:
     """the Assistant page, or with panel the chat popup's fragment (assistant_panel.html)"""
     settings, problem = loaded_settings(request)
-    chat, shown = None, []
+    chat, shown, live = None, [], None
     if chat_id is not None:
         chat, messages, actions = _chat(request, chat_id)
         shown = turns(messages, actions)
+        live = assistant(request).live(chat_id) if chat.status == "running" else None
     return templates.TemplateResponse(
         request,
         "assistant_panel.html" if panel else "assistant.html",
@@ -93,6 +105,10 @@ def chat_page(
             "settings_problem": problem,
             "error": error,
             "draft": draft,
+            "stopping": chat is not None and assistant(request).stopping(chat.id),
+            # what Claude is writing now, and the version of the chat this page shows
+            "live_html": render_markdown(live.text) if live and live.text else "",
+            "live_version": live.version if live else 0,
             "expired": lambda a: utc_now() - a.created_at > ACTION_MAX_AGE,
         },
         status_code=status_code or (400 if error else 200),
@@ -158,6 +174,64 @@ def ask_more(request: Request, chat_id: int, fields: FormLists) -> Response:
         raise HTTPException(status_code=409, detail=str(e)) from None
     except (ValueError, AssistantNotSetUp, SecretError) as e:
         return chat_page(request, chat_id, str(e), question, is_panel(fields))
+    return back_to(chat_id, fields, "latest")
+
+
+def event(name: str, data: Any = "") -> str:
+    return f"event: {name}\ndata: {json.dumps(data) if data else ''}\n\n"
+
+
+@router.get("/assistant/{chat_id}/stream")
+async def chat_stream(request: Request, chat_id: int, v: int = 0) -> StreamingResponse:
+    """server-sent events while Claude answers: "answer" with what it has written so
+    far (rendered, html off like every answer), "refresh" when the stored chat changed
+    (a lookup started or came back), "done" once it's answered. v is the version the
+    page shows. Without this (or when it fails) static/app.js polls the fragment"""
+    runner = assistant(request)
+
+    async def events() -> AsyncIterator[str]:
+        yield "retry: 1000\n\n"
+        yield event("ping")
+        seen, seen_text = v, -1
+        started = last = time.monotonic()
+        while not await request.is_disconnected():
+            live = runner.live(chat_id)
+            if live is None or not live.running:
+                yield event("done")
+                return
+            if live.version != seen:
+                seen = live.version
+                yield event("refresh")
+                last = time.monotonic()
+            if live.text_version != seen_text:
+                seen_text = live.text_version
+                if live.text:
+                    yield event("answer", {"html": render_markdown(live.text)})
+                    last = time.monotonic()
+            now = time.monotonic()
+            if now - started > STREAM_FOR:
+                return
+            if now - last > STREAM_PING:
+                yield event("ping")
+                last = now
+            await asyncio.sleep(STREAM_TICK)
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        # no-transform and X-Accel-Buffering: proxies pass each event on as it comes
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/assistant/{chat_id}/stop")
+def stop_chat(request: Request, chat_id: int, fields: FormLists) -> RedirectResponse:
+    """stops the question being answered, after the step Claude is on"""
+    try:
+        if assistant(request).request_stop(chat_id):
+            logger.info("WEB\t Assistant chat %s stopped by %s", chat_id, request.state.user)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="There's no such chat: it may have been deleted.") from None
     return back_to(chat_id, fields, "latest")
 
 
@@ -268,6 +342,15 @@ def api_chats(request: Request) -> list[dict[str, Any]]:
 @router.get("/api/assistant/{chat_id}")
 def api_chat(request: Request, chat_id: int) -> dict[str, Any]:
     return chat_dict(*_chat(request, chat_id))
+
+
+@router.post("/api/assistant/{chat_id}/stop")
+def api_stop(request: Request, chat_id: int) -> dict[str, bool]:
+    """{"stopping": false} when the chat isn't answering a question"""
+    try:
+        return {"stopping": assistant(request).request_stop(chat_id)}
+    except LookupError:
+        raise HTTPException(status_code=404) from None
 
 
 @router.post("/api/assistant")

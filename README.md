@@ -227,7 +227,7 @@ Each run plans the differences, and the run's page lists them for you to tick an
 
 ## Assistant
 
-The **Assistant** answers questions about your setup by investigating it with Claude. Once it's set up, an **Ask** button sits at the bottom right of every page and opens it as a chat popup that stays open, on the same chat, as you move between pages (if an answer comes while it's closed, the button says **Answer ready**); the Assistant page shows the same chats full width, with all of them listed. Set it up on Settings → Assistant with an API key from [console.anthropic.com](https://console.anthropic.com/settings/keys). It's billed per use to that account, separate from a Claude.ai subscription. A question usually takes a few to a few dozen lookups; **Lookups per question** caps how many it may make, and each chat shows the tokens it used.
+The **Assistant** answers questions about your setup by investigating it with Claude. Once it's set up, an **Ask** button sits at the bottom right of every page and opens it as a chat popup that stays open, on the same chat, as you move between pages (if an answer comes while it's closed, the button says **Answer ready**). Answers appear as Claude writes them. While it works it says what it's looking up, you can write your next question, and **Stop** ends the question after the step it's on. The Assistant page shows the same chats full width, with all of them listed. Set it up on Settings → Assistant with an API key from [console.anthropic.com](https://console.anthropic.com/settings/keys). It's billed per use to that account, separate from a Claude.ai subscription. A question usually takes a few to a few dozen lookups; **Lookups per question** caps how many it may make, and each chat shows the tokens it used.
 
 What Claude can do:
 
@@ -236,7 +236,7 @@ What Claude can do:
 
 What leaves your network: your questions, and what Claude reads to answer them (titles, file names and paths, release names, Plex usernames, plays, log lines) go to Anthropic's API. Helperr's keys and tokens are removed from everything first, and web addresses are cut to their host, which also removes indexer keys from download links. Chats are kept for 90 days after their last question; delete one from its page.
 
-`POST /api/assistant` (`{"question": "...", "chat_id": 3}`, the chat id to follow up) queues a question and answers `202` with the chat's id; `GET /api/assistant/{id}` has its status, answers and proposals. Proposals are confirmed on the page only.
+`POST /api/assistant` (`{"question": "...", "chat_id": 3}`, the chat id to follow up) queues a question and answers `202` with the chat's id; `GET /api/assistant/{id}` has its status, answers and proposals; `POST /api/assistant/{id}/stop` stops the question it's answering. Proposals are confirmed on the page only.
 
 ## Kometa
 

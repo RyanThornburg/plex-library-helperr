@@ -17,7 +17,7 @@ from tests.test_web import FORM, FakeKeys, auth
 from tests.test_web import settings  # noqa: F401 (fixture)
 from web import assistant_actions, assistant_tools
 from web.app import create_app
-from web.assistant import AssistantRunner, render_markdown, turns
+from web.assistant import AssistantRunner, Live, echoable, render_markdown, turns
 from web.assistant_actions import Plan
 from web.assistant_tools import ToolContext, ToolError, clean, helperr_query, run_tool
 from web.db import AssistantAction, AssistantChat, AssistantMessage, ConfigSecret, Play, make_engine, migrate
@@ -65,17 +65,48 @@ def tool_use(call_id: str, name: str, **args: Any) -> dict[str, Any]:
 THINKING = {"type": "thinking", "thinking": "", "signature": "sig-abc"}
 
 
+class Event:
+    def __init__(self, kind: str, **fields: Any):
+        self.type = kind
+        self.__dict__.update(fields)
+
+
+class FakeStream:
+    """like the sdk's MessageStream: its events, then get_final_message()"""
+
+    def __init__(self, response: Response):
+        self.response = response
+
+    def __enter__(self) -> "FakeStream":
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        return None
+
+    def __iter__(self):
+        for block in self.response.content:
+            yield Event("content_block_start", content_block=Event(block["type"]))
+            if block["type"] == "text":
+                words = block["text"].split(" ")
+                for i, word in enumerate(words):
+                    yield Event("text", text=word + (" " if i < len(words) - 1 else ""))
+            yield Event("content_block_stop")
+
+    def get_final_message(self) -> Response:
+        return self.response
+
+
 class FakeMessages:
     def __init__(self, owner: "FakeClient", beta: bool):
         self.owner, self.beta = owner, beta
 
-    def create(self, **request: Any) -> Response:
+    def stream(self, **request: Any) -> FakeStream:
         # the conversation as it was at this call
         self.owner.requests.append({**request, "messages": [dict(m) for m in request["messages"]], "beta": self.beta})
         step = self.owner.script.pop(0)
         if isinstance(step, Exception):
             raise step
-        return step
+        return FakeStream(step)
 
 
 class FakeClient:
@@ -264,6 +295,66 @@ class TestLoop:
         result = second["messages"][2]["content"][0]
         assert result["tool_use_id"] == "t1" and '"rows":[[0]]' in result["content"]
 
+    def test_stop_ends_the_question_after_the_step_its_on(self, engine):
+        r, fake = runner(engine, [
+            Response("tool_use", THINKING, tool_use("t1", "helperr_query", sql="SELECT 1")),
+            Response("end_turn", {"type": "text", "text": "never asked for"}),
+        ])
+        chat_id: list[int] = []
+        stream = fake.beta.messages.stream
+
+        def stop_while_asking(**request):
+            # the admin clicks Stop while Claude is answering
+            assert r.request_stop(chat_id[0]) and r.stopping(chat_id[0])
+            return stream(**request)
+
+        fake.beta.messages.stream = stop_while_asking
+        chat_id.append(r.ask(None, "q", None))
+        r.wait_idle()
+        r.stop()
+
+        chat = chat_of(engine, chat_id[0])
+        assert chat.status == "idle" and chat.error.startswith("Stopped before it answered")
+        assert len(fake.requests) == 1 and not r.stopping(chat_id[0])
+        # the call it asked for is answered, so the chat can go on
+        last = messages_of(engine, chat_id[0])[-1]
+        assert last.kind == "results" and "stopped" in last.content[0]["content"]
+        # nothing to stop once it's answered
+        assert r.request_stop(chat_id[0]) is False
+
+    def test_the_answer_is_live_while_its_written(self, engine):
+        r, fake = runner(engine, [
+            Response("end_turn", {"type": "text", "text": "Sonarr lost the file."}, {"type": "text", "text": "Rescan it."}),
+        ])
+        written: list[str] = []
+        write = r._write
+        r._write = lambda chat_id, text: written.append(text) or write(chat_id, text)
+        chat_id = r.ask(None, "q", None)
+        r.wait_idle()
+        r.stop()
+        # word by word, paragraphs joined as the page joins them
+        assert written[0] == "Sonarr " and written[-1] == "Sonarr lost the file.\n\nRescan it."
+        live = r.live(chat_id)
+        # stored now: nothing live, and the version moved on so a page reads it again
+        assert live is not None and not live.running and live.text == "" and live.version >= 3
+
+    def test_a_mid_stream_fallback_drops_what_the_declined_attempt_asked_for(self, engine):
+        fallback = {"type": "fallback", "from": {"model": "claude-opus-5-5"}, "to": {"model": "claude-opus-4-8"}}
+        r, fake = runner(engine, [
+            Response(
+                "tool_use", THINKING, {"type": "text", "text": "Let me "}, tool_use("x", "helperr_query", sql="SELECT 1"),
+                fallback, THINKING, tool_use("y", "helperr_query", sql="SELECT 2"),
+            ),
+            Response("end_turn", {"type": "text", "text": "done"}),
+        ])
+        chat_id = r.ask(None, "q", None)
+        r.wait_idle()
+        r.stop()
+        answer = messages_of(engine, chat_id)[1]
+        assert [b["type"] for b in answer.content] == ["text", "fallback", "thinking", "tool_use"]
+        results = messages_of(engine, chat_id)[2].content
+        assert [b["tool_use_id"] for b in results] == ["y"]
+
     def test_haiku_has_no_fallback(self, engine):
         r, fake = runner(engine, [Response("end_turn", {"type": "text", "text": "ok"})], model="claude-haiku-5-5")
         r.ask(None, "hi", None)
@@ -408,6 +499,17 @@ class TestProposals:
         plan = assistant_actions.check(assistant_settings(), {"action": "sonarr_episode_search", "episode_ids": [9, 9]})
         assert plan.params == {"episode_ids": [9]}
         assert "Show S01E02" in plan.description and plan.button == "Search for 1 episode"
+
+
+def test_echoable_keeps_only_text_before_the_last_fallback():
+    content = [
+        {"type": "thinking"}, {"type": "text", "text": "a"}, {"type": "tool_use", "id": "1"},
+        {"type": "fallback"}, {"type": "thinking"}, {"type": "text", "text": "b"},
+        {"type": "fallback"}, {"type": "thinking"}, {"type": "tool_use", "id": "2"},
+    ]
+    assert [b["type"] for b in echoable(content)] == ["text", "fallback", "text", "fallback", "thinking", "tool_use"]
+    # without a fallback it's unchanged
+    assert echoable(content[:3]) == content[:3]
 
 
 def test_markdown_escapes_html_and_drops_images():
@@ -598,7 +700,7 @@ class TestPopup:
         shown = page(client, panel_url).text
         assert "Refresh it." in shown and "Plex refreshes X." in shown
         # every form posts back for the fragment
-        assert shown.count('name="panel" value="1"') == 3  # dismiss, confirm, ask
+        assert "name=\"panel\"" not in shown  # the script adds it
         assert 'id="action-' not in shown and 'id="latest"' not in shown
 
         with Session(client.app.state.engine) as session:
@@ -618,6 +720,47 @@ class TestPopup:
         response = post(client, f"/assistant/{chat_id}", {"question": "more", "panel": "1"})
         assert response.status_code == 409
         assert "data-chat-panel" in response.text and "data-running" in response.text
+
+    def test_stop_from_the_popup_says_its_stopping(self, client, fake):
+        set_up(client)
+        fake.script.append(Response("end_turn", {"type": "text", "text": "Fine."}))
+        chat_id = int(post(client, "/assistant", {"question": "q"}).headers["location"].split("/")[2].split("#")[0])
+        client.app.state.assistant.wait_idle()
+        with Session(client.app.state.engine) as session:
+            session.get_one(AssistantChat, chat_id).status = "running"
+            session.commit()
+        shown = page(client, f"/assistant/panel/{chat_id}").text
+        assert f'formaction="/assistant/{chat_id}/stop"' in shown
+        response = post(client, f"/assistant/{chat_id}/stop", {"panel": "1", "question": "draft"})
+        assert response.headers["location"] == f"/assistant/panel/{chat_id}"
+        assert "Stopping after this step" in page(client, response.headers["location"]).text
+        assert post(client, "/assistant/999/stop").status_code == 404
+
+    def test_the_event_stream_sends_what_is_written_then_done(self, client, fake, monkeypatch):
+        set_up(client)
+        monkeypatch.setattr("web.assistant_routes.STREAM_FOR", 0.3)
+        monkeypatch.setattr("web.assistant_routes.STREAM_TICK", 0.05)
+        fake.script.append(Response("end_turn", {"type": "text", "text": "Fine."}))
+        chat_id = int(post(client, "/assistant", {"question": "q"}).headers["location"].split("/")[2].split("#")[0])
+        client.app.state.assistant.wait_idle()
+        runner = client.app.state.assistant
+        # answered: done straight away
+        assert "event: done" in client.get(f"/assistant/{chat_id}/stream", headers=auth()).text
+
+        with Session(client.app.state.engine) as session:
+            session.get_one(AssistantChat, chat_id).status = "running"
+            session.commit()
+        runner._live[chat_id] = Live(running=True, version=7, text="It's **stuck** <b>x</b>", text_version=1)
+        # the page at version 7 gets the answer so far, rendered and escaped, no refresh
+        response = client.get(f"/assistant/{chat_id}/stream?v=7", headers=auth())
+        assert response.headers["content-type"].startswith("text/event-stream")
+        assert "event: refresh" not in response.text
+        assert "event: answer" in response.text and "<strong>stuck</strong>" in response.text and "&lt;b&gt;" in response.text
+        # an older page reads the chat again
+        assert "event: refresh" in client.get(f"/assistant/{chat_id}/stream?v=6", headers=auth()).text
+        # and the fragment has it in place, with the version it shows
+        shown = page(client, f"/assistant/panel/{chat_id}").text
+        assert 'data-version="7"' in shown and "<strong>stuck</strong>" in shown and "Writing the answer" in shown
 
     def test_a_deleted_chat_is_a_json_404_for_the_script(self, client):
         set_up(client)

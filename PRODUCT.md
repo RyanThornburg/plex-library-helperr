@@ -37,7 +37,7 @@ It acts on the library and gates every deletion. Dashboards like Homarr show sta
 
 - Server-rendered pages (FastAPI + Jinja templates, one `app.css`, one small `app.js`), no frontend build step. Every action also has a JSON API.
 - Strict Content Security Policy: no inline scripts or styles, no third-party content. Any font, script or image must be self-hosted. No JS `confirm()`: confirmations are their own pages.
-- Every page must work without JavaScript; JS only enhances (local time zones, chip inputs, time zone defaults).
+- Every page must work without JavaScript; JS only enhances (local time zones, chip inputs, time zone defaults). The owner prefers the better experience where JS gives one (2026-11-19): the Assistant's chat leans on it to stream answers as Claude writes them and update in place, and without it only refreshes itself.
 - Deletion safety is a product principle: removers plan first, deletion needs per-item approval or an opt-in per-rule auto-approve (off by default), and a container env var (`REMOVERS_ALLOW_APPLY`) is the breaker the UI can't turn on. Any change that makes a job live goes through a confirmation that says so.
 - Dry run is a first-class state everywhere a job appears; the UI must always make clear whether a run did or would do something.
 - Secrets are write-only in forms and never shown or logged.

@@ -338,11 +338,242 @@ for (const now of document.querySelectorAll("[data-copy-to]")) {
   now.append(button);
 }
 
-// the assistant as a chat popup on every page. The server renders the chat
-// (/assistant/panel[/id], the Assistant page's markup), this fetches it into the panel,
-// posts its forms (they carry panel=1, so the answer is the fragment again) and polls
-// while Claude works. Which chat and whether it's open carry over to the next page.
-// Without this script the button is a link to the Assistant page
+// the assistant's chat, in the popup on every page and on the Assistant page. The
+// server renders it (the fragment at /assistant/panel[/id]); this fetches it and posts
+// its forms (adding panel=1, so the answer is the fragment again). While Claude works it
+// follows the chat's event stream (/assistant/id/stream): the answer appears as it's
+// written and the chat is read again when a lookup starts or ends; if the stream fails
+// it polls every 3s. What you're typing, open folds and the scroll are kept. Without
+// the script the popup's button is a link and the page refreshes itself
+const chatView = (body, { popup = false, announce, onShow = () => {} }) => {
+  let timer = null;
+  // the event stream, the chat it follows, and whether streams work here at all
+  let source = null;
+  let sourceFor = null;
+  let streams = "EventSource" in window;
+  // the running answer was shown as it was written, so it needn't be jumped to
+  let streamed = false;
+  const current = () => body.querySelector("[data-chat-panel]");
+  const chatId = () => current()?.dataset.chatId || null;
+  const isRunning = (fragment) => Boolean(fragment) && "running" in fragment.dataset;
+  const nearEnd = (fragment) => {
+    if (!popup) return innerHeight + scrollY >= document.documentElement.scrollHeight - 120;
+    const scroller = fragment?.querySelector(".chat-scroll");
+    return !scroller || scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 60;
+  };
+
+  const problem = (text) => {
+    body.querySelector("[data-chat-problem]")?.remove();
+    const p = document.createElement("p");
+    p.className = "banner banner-bad";
+    p.dataset.chatProblem = "";
+    p.textContent = text;
+    const scroller = body.querySelector(".chat-scroll");
+    if (!scroller) return body.replaceChildren(p);
+    scroller.append(p);
+    if (popup) scroller.scrollTop = scroller.scrollHeight;
+    for (const button of body.querySelectorAll("form button")) button.disabled = false;
+  };
+
+  // asked: a question was just sent, so its box starts empty and the end shows
+  const show = (fragment, asked = false) => {
+    const before = current();
+    const same = Boolean(before) && before.dataset.chatId === fragment.dataset.chatId;
+    const answered = same && isRunning(before) && !isRunning(fragment);
+    const atEnd = nearEnd(before);
+    const top = before?.querySelector(".chat-scroll")?.scrollTop ?? 0;
+    const folds = new Set([...body.querySelectorAll("details[open][data-fold]")].map((d) => d.dataset.fold));
+    const area = before?.querySelector(".ask textarea");
+    const typing = area && document.activeElement === area;
+    const [from, to] = typing ? [area.selectionStart, area.selectionEnd] : [0, 0];
+
+    body.replaceChildren(fragment);
+    if (same) {
+      for (const fold of fragment.querySelectorAll("details[data-fold]")) fold.open = folds.has(fold.dataset.fold);
+    }
+    const next = fragment.querySelector(".ask textarea");
+    if (next && same && !asked && area?.value) next.value = area.value;
+    if (next && (typing || asked)) {
+      next.focus({ preventScroll: true });
+      if (typing && !asked) next.setSelectionRange(from, to);
+    }
+    for (const hint of fragment.querySelectorAll("[data-enter-hint]")) hint.hidden = false;
+
+    // a new answer that arrived whole reads from its question down; otherwise stay
+    // put, or follow the end
+    const turn = [...fragment.querySelectorAll(".turn")].at(-1);
+    const jump = answered && atEnd && turn && !streamed;
+    if (answered) streamed = false;
+    if (popup) {
+      const scroller = fragment.querySelector(".chat-scroll");
+      if (jump) {
+        scroller.scrollTop += turn.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 8;
+      } else {
+        scroller.scrollTop = same && !atEnd && !asked ? top : scroller.scrollHeight;
+      }
+    } else if (jump) {
+      turn.scrollIntoView({ block: "start" });
+    } else if (asked) {
+      fragment.querySelector(".ask")?.scrollIntoView({ block: "end" });
+    }
+    if (answered && announce) announce.textContent = "Claude answered.";
+
+    renderTimes();
+    clearTimeout(timer);
+    if (isRunning(fragment)) follow(fragment);
+    else quiet();
+    onShow(fragment, { answered });
+  };
+
+  const quiet = () => {
+    clearTimeout(silence);
+    source?.close();
+    source = sourceFor = null;
+  };
+  const poll = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => load(), 3000);
+  };
+  // what Claude has written so far, where its answer goes, following the end if you were there
+  const writing = (html) => {
+    const box = body.querySelector("[data-live-answer]");
+    if (!box) return;
+    const atEnd = nearEnd(current());
+    box.innerHTML = html;
+    box.hidden = false;
+    streamed = true;
+    const progress = body.querySelector("[data-progress]");
+    if (progress) progress.textContent = "Writing the answer";
+    if (!atEnd) return;
+    if (popup) {
+      const scroller = body.querySelector(".chat-scroll");
+      scroller.scrollTop = scroller.scrollHeight;
+    } else {
+      // the page's end, so the progress line and the question box stay in view
+      scrollTo({ top: document.documentElement.scrollHeight });
+    }
+  };
+  // the stream pings every 5s: nothing for 12s means something holds it back, so poll
+  let silence = null;
+  const heard = () => {
+    clearTimeout(silence);
+    silence = setTimeout(() => {
+      streams = false;
+      quiet();
+      load();
+    }, 12000);
+  };
+  const follow = (fragment) => {
+    const id = fragment.dataset.chatId;
+    if (!streams) return poll();
+    if (source && sourceFor === id) return;
+    quiet();
+    sourceFor = id;
+    source = new EventSource(`/assistant/${id}/stream?v=${fragment.dataset.version || 0}`);
+    heard();
+    source.addEventListener("ping", heard);
+    source.addEventListener("answer", (event) => {
+      heard();
+      writing(JSON.parse(event.data).html);
+    });
+    source.addEventListener("refresh", () => {
+      heard();
+      load();
+    });
+    source.addEventListener("done", () => {
+      quiet();
+      load();
+    });
+    // a connection that ends is reopened by the browser; one it gives up on (signed
+    // out, a proxy that won't stream) falls back to polling for good
+    source.addEventListener("error", () => {
+      if (source?.readyState !== EventSource.CLOSED) return;
+      streams = false;
+      quiet();
+      poll();
+    });
+  };
+
+  const load = async (url, { method, data, asked = false, reset = () => {} } = {}) => {
+    url ??= chatId() ? `/assistant/panel/${chatId()}` : "/assistant/panel";
+    try {
+      // json, so an error is fastapi's {"detail"}, not an error page
+      const response = await fetch(url, { method, body: data, headers: { Accept: "application/json" } });
+      // signed out, a GET is sent to the sign-in page
+      if (response.redirected && new URL(response.url).pathname === "/login") {
+        return problem("You've been signed out: reload the page to sign in again.");
+      }
+      const type = response.headers.get("content-type") || "";
+      if (type.includes("text/html")) {
+        const doc = new DOMParser().parseFromString(await response.text(), "text/html");
+        const fragment = doc.querySelector("[data-chat-panel]");
+        if (fragment) return show(document.adoptNode(fragment), asked);
+      }
+      if (response.status === 404 && !method && reset()) return;
+      let detail = `Helperr answered ${response.status}.`;
+      if (response.status === 401) detail = "You've been signed out: reload the page to sign in again.";
+      else if (type.includes("json")) {
+        const answer = await response.json().catch(() => ({}));
+        if (typeof answer.detail === "string") detail = answer.detail;
+      }
+      problem(detail);
+    } catch {
+      // Cloudflare Access sends an expired sign-in elsewhere, which fetch can't follow
+      problem("Helperr can't be reached right now. If this keeps up, reload the page: you may need to sign in again.");
+      clearTimeout(timer);
+      if (isRunning(current()) && !source) timer = setTimeout(() => load(), 10000);
+    }
+  };
+
+  body.addEventListener("submit", (event) => {
+    const form = event.target;
+    // a new chat from the Assistant page opens as its own page
+    if (!popup && !chatId()) return;
+    event.preventDefault();
+    const url = event.submitter?.getAttribute("formaction") || form.getAttribute("action");
+    const data = new URLSearchParams(new FormData(form));
+    data.set("panel", "1");
+    for (const button of form.querySelectorAll("button")) button.disabled = true;
+    load(url, { method: "POST", data, asked: form.matches(".ask") && url === form.getAttribute("action") });
+  });
+  // Enter asks and Shift+Enter is a new line, like a chat. While Claude works the box
+  // only takes the next question down: its button is Stop then
+  body.addEventListener("keydown", (event) => {
+    const area = event.target.closest(".ask textarea");
+    if (!area || event.key !== "Enter" || event.shiftKey || event.isComposing) return;
+    event.preventDefault();
+    const ask = area.form.querySelector("button:not([formaction])");
+    if (ask && !ask.disabled && area.value.trim()) area.form.requestSubmit(ask);
+  });
+
+  return {
+    load,
+    show,
+    current,
+    chatId,
+    stop: () => {
+      clearTimeout(timer);
+      quiet();
+    },
+  };
+};
+
+// the Assistant page: its chat updates in place
+const chatHost = document.querySelector("[data-chat-host]");
+if (chatHost) {
+  const announce = document.createElement("p");
+  announce.className = "visually-hidden";
+  announce.setAttribute("aria-live", "polite");
+  chatHost.after(announce);
+  const view = chatView(chatHost, { announce });
+  for (const hint of chatHost.querySelectorAll("[data-enter-hint]")) hint.hidden = false;
+  // a chat being answered: follow it from the page as rendered
+  const rendered = view.current();
+  if (rendered && "running" in rendered.dataset) view.show(rendered);
+}
+
+// the popup on every other page. Which chat and whether it's open carry over to the
+// next page, and an answer that comes while it's closed marks the button
 const popup = document.querySelector("[data-chat-popup]");
 if (popup) {
   const launcher = document.querySelector("[data-chat-launcher]");
@@ -354,104 +585,40 @@ if (popup) {
   // {open, id, running, news}
   const state = stored(key, {});
   const save = () => store(key, state);
-  let timer = null;
-
   const showNews = () => {
     launcher.classList.toggle("has-news", Boolean(state.news));
     label.textContent = state.news ? "Answer ready" : "Ask";
   };
 
-  const problem = (text) => {
-    body.querySelector("[data-chat-problem]")?.remove();
-    const p = document.createElement("p");
-    p.className = "banner banner-bad";
-    p.dataset.chatProblem = "";
-    p.textContent = text;
-    const scroller = body.querySelector(".chat-scroll");
-    if (scroller) {
-      scroller.append(p);
-      scroller.scrollTop = scroller.scrollHeight;
-    } else {
-      body.replaceChildren(p);
-    }
-    for (const button of body.querySelectorAll("form button")) button.disabled = false;
-  };
-
-  // toEnd: a question was just asked, show it
-  const show = (fragment, toEnd = false) => {
-    // a poll keeps the folds that were open and the scroll, unless it was at the end
-    const before = body.querySelector("[data-chat-panel]");
-    const scroller = body.querySelector(".chat-scroll");
-    const sameChat = before && before.dataset.chatId === fragment.dataset.chatId;
-    const atEnd = !scroller || scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 60;
-    const top = scroller ? scroller.scrollTop : 0;
-    const folds = new Set([...body.querySelectorAll("details[open][data-fold]")].map((d) => d.dataset.fold));
-    body.replaceChildren(fragment);
-    if (sameChat) {
-      for (const fold of fragment.querySelectorAll("details[data-fold]")) fold.open = folds.has(fold.dataset.fold);
-    }
-    const running = "running" in fragment.dataset;
-    const next = fragment.querySelector(".chat-scroll");
-    const answered = sameChat && "running" in before.dataset && !running;
-    const turn = [...next.querySelectorAll(".turn")].at(-1);
-    if (answered && atEnd && turn) {
-      // read a new answer from its question down, not from its end up
-      next.scrollTop += turn.getBoundingClientRect().top - next.getBoundingClientRect().top - 8;
-    } else {
-      next.scrollTop = sameChat && !atEnd && !toEnd ? top : next.scrollHeight;
-    }
-
-    if (state.running && !running && popup.hidden) state.news = true;
-    state.id = fragment.dataset.chatId || null;
-    state.running = running;
+  const view = chatView(body, {
+    popup: true,
+    announce: popup.querySelector("[data-chat-announce]"),
+    onShow: (fragment) => {
+      // remembered as answering, now answered: maybe on an earlier page
+      const id = fragment.dataset.chatId || null;
+      const running = "running" in fragment.dataset;
+      if (popup.hidden && state.running && !running && id && String(state.id) === id) state.news = true;
+      state.id = id;
+      state.running = running;
+      save();
+      showNews();
+      title.textContent = fragment.dataset.title;
+      full.href = state.id ? `/assistant/${state.id}` : "/assistant";
+    },
+  });
+  // the chat to open: the one last shown, else the one remembered
+  const url = (id) => (id ? `/assistant/panel/${id}` : "/assistant/panel");
+  // the remembered chat was deleted: start a new one
+  const reset = () => {
+    if (!state.id) return false;
+    state.id = null;
+    state.running = false;
     save();
-    showNews();
-    title.textContent = fragment.dataset.title;
-    full.href = state.id ? `/assistant/${state.id}` : "/assistant";
-    renderTimes();
-    clearTimeout(timer);
-    if (running) timer = setTimeout(() => load(), 3000);
+    view.load(url(null));
+    return true;
   };
+  const focusQuestion = () => body.querySelector(".ask textarea")?.focus();
 
-  const load = async (url, init = {}) => {
-    url ??= state.id ? `/assistant/panel/${state.id}` : "/assistant/panel";
-    try {
-      // json, so an error is fastapi's {"detail"}, not an error page
-      const { toEnd, ...request } = init;
-      const response = await fetch(url, { ...request, headers: { Accept: "application/json" } });
-      const type = response.headers.get("content-type") || "";
-      // signed out, a GET is sent to the sign-in page
-      if (response.redirected && new URL(response.url).pathname === "/login") {
-        return problem("You've been signed out: reload the page to sign in again.");
-      }
-      if (type.includes("text/html")) {
-        const doc = new DOMParser().parseFromString(await response.text(), "text/html");
-        const fragment = doc.querySelector("[data-chat-panel]");
-        if (fragment) return show(document.adoptNode(fragment), toEnd);
-      }
-      // the chat was deleted: start a new one
-      if (response.status === 404 && !init.method && state.id) {
-        state.id = null;
-        state.running = false;
-        save();
-        return load();
-      }
-      let detail = `Helperr answered ${response.status}.`;
-      if (response.status === 401) detail = "You've been signed out: reload the page to sign in again.";
-      else if (type.includes("json")) {
-        const data = await response.json().catch(() => ({}));
-        if (typeof data.detail === "string") detail = data.detail;
-      }
-      problem(detail);
-    } catch {
-      // Cloudflare Access sends an expired sign-in elsewhere, which fetch can't follow
-      problem("Helperr can't be reached right now. If this keeps up, reload the page: you may need to sign in again.");
-      clearTimeout(timer);
-      if (state.running) timer = setTimeout(() => load(), 10000);
-    }
-  };
-
-  const focusQuestion = () => body.querySelector("textarea:not([disabled])")?.focus();
   const open = async (focus) => {
     popup.hidden = false;
     launcher.hidden = true;
@@ -460,7 +627,7 @@ if (popup) {
     state.news = false;
     save();
     showNews();
-    await load();
+    await view.load(url(view.chatId() ?? state.id), { reset });
     if (focus) focusQuestion();
   };
   const close = () => {
@@ -478,40 +645,24 @@ if (popup) {
   });
   popup.querySelector("[data-chat-close]").addEventListener("click", close);
   popup.querySelector("[data-chat-new]").addEventListener("click", async () => {
-    state.id = null;
-    state.running = false;
-    await load();
+    view.stop();
+    await view.load(url(null));
     focusQuestion();
   });
   popup.addEventListener("keydown", (event) => {
     if (event.key === "Escape") close();
   });
-
   // a recent chat opens here, not on its page
-  body.addEventListener("click", (event) => {
+  body.addEventListener("click", async (event) => {
     const link = event.target.closest("a[data-panel-chat]");
     if (!link) return;
     event.preventDefault();
-    state.id = link.dataset.panelChat;
-    load();
-  });
-  body.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const form = event.target;
-    const data = new URLSearchParams(new FormData(form));
-    for (const button of form.querySelectorAll("button")) button.disabled = true;
-    load(form.getAttribute("action"), { method: "POST", body: data, toEnd: form.matches(".ask") });
-  });
-  // Enter asks, Shift+Enter is a new line, like a chat
-  body.addEventListener("keydown", (event) => {
-    const area = event.target.closest(".ask textarea");
-    if (!area || event.key !== "Enter" || event.shiftKey || event.isComposing) return;
-    event.preventDefault();
-    if (area.value.trim()) area.form.requestSubmit();
+    await view.load(url(link.dataset.panelChat));
+    focusQuestion();
   });
 
   showNews();
   if (state.open) open(false);
   // closed while Claude works: keep checking, so the button says when it answered
-  else if (state.running && state.id) load();
+  else if (state.running && state.id) view.load(url(state.id), { reset });
 }

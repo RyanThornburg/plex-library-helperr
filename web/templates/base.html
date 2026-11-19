@@ -46,10 +46,11 @@
     <header class="chat-popup-head">
       <h2 id="chat-popup-title" data-chat-title>Assistant</h2>
       <button type="button" class="chat-tool" data-chat-new>{{ ui.icon("plus") }}New</button>
-      <a class="chat-tool" href="/assistant" data-chat-full>{{ ui.icon("maximize") }}Page</a>
+      <a class="chat-tool" href="/assistant" data-chat-full>{{ ui.icon("maximize") }}Expand</a>
       <button type="button" class="chat-tool" data-chat-close>{{ ui.icon("x") }}Close</button>
     </header>
     <div class="chat-popup-body" data-chat-body></div>
+    <p class="visually-hidden" aria-live="polite" data-chat-announce></p>
   </section>
   {% endif %}
 </body>

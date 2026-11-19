@@ -16,7 +16,7 @@ import logging
 import queue
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -49,6 +49,8 @@ API_TIMEOUT = 300
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 FALLBACK_MODELS = {"claude-opus-5-5", "claude-sonnet-5-5"}
 STATUSES = ("idle", "running", "failed")
+# blocks a declined attempt left before a mid-stream fallback that may be sent back
+ECHOED_BEFORE_FALLBACK = {"text", "fallback"}
 
 SYSTEM = """You are the assistant inside Helperr, the control room one admin uses to run their Plex server and the tools around it: Sonarr (series), Radarr (movies), SABnzbd (downloads), Bazarr (subtitles), Tautulli (Plex's play history and streams), Seerr/Overseerr (requests and reported issues) and Unraid (the server). Helperr also runs its own jobs: movers move series/movies to other root folders, removers delete old seasons, episodes or movies after review, duplicates removes extra Plex versions, empty trash empties Plex's trash, and it syncs plays, requests and health checks into its database.
 
@@ -228,6 +230,31 @@ def turns(messages: list[AssistantMessage], actions: list[AssistantAction]) -> l
     return shown
 
 
+def echoable(content: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """an answer as it can be sent back. When the model declined mid-stream and a
+    fallback model went on, the stream keeps the declined attempt's partial output
+    before the (last) fallback block: only its text may be echoed, so its thinking and
+    tool calls are dropped (and never run); the fallback block stays where it was"""
+    boundary = max((i for i, b in enumerate(content) if b.get("type") == "fallback"), default=-1)
+    return [b for i, b in enumerate(content) if i >= boundary or b.get("type") in ECHOED_BEFORE_FALLBACK]
+
+
+@dataclass
+class Live:
+    """a chat being answered, as the page follows it (web.assistant_routes streams it)"""
+
+    running: bool = True
+    # bumped whenever the stored chat changes, so the page reads it again
+    version: int = 0
+    # what Claude is writing now, before it's stored with the rest of its answer
+    text: str = ""
+    text_version: int = 0
+
+
+# finished chats' Live kept for a page that's still following one
+LIVE_KEPT = 50
+
+
 def api_messages(messages: list[AssistantMessage]) -> list[dict[str, Any]]:
     return [
         {"role": "assistant" if m.kind == "answer" else "user", "content": m.content}
@@ -248,6 +275,9 @@ class AssistantRunner:
         self.database = Path(engine.url.database or "")
         self._queue: queue.Queue[int | None] = queue.Queue()
         self._lock = threading.Lock()
+        # chats whose question the admin stopped: checked before each step
+        self._stops: set[int] = set()
+        self._live: dict[int, Live] = {}
         self._thread = threading.Thread(target=self._work, name="assistant", daemon=True)
 
     def start(self) -> None:
@@ -322,10 +352,61 @@ class AssistantRunner:
             ))
             chat.status, chat.error, chat.updated_at = "running", None, now
             session.commit()
+            self._stops.discard(chat.id)
             chat_id = chat.id
+        self._changed(chat_id, running=True)
         logger.info("WEB\t Assistant chat %s: question from %s", chat_id, by)
         self._queue.put(chat_id)
         return chat_id
+
+    def request_stop(self, chat_id: int) -> bool:
+        """stops a chat's question after the step it's on (a request to Claude can't be
+        cut short). False when it isn't answering one; LookupError for no such chat"""
+        with self._lock, Session(self.engine) as session:
+            chat = session.get(AssistantChat, chat_id)
+            if chat is None:
+                raise LookupError(chat_id)
+            if chat.status != "running":
+                return False
+            self._stops.add(chat_id)
+        return True
+
+    def stopping(self, chat_id: int) -> bool:
+        return chat_id in self._stops
+
+    def live(self, chat_id: int) -> Live | None:
+        """a copy of the chat's live state, None when it hasn't been asked anything
+        since helperr started"""
+        with self._lock:
+            live = self._live.get(chat_id)
+            return replace(live) if live else None
+
+    def _changed(self, chat_id: int, running: bool | None = None) -> None:
+        """the stored chat changed: whatever was being written is stored now too"""
+        with self._lock:
+            live = self._live.setdefault(chat_id, Live())
+            live.version += 1
+            if running is not None:
+                live.running = running
+            if live.text:
+                live.text, live.text_version = "", live.text_version + 1
+            if len(self._live) > LIVE_KEPT:
+                for done in [k for k, v in self._live.items() if not v.running][: len(self._live) - LIVE_KEPT]:
+                    del self._live[done]
+
+    def _write(self, chat_id: int, text: str) -> None:
+        with self._lock:
+            live = self._live.setdefault(chat_id, Live())
+            live.text, live.text_version = text, live.text_version + 1
+
+    def _stopped(self, chat_id: int) -> bool:
+        if chat_id not in self._stops:
+            return False
+        self._finish(
+            chat_id, "idle", "Stopped before it answered. Ask again, or ask it to sum up what it found.",
+            close_calls=True, why="Not run: the admin stopped this question",
+        )
+        return True
 
     # -- answering --------------------------------------------------------------
 
@@ -364,18 +445,26 @@ class AssistantRunner:
                 content=[{"type": "tool_result", "tool_use_id": c, "content": why, "is_error": True} for c in calls],
             ))
 
-    def _finish(self, chat_id: int, status: str, error: str | None, close_calls: bool = False) -> None:
+    def _finish(
+        self, chat_id: int, status: str, error: str | None, close_calls: bool = False,
+        why: str = "Not run: the question failed",
+    ) -> None:
+        with self._lock:
+            self._stops.discard(chat_id)
         with Session(self.engine) as session:
             if close_calls:
-                self._close_open_calls(session, chat_id, "Not run: the question failed")
+                self._close_open_calls(session, chat_id, why)
             session.execute(
                 update(AssistantChat).where(AssistantChat.id == chat_id).values(
                     status=status, error=error, updated_at=utc_now()
                 )
             )
             session.commit()
+        self._changed(chat_id, running=False)
 
-    def _create(self, client: Any, config: AssistantConfig, messages: list[dict[str, Any]]) -> Any:
+    def _stream(self, client: Any, config: AssistantConfig, chat_id: int, messages: list[dict[str, Any]]) -> Any:
+        """one request to Claude, streamed: the text it writes is the chat's live text as
+        it comes, the page shows it word by word. Returns the whole message"""
         request: dict[str, Any] = {
             "model": config.model,
             "max_tokens": MAX_TOKENS,
@@ -387,8 +476,19 @@ class AssistantRunner:
             "output_config": {"effort": config.effort},
         }
         if config.model in FALLBACK_MODELS:
-            return client.beta.messages.create(**request, betas=[FALLBACK_BETA], fallbacks="default")
-        return client.messages.create(**request)
+            manager = client.beta.messages.stream(**request, betas=[FALLBACK_BETA], fallbacks="default")
+        else:
+            manager = client.messages.stream(**request)
+        text = ""
+        with manager as stream:
+            for event in stream:
+                if event.type == "content_block_start" and event.content_block.type == "text" and text:
+                    # a new paragraph of the answer, as turns() joins them
+                    text += "\n\n"
+                elif event.type == "text":
+                    text += event.text
+                    self._write(chat_id, text)
+            return stream.get_final_message()
 
     def _answer(self, chat_id: int) -> None:
         try:
@@ -405,9 +505,11 @@ class AssistantRunner:
         calls = 0
         # each step either calls tools or answers; a few past the budget to answer in
         for _ in range(config.max_tool_calls + 3):
-            response = self._create(client, config, api_messages(self._messages(chat_id)))
+            if self._stopped(chat_id):
+                return
+            response = self._stream(client, config, chat_id, api_messages(self._messages(chat_id)))
             usage = response.usage
-            content = [block.to_dict() for block in response.content]
+            content = echoable([block.to_dict() for block in response.content])
             with Session(self.engine) as session:
                 session.add(AssistantMessage(chat_id=chat_id, kind="answer", content=content, created_at=utc_now()))
                 chat = session.get_one(AssistantChat, chat_id)
@@ -416,10 +518,13 @@ class AssistantRunner:
                 chat.cache_read_tokens += getattr(usage, "cache_read_input_tokens", None) or 0
                 chat.cache_write_tokens += getattr(usage, "cache_creation_input_tokens", None) or 0
                 session.commit()
+            self._changed(chat_id)
 
             if response.stop_reason == "pause_turn":
                 continue
             uses = [b for b in content if b.get("type") == "tool_use"]
+            if uses and self._stopped(chat_id):
+                return
             if response.stop_reason != "tool_use" or not uses:
                 note = {
                     "max_tokens": "The answer was cut off at the length limit. Ask it to go on.",
@@ -454,6 +559,7 @@ class AssistantRunner:
                 chat = session.get_one(AssistantChat, chat_id)
                 chat.tool_calls += len(uses)
                 session.commit()
+            self._changed(chat_id)
         self._finish(chat_id, "idle", "Stopped: it kept calling tools without answering. Ask it to sum up.")
 
     @staticmethod
