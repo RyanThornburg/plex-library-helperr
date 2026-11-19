@@ -1,0 +1,46 @@
+{% extends "settings/_layout.html" %}
+{% import "settings/_fields.html" as f with context %}
+{% set tab = "assistant" %}
+{% block toolbar %}
+<div class="group">{{ ui.tool_submit("save", "Save", "assistant-form", "action", "save") }}</div>
+<div class="group end">{{ ui.tool("chat", "Assistant", "/assistant") }}</div>
+{% endblock %}
+{% block settings %}
+<p class="muted">The <a href="/assistant">Assistant</a> page lets you ask Claude about a problem (an episode that won't play, a movie that never downloaded) and it investigates with Helperr's read-only access to your services. It needs an API key from <a href="https://console.anthropic.com/settings/keys">console.anthropic.com</a>, billed per use to that account, separate from a Claude.ai subscription.</p>
+<p class="banner">What Claude reads to answer is sent to Anthropic: your questions, and titles, file names and paths, release names, Plex usernames, plays and log lines from your services. Helperr never sends its keys or tokens: they're removed from everything first, and web addresses are cut to their host.</p>
+{% if secret and not secret.readable %}<p class="banner banner-bad">The saved API key can't be decrypted (HELPERR_SECRET_KEY changed?). Enter it again.</p>{% endif %}
+{% if tested %}<p class="banner banner-ok">{{ tested }}</p>{% endif %}
+<form method="post" action="/settings/assistant" class="form" id="assistant-form">
+  {{ f.version_field() }}
+  <label for="secret">API key</label>
+  <div>
+    <input id="secret" name="secret" type="password" autocomplete="new-password" spellcheck="false" placeholder="{{ 'saved, leave empty to keep' if secret else 'not set' }}">
+    {% if secret %}<p class="hint">Saved {{ secret.updated_at | localtime }}{% if secret.updated_by %} by {{ secret.updated_by }}{% endif %}. Stored encrypted, never shown again.</p>{% endif %}
+  </div>
+  <label for="model">Model</label>
+  <div>
+    <select id="model" name="model">
+      {% for id, label in models.items() %}<option value="{{ id }}"{% if id == values.model %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+    <p class="hint">Opus investigates best. Sonnet is about half the price, Haiku far cheaper but weaker at digging.</p>
+  </div>
+  <label for="effort">Effort</label>
+  <div>
+    <select id="effort" name="effort">
+      {% for id, label in efforts.items() %}<option value="{{ id }}"{% if id == values.effort %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+    <p class="hint">How hard Claude thinks before each step. Higher digs further and costs more.</p>
+  </div>
+  <label for="max_tool_calls">Lookups per question</label>
+  <div>
+    <input id="max_tool_calls" name="max_tool_calls" type="number" min="1" max="100" value="{{ values.max_tool_calls }}" required>
+    <p class="hint">After this many, Claude has to answer with what it found. Caps what one question can cost.</p>
+  </div>
+  <span></span>
+  <div class="actions">
+    <button type="submit" name="action" value="save">Save</button>
+    <button type="submit" name="action" value="test" class="button-secondary">Test</button>
+    {% if configured %}<button type="submit" name="action" value="disconnect" class="button-secondary" formnovalidate>Turn off</button>{% endif %}
+  </div>
+</form>
+{% endblock %}

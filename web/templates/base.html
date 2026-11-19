@@ -38,6 +38,20 @@
   <main id="main">
     {% block content %}{% endblock %}
   </main>
+  {# the assistant as a chat popup on every page: static/app.js loads /assistant/panel into
+     it. Without the script the button is a link to the Assistant page #}
+  {% if shell.chat and not bare %}
+  <a class="chat-launcher" href="/assistant" data-chat-launcher aria-controls="chat-popup" aria-expanded="false">{{ ui.icon("chat") }}<span data-chat-label>Ask</span></a>
+  <section class="chat-popup" id="chat-popup" role="dialog" aria-labelledby="chat-popup-title" hidden data-chat-popup>
+    <header class="chat-popup-head">
+      <h2 id="chat-popup-title" data-chat-title>Assistant</h2>
+      <button type="button" class="chat-tool" data-chat-new>{{ ui.icon("plus") }}New</button>
+      <a class="chat-tool" href="/assistant" data-chat-full>{{ ui.icon("maximize") }}Page</a>
+      <button type="button" class="chat-tool" data-chat-close>{{ ui.icon("x") }}Close</button>
+    </header>
+    <div class="chat-popup-body" data-chat-body></div>
+  </section>
+  {% endif %}
 </body>
 </html>
 {# a page's toolbar: groups of ui.tool* buttons in <div class="group">, the last one

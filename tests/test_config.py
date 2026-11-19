@@ -538,6 +538,8 @@ def test_no_secret_shows_in_the_settings_repr():
 
     sections = {section for section, _ in SECRET_FIELDS.values()}
     document = {s: {"baseurl": f"http://{s}"} if s in ("radarr", "sonarr", "plex") else {"url": f"http://{s}"} for s in sections}
+    # Anthropic's api needs no url
+    document["assistant"] = {}
     document["autoscan"]["username"] = "me"
     secrets = {name: f"secret-{name.replace('.', '-')}-value" for name in SECRET_FIELDS}
     settings = config.build_config(with_secrets(document, secrets))

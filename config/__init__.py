@@ -7,6 +7,7 @@ from typing import Any
 
 from config.models import (
     ArrConfig,
+    AssistantConfig,
     AutoscanConfig,
     BazarrConfig,
     DuplicatesSettings,
@@ -252,7 +253,10 @@ def _build_links(data: Any) -> list[LinkConfig]:
 
 
 # the document's sections that are tables
-TABLES = ("settings", "web", "plex", "tautulli", "seerr", "sabnzbd", "bazarr", "unraid", "autoscan", "radarr", "sonarr")
+TABLES = (
+    "settings", "web", "plex", "tautulli", "seerr", "sabnzbd", "bazarr", "unraid", "autoscan", "radarr", "sonarr",
+    "assistant",
+)
 
 
 def build_config(data: Mapping[str, Any]) -> ConfigSettings:
@@ -278,6 +282,7 @@ def _build_config(data: Mapping[str, Any]) -> ConfigSettings:
     bazarr_config = data.get("bazarr", {})
     unraid_config = data.get("unraid", {})
     autoscan_config = data.get("autoscan", {})
+    assistant_config = data.get("assistant", {})
     radarr_config = data.get("radarr")
     sonarr_config = data.get("sonarr")
     # dry unless it's turned off
@@ -358,6 +363,12 @@ def _build_config(data: Mapping[str, Any]) -> ConfigSettings:
         else None
     )
 
+    assistant = (
+        _build(AssistantConfig, assistant_config, "[assistant]")
+        if assistant_config.get("apikey")
+        else None
+    )
+
     radarr = (
         _build_arr_config(radarr_config, dry_run, "radarr")
         if radarr_config is not None
@@ -380,6 +391,7 @@ def _build_config(data: Mapping[str, Any]) -> ConfigSettings:
         sabnzbd=sabnzbd,
         bazarr=bazarr,
         unraid=unraid,
+        assistant=assistant,
         links=_build_links(data.get("links", [])),
         empty_trash=empty_trash,
         duplicates=duplicates,

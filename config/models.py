@@ -617,6 +617,48 @@ class UnraidConfig:
         return f"UnraidConfig(url={self.url}{public},apikey={len(self.apikey) * '*'})"
 
 
+# the models the assistant can use (web.assistant), best first
+ASSISTANT_MODELS = {
+    "claude-opus-5-5": "Claude Opus 5.5",
+    "claude-sonnet-5-5": "Claude Sonnet 5.5",
+    "claude-haiku-5-5": "Claude Haiku 5.5",
+}
+# how hard it thinks: higher is more thorough and costs more
+ASSISTANT_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+
+
+@dataclass
+class AssistantConfig:
+    """the Assistant page's chat (web.assistant): Claude through Anthropic's api, with
+    helperr's read-only tools
+
+    apikey: (str) an Anthropic API key (console.anthropic.com), billed per use
+    model: (str) ASSISTANT_MODELS key
+    effort: (str) ASSISTANT_EFFORTS
+    max_tool_calls: (int) tool calls one question may make before it has to answer
+    """
+
+    apikey: str
+    model: str = "claude-opus-5-5"
+    effort: str = "high"
+    max_tool_calls: int = 30
+
+    def __post_init__(self):
+        check_types(self)
+        if self.model not in ASSISTANT_MODELS:
+            raise ValueError(f"assistant.model must be one of {', '.join(ASSISTANT_MODELS)}, got '{self.model}'")
+        if self.effort not in ASSISTANT_EFFORTS:
+            raise ValueError(f"assistant.effort must be one of {', '.join(ASSISTANT_EFFORTS)}, got '{self.effort}'")
+        if not 1 <= self.max_tool_calls <= 100:
+            raise ValueError(f"assistant.max_tool_calls must be from 1 to 100, got {self.max_tool_calls}")
+
+    def __repr__(self):
+        return (
+            f"AssistantConfig(model={self.model},effort={self.effort},"
+            f"max_tool_calls={self.max_tool_calls},apikey={len(self.apikey) * '*'})"
+        )
+
+
 # the status page's services a link can sit next to
 LINK_SERVICES = {
     "unraid": "Unraid", "plex": "Plex", "radarr": "Radarr", "sonarr": "Sonarr",
@@ -734,10 +776,11 @@ class ConfigSettings:
     sabnzbd: SabnzbdConfig | None = None
     bazarr: BazarrConfig | None = None
     unraid: UnraidConfig | None = None
+    assistant: AssistantConfig | None = None
     links: list[LinkConfig] = field(default_factory=list[LinkConfig])
     empty_trash: EmptyTrashSettings = field(default_factory=EmptyTrashSettings)
     duplicates: DuplicatesSettings = field(default_factory=DuplicatesSettings)
     web: WebDefaults = field(default_factory=WebDefaults)
 
     def __repr__(self):
-        return f"ConfigSettings(filter_time={self.filter_time}, web={self.web}, plex={self.plex}, empty_trash={self.empty_trash}, duplicates={self.duplicates}, tautulli={self.tautulli}, seerr={self.seerr}, sabnzbd={self.sabnzbd}, bazarr={self.bazarr}, unraid={self.unraid}, links={self.links}, autoscan={self.autoscan}, sonarr={self.sonarr}, radarr={self.radarr})"
+        return f"ConfigSettings(filter_time={self.filter_time}, web={self.web}, plex={self.plex}, empty_trash={self.empty_trash}, duplicates={self.duplicates}, tautulli={self.tautulli}, seerr={self.seerr}, sabnzbd={self.sabnzbd}, bazarr={self.bazarr}, unraid={self.unraid}, assistant={self.assistant}, links={self.links}, autoscan={self.autoscan}, sonarr={self.sonarr}, radarr={self.radarr})"

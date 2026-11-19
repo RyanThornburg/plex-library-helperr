@@ -1,0 +1,97 @@
+{# a chat's conversation and ask form, shared by the Assistant page and the chat popup
+   (assistant_panel.html). Imported with context: chat, turns, set_up, config, models,
+   settings_problem, error, draft and expired come from the page. panel=True adds a
+   panel field to every form, so the post answers with the popup's fragment #}
+
+{% macro panel_field(panel) %}{% if panel %}<input type="hidden" name="panel" value="1">{% endif %}{% endmacro %}
+
+{% macro notices() %}
+{% if settings_problem %}
+<p class="banner banner-bad">The settings can't be loaded: {{ settings_problem }}</p>
+{% elif not set_up %}
+<p class="banner banner-warn">The assistant isn't set up yet: add an Anthropic API key on <a href="/settings/assistant">Settings → Assistant</a>.</p>
+{% endif %}
+{% endmacro %}
+
+{% macro conversation(panel=False) %}
+{% set running = chat and chat.status == "running" %}
+{% for turn in turns %}
+{% set last = loop.last %}
+{% set t = loop.index %}
+<article class="turn"{% if last and not panel %} id="latest"{% endif %}>
+  <div class="question">
+    <p>{{ turn.question }}</p>
+    <p class="muted">{{ turn.asked_at | relative }}</p>
+  </div>
+  {% if turn.steps %}
+  <details class="steps" data-fold="{{ t }}">
+    <summary>{% if last and running %}Investigating: {% endif %}{{ turn.steps | length }} lookup{{ "s" if turn.steps | length != 1 }}{% set failed = turn.steps | selectattr("error") | list | length %}{% if failed %} <span class="muted">({{ failed }} failed)</span>{% endif %}</summary>
+    <ol>
+      {% for step in turn.steps %}
+      <li>
+        <details data-fold="{{ t }}-{{ loop.index }}">
+          <summary><b>{{ TOOL_LABELS.get(step.name, step.name) }}</b> {% if step.label %}<span class="machine">{{ step.label }}</span>{% endif %}{% if step.error %} <span class="state-word state-warn">failed</span>{% elif not step.result %} <span class="muted">running…</span>{% endif %}</summary>
+          {% if step.result %}<pre class="log">{{ step.result }}</pre>{% endif %}
+        </details>
+      </li>
+      {% endfor %}
+    </ol>
+  </details>
+  {% endif %}
+
+  {% if turn.html %}<div class="answer prose">{{ turn.html | safe }}</div>{% endif %}
+  {% if turn.note %}<p class="muted">{{ turn.note }}</p>{% endif %}
+
+  {% for action in turn.actions %}
+  {% set words, danger = action_button(action.kind, action.params) %}
+  <section class="card action{% if action.status == 'proposed' %} action-open{% endif %}"{% if not panel %} id="action-{{ action.id }}"{% endif %}>
+    <div class="heading">
+      <h2>Proposed fix</h2>
+      {% if action.status == "done" %}<span class="tag">done</span>
+      {% elif action.status == "failed" %}<span class="tag tag-solid-bad">failed</span>
+      {% elif action.status == "dismissed" %}<span class="tag">dismissed</span>
+      {% else %}<span class="tag tag-info">waiting for you</span>{% endif %}
+    </div>
+    <p>{{ action.description }}</p>
+    {% if action.reason %}<p class="muted">Why: {{ action.reason }}</p>{% endif %}
+    {% if action.status == "proposed" %}
+    {% if expired(action) %}
+    <p class="muted">Proposed over a day ago, so it can't be confirmed any more: ask again for a fresh look.</p>
+    {% else %}
+    <div class="actions">
+      <form method="post" action="/assistant/actions/{{ action.id }}/dismiss">{{ panel_field(panel) }}<button type="submit" class="button-secondary">Dismiss</button></form>
+      <form method="post" action="/assistant/actions/{{ action.id }}/confirm">{{ panel_field(panel) }}<button type="submit"{% if danger %} class="button-danger"{% endif %}>{{ words }}</button></form>
+    </div>
+    {% endif %}
+    {% else %}
+    <p class="muted">{{ action.status | capitalize }}{% if action.acted_by %} by {{ action.acted_by }}{% endif %} {{ action.acted_at | localtime }}{% if action.result %}: {{ action.result }}{% endif %}</p>
+    {% endif %}
+  </section>
+  {% endfor %}
+
+  {% if last and running %}
+  <p class="thinking">Claude is investigating{% if turn.steps %}, {{ turn.steps | length }} lookup{{ "s" if turn.steps | length != 1 }} so far{% endif %}… <span class="muted">{{ "This updates" if panel else "This page refreshes" }} until it answers.</span></p>
+  {% endif %}
+</article>
+{% endfor %}
+
+{% if chat and chat.error %}
+<p class="banner {{ 'banner-bad' if chat.status == 'failed' else 'banner-warn' }}">{{ chat.error }}</p>
+{% endif %}
+{% if error %}<p class="banner banner-bad">{{ error }}</p>{% endif %}
+{% endmacro %}
+
+{% macro ask_form(panel=False) %}
+{% set running = chat and chat.status == "running" %}
+{% if set_up %}
+<form method="post" action="/assistant{% if chat %}/{{ chat.id }}{% endif %}" class="ask">
+  {{ panel_field(panel) }}
+  <label for="{{ 'chat-question' if panel else 'question' }}" class="visually-hidden">{{ "Ask a follow-up" if chat else "Your question" }}</label>
+  <textarea id="{{ 'chat-question' if panel else 'question' }}" name="question" rows="{{ 2 if panel else 3 }}" maxlength="8000" required{% if running %} disabled{% endif %} placeholder="{{ 'Ask a follow-up…' if chat else 'What’s wrong?' }}">{{ draft }}</textarea>
+  <div class="actions">
+    <button type="submit"{% if running %} disabled{% endif %}>{{ "Ask" if chat else "Investigate" }}</button>
+    {% if config %}<span class="muted">{{ models.get(config.model, config.model) }}, {{ config.effort }} effort</span>{% endif %}
+  </div>
+</form>
+{% endif %}
+{% endmacro %}

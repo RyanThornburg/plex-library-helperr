@@ -337,3 +337,181 @@ for (const now of document.querySelectorAll("[data-copy-to]")) {
   });
   now.append(button);
 }
+
+// the assistant as a chat popup on every page. The server renders the chat
+// (/assistant/panel[/id], the Assistant page's markup), this fetches it into the panel,
+// posts its forms (they carry panel=1, so the answer is the fragment again) and polls
+// while Claude works. Which chat and whether it's open carry over to the next page.
+// Without this script the button is a link to the Assistant page
+const popup = document.querySelector("[data-chat-popup]");
+if (popup) {
+  const launcher = document.querySelector("[data-chat-launcher]");
+  const label = launcher.querySelector("[data-chat-label]");
+  const body = popup.querySelector("[data-chat-body]");
+  const title = popup.querySelector("[data-chat-title]");
+  const full = popup.querySelector("[data-chat-full]");
+  const key = "helperr.chat";
+  // {open, id, running, news}
+  const state = stored(key, {});
+  const save = () => store(key, state);
+  let timer = null;
+
+  const showNews = () => {
+    launcher.classList.toggle("has-news", Boolean(state.news));
+    label.textContent = state.news ? "Answer ready" : "Ask";
+  };
+
+  const problem = (text) => {
+    body.querySelector("[data-chat-problem]")?.remove();
+    const p = document.createElement("p");
+    p.className = "banner banner-bad";
+    p.dataset.chatProblem = "";
+    p.textContent = text;
+    const scroller = body.querySelector(".chat-scroll");
+    if (scroller) {
+      scroller.append(p);
+      scroller.scrollTop = scroller.scrollHeight;
+    } else {
+      body.replaceChildren(p);
+    }
+    for (const button of body.querySelectorAll("form button")) button.disabled = false;
+  };
+
+  // toEnd: a question was just asked, show it
+  const show = (fragment, toEnd = false) => {
+    // a poll keeps the folds that were open and the scroll, unless it was at the end
+    const before = body.querySelector("[data-chat-panel]");
+    const scroller = body.querySelector(".chat-scroll");
+    const sameChat = before && before.dataset.chatId === fragment.dataset.chatId;
+    const atEnd = !scroller || scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 60;
+    const top = scroller ? scroller.scrollTop : 0;
+    const folds = new Set([...body.querySelectorAll("details[open][data-fold]")].map((d) => d.dataset.fold));
+    body.replaceChildren(fragment);
+    if (sameChat) {
+      for (const fold of fragment.querySelectorAll("details[data-fold]")) fold.open = folds.has(fold.dataset.fold);
+    }
+    const running = "running" in fragment.dataset;
+    const next = fragment.querySelector(".chat-scroll");
+    const answered = sameChat && "running" in before.dataset && !running;
+    const turn = [...next.querySelectorAll(".turn")].at(-1);
+    if (answered && atEnd && turn) {
+      // read a new answer from its question down, not from its end up
+      next.scrollTop += turn.getBoundingClientRect().top - next.getBoundingClientRect().top - 8;
+    } else {
+      next.scrollTop = sameChat && !atEnd && !toEnd ? top : next.scrollHeight;
+    }
+
+    if (state.running && !running && popup.hidden) state.news = true;
+    state.id = fragment.dataset.chatId || null;
+    state.running = running;
+    save();
+    showNews();
+    title.textContent = fragment.dataset.title;
+    full.href = state.id ? `/assistant/${state.id}` : "/assistant";
+    renderTimes();
+    clearTimeout(timer);
+    if (running) timer = setTimeout(() => load(), 3000);
+  };
+
+  const load = async (url, init = {}) => {
+    url ??= state.id ? `/assistant/panel/${state.id}` : "/assistant/panel";
+    try {
+      // json, so an error is fastapi's {"detail"}, not an error page
+      const { toEnd, ...request } = init;
+      const response = await fetch(url, { ...request, headers: { Accept: "application/json" } });
+      const type = response.headers.get("content-type") || "";
+      // signed out, a GET is sent to the sign-in page
+      if (response.redirected && new URL(response.url).pathname === "/login") {
+        return problem("You've been signed out: reload the page to sign in again.");
+      }
+      if (type.includes("text/html")) {
+        const doc = new DOMParser().parseFromString(await response.text(), "text/html");
+        const fragment = doc.querySelector("[data-chat-panel]");
+        if (fragment) return show(document.adoptNode(fragment), toEnd);
+      }
+      // the chat was deleted: start a new one
+      if (response.status === 404 && !init.method && state.id) {
+        state.id = null;
+        state.running = false;
+        save();
+        return load();
+      }
+      let detail = `Helperr answered ${response.status}.`;
+      if (response.status === 401) detail = "You've been signed out: reload the page to sign in again.";
+      else if (type.includes("json")) {
+        const data = await response.json().catch(() => ({}));
+        if (typeof data.detail === "string") detail = data.detail;
+      }
+      problem(detail);
+    } catch {
+      // Cloudflare Access sends an expired sign-in elsewhere, which fetch can't follow
+      problem("Helperr can't be reached right now. If this keeps up, reload the page: you may need to sign in again.");
+      clearTimeout(timer);
+      if (state.running) timer = setTimeout(() => load(), 10000);
+    }
+  };
+
+  const focusQuestion = () => body.querySelector("textarea:not([disabled])")?.focus();
+  const open = async (focus) => {
+    popup.hidden = false;
+    launcher.hidden = true;
+    launcher.setAttribute("aria-expanded", "true");
+    state.open = true;
+    state.news = false;
+    save();
+    showNews();
+    await load();
+    if (focus) focusQuestion();
+  };
+  const close = () => {
+    popup.hidden = true;
+    launcher.hidden = false;
+    launcher.setAttribute("aria-expanded", "false");
+    state.open = false;
+    save();
+    launcher.focus();
+  };
+
+  launcher.addEventListener("click", (event) => {
+    event.preventDefault();
+    open(true);
+  });
+  popup.querySelector("[data-chat-close]").addEventListener("click", close);
+  popup.querySelector("[data-chat-new]").addEventListener("click", async () => {
+    state.id = null;
+    state.running = false;
+    await load();
+    focusQuestion();
+  });
+  popup.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") close();
+  });
+
+  // a recent chat opens here, not on its page
+  body.addEventListener("click", (event) => {
+    const link = event.target.closest("a[data-panel-chat]");
+    if (!link) return;
+    event.preventDefault();
+    state.id = link.dataset.panelChat;
+    load();
+  });
+  body.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.target;
+    const data = new URLSearchParams(new FormData(form));
+    for (const button of form.querySelectorAll("button")) button.disabled = true;
+    load(form.getAttribute("action"), { method: "POST", body: data, toEnd: form.matches(".ask") });
+  });
+  // Enter asks, Shift+Enter is a new line, like a chat
+  body.addEventListener("keydown", (event) => {
+    const area = event.target.closest(".ask textarea");
+    if (!area || event.key !== "Enter" || event.shiftKey || event.isComposing) return;
+    event.preventDefault();
+    if (area.value.trim()) area.form.requestSubmit();
+  });
+
+  showNews();
+  if (state.open) open(false);
+  // closed while Claude works: keep checking, so the button says when it answered
+  else if (state.running && state.id) load();
+}

@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from web.db import WITHOUT_LOG, HealthIncident, JobRun
+from web.db import WITHOUT_LOG, ConfigSecret, HealthIncident, JobRun
 from web.health import LABELS
 from web.jobs import PLAN_JOBS, utc_now
 
@@ -55,6 +55,8 @@ class Shell:
     # "Sonarr needs you", linking to Status; None when nothing does
     pill: str | None = None
     pill_level: str = "warn"
+    # the chat popup's button, bottom right: set up, and not on the Assistant page itself
+    chat: bool = False
 
 
 # (key, label, href, icon, sub pages as (key, label, href, the paths they cover))
@@ -73,6 +75,7 @@ SECTIONS = [
     ("library", "Library", "/library", "library", []),
     ("requests", "Requests", "/requests", "inbox", []),
     ("playback", "Playback", "/playback", "playback", []),
+    ("assistant", "Assistant", "/assistant", "chat", []),
     ("settings", "Settings", "/settings", "settings", [
         ("general", "General", "/settings", ("/settings",)),
         ("connections", "Connections", "/settings/connections", ("/settings/connections",)),
@@ -80,6 +83,7 @@ SECTIONS = [
         ("duplicates", "Duplicates", "/settings/duplicates", ("/settings/duplicates",)),
         ("queue", "Stuck downloads", "/settings/queue", ("/settings/queue",)),
         ("guides", "TRaSH Guides", "/settings/trash-guides", ("/settings/trash-guides",)),
+        ("assistant", "Assistant", "/settings/assistant", ("/settings/assistant",)),
         ("webhook", "Webhook", "/settings/webhook", ("/settings/webhook", "/settings/api-key")),
         ("login", "Login", "/settings/login", ("/settings/login",)),
         ("history", "History", "/settings/history", ("/settings/history",)),
@@ -109,7 +113,7 @@ def section_of(path: str) -> str | None:
         return "status"
     if any(covers(path, p) for p in ("/runs", "/schedules", "/events", "/logs")) or path.startswith("/jobs/"):
         return "activity"
-    for key in ("library", "requests", "playback"):
+    for key in ("library", "requests", "playback", "assistant"):
         if covers(path, f"/{key}"):
             return key
     return None
@@ -136,6 +140,8 @@ class Needs:
     stuck: set[str] = field(default_factory=set)
     plans: int = 0
     failed: int = 0
+    # the assistant's api key is saved: every page gets the chat popup
+    assistant: bool = False
 
 
 def read_needs(request: Request) -> Needs:
@@ -170,6 +176,7 @@ def read_needs(request: Request) -> Needs:
                 ).first()
                 if plan is not None and runner is not None and runner.apply_problem(session, plan) is None:
                     needs.plans += 1
+            needs.assistant = session.get(ConfigSecret, "assistant.apikey") is not None
     except SQLAlchemyError, ValueError:
         logger.warning("WEB\t Couldn't read what needs you for the sidebar", exc_info=True)
         return Needs()
@@ -213,7 +220,7 @@ def build_shell(path: str, needs: Needs) -> Shell:
         names = sorted(needs.services, key=lambda s: (needs.services[s] != "bad", s))
         pill = f"{LABELS.get(names[0], names[0])} needs you" if len(names) == 1 else f"{len(names)} services need you"
         level = "bad" if "bad" in needs.services.values() else "warn"
-    return Shell(sections, pill, level)
+    return Shell(sections, pill, level, chat=needs.assistant and not covers(path, "/assistant"))
 
 
 def shell_context(request: Request) -> dict[str, Shell]:

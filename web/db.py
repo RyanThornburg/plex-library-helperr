@@ -384,6 +384,73 @@ class LoginSession(Base):
     last_seen_at: Mapped[datetime]
 
 
+class AssistantChat(Base):
+    """a conversation on the Assistant page (web.assistant). Kept for web.assistant.KEEP
+    after its last question"""
+
+    __tablename__ = "assistant_chats"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # the first question, cut short
+    title: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime]  # naive utc
+    updated_at: Mapped[datetime] = mapped_column(index=True)
+    created_by: Mapped[str | None] = mapped_column(String(320))
+    # idle, running (answering a question), failed (the last question got no answer)
+    status: Mapped[str] = mapped_column(String(16))
+    # why the last question got no answer, redacted
+    error: Mapped[str | None] = mapped_column(Text)
+    # what the chat has used of the api, summed over its questions
+    input_tokens: Mapped[int] = mapped_column(server_default="0")
+    output_tokens: Mapped[int] = mapped_column(server_default="0")
+    cache_read_tokens: Mapped[int] = mapped_column(server_default="0")
+    cache_write_tokens: Mapped[int] = mapped_column(server_default="0")
+    tool_calls: Mapped[int] = mapped_column(server_default="0")
+
+
+class AssistantMessage(Base):
+    """one message of a chat as the api takes it back, in order: content blocks are
+    stored exactly as the api sent them (thinking blocks must go back unchanged)"""
+
+    __tablename__ = "assistant_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chat_id: Mapped[int] = mapped_column(ForeignKey("assistant_chats.id", ondelete="CASCADE"), index=True)
+    # question (a user message: the context, then the question), answer (Claude's,
+    # with its tool calls) or results (a user message of tool results)
+    kind: Mapped[str] = mapped_column(String(16))
+    content: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
+    # a question's own words, as asked
+    text: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime]
+
+
+class AssistantAction(Base):
+    """a fix Claude proposed (web.assistant_actions), done only when someone confirms it"""
+
+    __tablename__ = "assistant_actions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chat_id: Mapped[int] = mapped_column(ForeignKey("assistant_chats.id", ondelete="CASCADE"), index=True)
+    # the propose_action call it came from
+    tool_use_id: Mapped[str] = mapped_column(String(64))
+    # web.assistant_actions.ACTIONS key
+    kind: Mapped[str] = mapped_column(String(32))
+    params: Mapped[dict[str, Any]] = mapped_column(JSON)
+    # what it does, written by helperr from the services' data, not by Claude
+    description: Mapped[str] = mapped_column(Text)
+    # Claude's reason
+    reason: Mapped[str] = mapped_column(Text)
+    # proposed, done, failed, dismissed
+    status: Mapped[str] = mapped_column(String(16))
+    result: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime]
+    acted_at: Mapped[datetime | None]
+    acted_by: Mapped[str | None] = mapped_column(String(320))
+    # Claude was told what became of it, with the next question
+    reported: Mapped[bool] = mapped_column(server_default=false())
+
+
 def make_engine(path: pathlib.Path) -> Engine:
     engine = create_engine(f"sqlite:///{path}")
 

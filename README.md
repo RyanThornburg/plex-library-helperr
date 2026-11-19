@@ -51,10 +51,11 @@ All of the data in these is made up.
 - **Library:** every movie, show and season in Plex with everyone's plays of it, to find what nobody watches: never watched since it was added, or not watched in a while (180 days unless you pick another number). Filter by library, type and requester, show TV a row per season, see counts per requester and per library, and download the list as CSV. Uses Tautulli's history, Plex, and Seerr for who asked for what.
 - **Requests:** every Seerr request, who made it, when it reached Plex and how much of it they watched. Uses Tautulli's history.
 - **Playback:** how each play was streamed and why it transcoded (quality setting, audio format, subtitles, HDR and so on), grouped by person and device with what to change.
+- **Assistant:** ask Claude about a problem in plain words ("S03E04 of The Bear won't play", "why didn't this movie download?") and it investigates: Radarr's and Sonarr's files, history and queue, SABnzbd, Plex's versions and files, Tautulli's plays, Bazarr, Seerr's reported issues, and Helperr's own runs, health history and log. It can only read. When it finds a fix it can make (search for an episode or movie, rescan a series or movie, remove a stuck download, refresh an item in Plex) it proposes it, and nothing happens until you confirm. Needs an Anthropic API key (billed per use). See [Assistant](#assistant).
 - **Sign-in:** a username and password, or Cloudflare Access if you already use it. Every page needs it.
 - **Settings:** everything is set up in the app, including connections (with a Test button) and rules (with a Preview button that shows what a rule would match before you save it). Every save is kept as a version you can compare and restore.
 - **Events and logs:** the app's log, viewable and downloadable from the app.
-- **JSON API:** most pages have a matching `/api/...` endpoint (runs, schedules, config, status, library, requests, playback). It needs the same sign-in as the pages.
+- **JSON API:** most pages have a matching `/api/...` endpoint (runs, schedules, config, status, library, requests, playback, assistant). It needs the same sign-in as the pages.
 
 ## Upgrading from version 1
 
@@ -224,6 +225,19 @@ The page compares what's saved with each arr as it is now, so you see the differ
 
 Each run plans the differences, and the run's page lists them for you to tick and apply. Applying reads the arrs again and plans again from the same version of the guides, and sends only a change that's still exactly as planned. Nothing is deleted, and custom formats and profiles the guides don't name are left alone. Schedule it (daily, say) and Activity's badge shows when a plan is waiting. Applying doesn't need `REMOVERS_ALLOW_APPLY`: it doesn't delete anything.
 
+## Assistant
+
+The **Assistant** answers questions about your setup by investigating it with Claude. Once it's set up, an **Ask** button sits at the bottom right of every page and opens it as a chat popup that stays open, on the same chat, as you move between pages (if an answer comes while it's closed, the button says **Answer ready**); the Assistant page shows the same chats full width, with all of them listed. Set it up on Settings → Assistant with an API key from [console.anthropic.com](https://console.anthropic.com/settings/keys). It's billed per use to that account, separate from a Claude.ai subscription. A question usually takes a few to a few dozen lookups; **Lookups per question** caps how many it may make, and each chat shows the tokens it used.
+
+What Claude can do:
+
+- **Read** (on its own): Radarr's and Sonarr's media, files, history, queue, logs and health (never their indexer, download client or notification settings, which hold other services' keys); Plex's libraries, items and sessions (never a scan); Tautulli's history and stream details; SABnzbd's queue, history and warnings; Bazarr's subtitles; Seerr's requests and issues; the Status page's check; Helperr's log; and a read-only query of Helperr's database (runs, plays, playback, requests, health incidents; never the login, sessions, keys or webhook key).
+- **Propose** (you confirm): search for episodes, a season or a movie; refresh and rescan a series or movie; remove a download from Radarr's or Sonarr's queue (optionally blocklisting it); refresh an item in Plex. A proposal says exactly what will happen, written by Helperr from the services' own data, and expires after a day. Nothing it can propose deletes library media.
+
+What leaves your network: your questions, and what Claude reads to answer them (titles, file names and paths, release names, Plex usernames, plays, log lines) go to Anthropic's API. Helperr's keys and tokens are removed from everything first, and web addresses are cut to their host, which also removes indexer keys from download links. Chats are kept for 90 days after their last question; delete one from its page.
+
+`POST /api/assistant` (`{"question": "...", "chat_id": 3}`, the chat id to follow up) queues a question and answers `202` with the chat's id; `GET /api/assistant/{id}` has its status, answers and proposals. Proposals are confirmed on the page only.
+
 ## Kometa
 
 Kometa has no API, so it reports its runs to Helperr through its webhooks instead. Settings → Webhook has the lines to paste under `webhooks:` in Kometa's `config.yml` (`run_start`, `run_end`, `error` and `version`). Leave out `changes` and `delete`: Helperr doesn't use them, and `changes` carries posters too large to accept. Kometa can't send headers, so the API key goes in the URL as its password, which Kometa sends as basic auth and hides in its own log.
@@ -358,6 +372,16 @@ One set for Radarr (`[radarr.trash]`), one for Sonarr (`[sonarr.trash]`).
 | `auto_formats` | Apply those custom format updates without review (default off, needs `formats`) |
 | `quality_sizes` | The guides' quality sizes to follow: `movie`, `sqp-streaming`, `sqp-uhd`, `anime` (Radarr), `series`, `anime` (Sonarr). Empty leaves them alone |
 | `profiles` | `[[radarr.trash.profiles]]` tables: `profile` (the arr's quality profile, by name), `guide` (the guide profile's trash_id), `score_set` (empty: the guide profile's), `settings` (also qualities, cutoff, minimum scores and language, default off), `scores` (your own scores, `"Custom format = score"`), `create` (imported: make the profile when the arr doesn't have one by that name, needs `settings`; default off) |
+
+### Assistant settings
+
+`[assistant]`, edited on Settings → Assistant. Its API key (`apikey`) is stored encrypted, like the connections' keys.
+
+| Key | What it does |
+| --- | --- |
+| `model` | `claude-opus-5-5` (default, investigates best), `claude-sonnet-5-5` or `claude-haiku-5-5` |
+| `effort` | How hard Claude thinks before each step: `low`, `medium`, `high` (default), `xhigh` or `max`. Higher digs further and costs more |
+| `max_tool_calls` | Lookups one question may make before it has to answer, 1 to 100 (default 30) |
 
 ### Autoscan
 

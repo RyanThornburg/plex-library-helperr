@@ -2,10 +2,11 @@
 
 import logging
 import pathlib
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 
 from http import HTTPStatus
+from typing import Any
 
 from fastapi import FastAPI, Request, Response
 from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
@@ -15,6 +16,8 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from version import VERSION
+from web.assistant import AssistantRunner
+from web.assistant_routes import router as assistant_router
 from web.auth import AccessMiddleware, AccessVerifier, PasswordMiddleware, SigningKeyClient
 from web.config_store import ConfigStore
 from web.db import make_engine, migrate
@@ -90,10 +93,11 @@ def create_app(
     load_config: LoadConfig | None = None,
     run_scheduler: bool = True,
     lookups: Lookups | None = None,
+    assistant_client: Callable[[str], Any] | None = None,
 ) -> FastAPI:
     """keys, run_job, load_config and lookups replace the team's signing keys, the real
     jobs, the stored config jobs run with and the *arr/plex data the settings pages use
-    in tests, which also leave the scheduler, stats/playback syncs and health checks off and call tick()"""
+    in tests (assistant_client the Anthropic client for an api key), which also leave the scheduler, stats/playback syncs and health checks off and call tick()"""
     settings = settings or load_web_settings()
     engine = make_engine(settings.database_path)
     store = ConfigStore(engine, SecretBox(settings.secret_key))
@@ -105,6 +109,7 @@ def create_app(
     stats = StatsSync(engine, store.load_settings)
     playback = PlaybackSync(engine, store.load_settings)
     health = HealthMonitor(engine, store.load_settings, runner)
+    assistant = AssistantRunner(engine, load_config, assistant_client)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -113,6 +118,7 @@ def create_app(
         if settings.auth_mode == "password":
             announce_setup_token(engine)  # until there's a login
         runner.start()
+        assistant.start()
         if run_scheduler:
             scheduler.start()
             stats.start()
@@ -134,6 +140,7 @@ def create_app(
             playback.stop()
             stats.stop()
             scheduler.stop()
+        assistant.stop()
         runner.stop()
         engine.dispose()
 
@@ -145,6 +152,7 @@ def create_app(
     app.state.stats = stats
     app.state.playback = playback
     app.state.health = health
+    app.state.assistant = assistant
     app.state.load_config = load_config
     app.state.store = store
     app.state.lookups = lookups or Lookups()
@@ -157,6 +165,7 @@ def create_app(
     app.include_router(config_api_router)
     app.include_router(login_router)
     app.include_router(guides_router)
+    app.include_router(assistant_router)
     # last of the settings pages: /settings/{arr} would catch /settings/trash
     app.include_router(rule_router)
     app.include_router(webhook_router)

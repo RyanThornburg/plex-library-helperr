@@ -20,6 +20,7 @@ SECRET_FIELDS: dict[str, tuple[str, str]] = {
     "bazarr.apikey": ("bazarr", "apikey"),
     "unraid.apikey": ("unraid", "apikey"),
     "autoscan.password": ("autoscan", "password"),
+    "assistant.apikey": ("assistant", "apikey"),
 }
 
 # a new install is dry until it's turned live
