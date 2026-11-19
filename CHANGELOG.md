@@ -2,6 +2,15 @@
 
 What changed in each release. Versions are `MAJOR.MINOR.PATCH`: the major number goes up when upgrading needs you to do something (a new required setting, a removed feature, a change that breaks the API), the minor number for new features, the patch number for fixes.
 
+## 2.7.0 (2026-11-19)
+
+### New
+
+- Assistant: ask Claude about a problem in plain words ("S02E04 won't play on the living room TV", "why didn't this movie download?") and it investigates Radarr, Sonarr, SABnzbd, Plex, Tautulli, Bazarr, Seerr and Helperr's own runs, health history and log, then says what it found. It only reads. When it finds a fix it can make (search for episodes or a movie, refresh and rescan, remove a stuck download, refresh an item in Plex) it proposes it as a card with a button that says what will happen, and nothing happens until you click it. Nothing it can propose deletes library media.
+- An **Ask** button at the bottom right of every page opens the chat as a popup that stays with you from page to page; the Assistant page shows every chat full width. Answers appear as Claude writes them, the line under your question says what it's looking up, you can write your next question while it works, and **Stop** ends a question after the step it's on. Every lookup is folded under the answer so you can check its work.
+- Set it up on Settings → Assistant with an API key from console.anthropic.com (billed per use, separately from a Claude.ai subscription), with the model, effort and how many lookups a question may make. The key is stored encrypted. Your questions and what Claude reads are sent to Anthropic, with Helperr's keys removed and web addresses cut to their host; chats are kept for 90 days.
+- `POST /api/assistant`, `GET /api/assistant/{id}` and `POST /api/assistant/{id}/stop`.
+
 ## 2.6.0 (2026-11-17)
 
 ### New

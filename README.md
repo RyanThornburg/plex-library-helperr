@@ -11,7 +11,7 @@ It does four kinds of jobs against Radarr and Sonarr:
 - **Removers** clean up old stuff. For Sonarr they delete old seasons or episodes of tagged series and keep the latest ones (good for daily shows). For Radarr they delete old movies from a root folder.
 - **Empty trash** empties the Plex trash, for servers with "Empty trash automatically after every scan" turned off. It skips any library that's scanning or has a suspiciously full trash.
 
-The web app adds a status page for all your services, request and watch stats, and playback quality stats. More on those below.
+The web app adds a status page for all your services, request and watch stats, playback quality stats, and an assistant you can ask about a problem. More on those below.
 
 **Test with dry run on until you like the results.** A new install starts in dry run.
 
@@ -40,6 +40,10 @@ All of the data in these is made up.
 **Playback.** Who is transcoding, on which device, and what to change to fix it.
 
 ![Playback page](docs/screenshots/playback.png)
+
+**Assistant.** Ask about a problem in plain words. Claude looks through your services, says what it found, and proposes a fix you confirm.
+
+![The Assistant's chat popup over the Status page](docs/screenshots/assistant.png)
 
 ## What the web app does
 
