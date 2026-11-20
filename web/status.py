@@ -1,4 +1,5 @@
-"""status.py - what unraid, radarr, sonarr, sabnzbd, bazarr, seerr and plex (through tautulli) are doing
+"""status.py - what unraid, radarr, sonarr, sabnzbd, bazarr, seerr and plex (through tautulli, and
+its own health from web.plex_health) are doing
 right now, for the status page. Read only, except ArrQueue, which removes stuck downloads
 someone selected. Every service is asked at once, and one that is down or slow only marks
 its own card"""
@@ -14,12 +15,23 @@ from typing import Any
 
 import requests
 
-from config.models import ArrConfig, BazarrConfig, ConfigSettings, SabnzbdConfig, SeerrConfig, TautulliConfig, UnraidConfig
+from config.models import (
+    ArrConfig,
+    BazarrConfig,
+    ConfigSettings,
+    EmptyTrashSettings,
+    PlexConfig,
+    SabnzbdConfig,
+    SeerrConfig,
+    TautulliConfig,
+    UnraidConfig,
+)
 from logging_config import failure_text, url_hosts
 from tautulli import TautulliRefused, tautulli_get
 from web.db import Playback
 from web.lookups import BAZARR_NOT_API, redact
 from web.playback import DECISIONS, stream_columns, tracks, transcode_reason
+from web.plex_health import PlexRefused, check_plex
 from web.seerr import SeerrRefused, seerr_get
 from web.unraid import UnraidRefused, error_text, unraid_query
 
@@ -1057,7 +1069,7 @@ def unraid_status(unraid: UnraidConfig | None) -> ServiceStatus:
 
 
 # ---------------------------------------------------------------------------
-# plex, through tautulli
+# plex: streams through tautulli, its own health from web.plex_health
 # ---------------------------------------------------------------------------
 
 
@@ -1106,11 +1118,32 @@ def stream(session: dict[str, Any]) -> Stream:
     return found
 
 
-def plex_status(tautulli: TautulliConfig | None) -> ServiceStatus:
+def plex_status(
+    tautulli: TautulliConfig | None, plex: PlexConfig | None = None, max_trash: int = EmptyTrashSettings.max_items
+) -> ServiceStatus:
+    """what's playing through Tautulli, then what Plex says itself (web.plex_health) when
+    its token is set: libraries' trash and files, its settings, CPU transcodes"""
     status = ServiceStatus("plex", "Plex")
-    if tautulli is None:
+    direct = plex if plex is not None and plex.baseurl and plex.token else None
+    if tautulli is None and direct is None:
         status.state = "off"
         return status
+    if tautulli is not None and not tautulli_activity(status, tautulli):
+        return status
+    if direct is not None:
+        try:
+            check_plex(status, direct.baseurl, direct.token, max_trash)  # type: ignore[arg-type]
+        except Exception as e:
+            # without Tautulli there's nothing else on the card: it's down
+            if tautulli is None:
+                raise
+            status.problem("warn", f"Helperr can't check Plex's trash, files and settings: {failure(e, 'Plex', direct.token)}", "direct")
+    status.problems.sort(key=lambda p: -LEVELS.get(p.level, 0))
+    return status
+
+
+def tautulli_activity(status: ServiceStatus, tautulli: TautulliConfig) -> bool:
+    """streams and bandwidth onto the card, False when Tautulli can't reach Plex"""
     base, key = tautulli.url.rstrip("/"), tautulli.apikey
 
     def cmd(name: str) -> Any:
@@ -1118,7 +1151,7 @@ def plex_status(tautulli: TautulliConfig | None) -> ServiceStatus:
 
     if not cmd("server_status").get("connected"):
         status.problem("bad", "Tautulli can't reach the Plex server")
-        return status
+        return False
     status.version = cmd("get_server_info").get("pms_version")
     activity = cmd("get_activity")
     sessions = activity.get("sessions") or []
@@ -1142,7 +1175,7 @@ def plex_status(tautulli: TautulliConfig | None) -> ServiceStatus:
         status.facts.append(("Bandwidth", bandwidth))
         status.activity_note = bandwidth
     status.streams = [stream(s) for s in sessions]
-    return status
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -1237,7 +1270,7 @@ def activity(services: list[ServiceStatus]) -> Activity:
 
 def failure(e: Exception, label: str, *secrets: str | None) -> str:
     """why a request to a service failed, secrets redacted"""
-    if isinstance(e, (Refused, TautulliRefused, SeerrRefused, UnraidRefused)):
+    if isinstance(e, (Refused, TautulliRefused, SeerrRefused, UnraidRefused, PlexRefused)):
         return redact(str(e), *secrets)
     if isinstance(e, requests.exceptions.ConnectionError):
         return "Couldn't connect"
@@ -1270,7 +1303,7 @@ def check_all(settings: ConfigSettings, now: datetime) -> list[ServiceStatus]:
     checks: list[tuple[ServiceStatus, Callable[[], ServiceStatus]]] = [
         # the server under everything else first: a disk dropping out is the worst news
         (ServiceStatus("unraid", "Unraid"), lambda: unraid_status(settings.unraid)),
-        (ServiceStatus("plex", "Plex"), lambda: plex_status(settings.tautulli)),
+        (ServiceStatus("plex", "Plex"), lambda: plex_status(settings.tautulli, settings.plex, settings.empty_trash.max_items)),
         (ServiceStatus("radarr", "Radarr"), lambda: arr_status("radarr", "Radarr", settings.radarr, min_free)),
         (ServiceStatus("sonarr", "Sonarr"), lambda: arr_status("sonarr", "Sonarr", settings.sonarr, min_free)),
         (ServiceStatus("bazarr", "Bazarr"), lambda: bazarr_status(settings.bazarr)),
@@ -1282,7 +1315,7 @@ def check_all(settings: ConfigSettings, now: datetime) -> list[ServiceStatus]:
         getattr(service, "apikey", None)
         for service in (settings.radarr, settings.sonarr, settings.sabnzbd, settings.seerr, settings.tautulli, settings.bazarr, settings.unraid)
         if service
-    ]
+    ] + [settings.plex.token if settings.plex else None]
     with ThreadPoolExecutor(max_workers=len(checks)) as pool:
         futures = [pool.submit(_checked, status, check, *secrets) for status, check in checks]
         return [f.result() for f in futures]

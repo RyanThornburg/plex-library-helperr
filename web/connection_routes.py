@@ -42,7 +42,7 @@ REQUIRED_SECRETS = ("radarr", "sonarr", "plex", "tautulli", "seerr", "sabnzbd", 
 SERVICE_HINTS = {
     "radarr": "Settings → General → API Key in Radarr.",
     "sonarr": "Settings → General → API Key in Sonarr.",
-    "plex": "Your X-Plex-Token. Used to refresh libraries and empty the trash.",
+    "plex": "Your X-Plex-Token (the server owner's). Used to refresh libraries, empty the trash, and for the Status page's checks of its trash, files and settings.",
     "tautulli": "Settings → Web Interface → API key. Watch history for removers' watch protection; without it, Plex history is used (completed plays only).",
     "seerr": "Settings → General → API Key in Seerr (or Overseerr). Requests and who made them, for the Requests page.",
     "sabnzbd": "Config → General → API Key in SABnzbd (not the NZB key). Queue, speed, warnings and failed downloads, for the Status page.",
