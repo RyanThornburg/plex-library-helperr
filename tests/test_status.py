@@ -584,6 +584,53 @@ class TestUnraid:
             ("warn", "Notification: Warning [TOWER] - reallocated sector ct is 8: ST10000 (sdf) see http://x", "notice:Warning [TOWER] - reallocated sector ct is 8|ST10000 (sdf) see http://x/y?key=abc"),
         ]
 
+    def test_a_warning_unraid_says_is_over_is_left_out(self):
+        # the notices are the ones the live server had unread after cache_ssd filled up
+        def note(title, subject, at, description=""):
+            return {"title": title, "subject": subject, "description": description, "timestamp": f"2026-11-22T{at}:00.000Z"}
+
+        warnings = [
+            note("Fix Common Problems - RattRaid", "Warnings have been found with your server.(RattRaid)", "09:30",
+                 "Investigate at Settings / User Utilities / Fix Common Problems"),
+            note("Unraid Status", "Mover Tuning Notification", "01:30", "Cache watchdog: cache_ssd is at 93%"),
+            note("Unraid Cache_ssd disk disk utilization", "Warning [RATTRAID] - Cache_ssd disk is high on usage (91%)", "01:29"),
+            note("Unraid Disk 3 temperature", "Warning [RATTRAID] - Disk 3 is hot (46 C)", "02:00"),
+            note("Unraid Disk 4 SMART health [5]", "Warning [RATTRAID] - reallocated sector ct is 8", "02:00"),
+        ]
+        notices = [
+            note("Unraid Status", "Mover Tuning Notification", "02:10"),
+            note("Unraid Cache_ssd disk message", "Notice [RATTRAID] - Cache_ssd disk returned to normal utilization level", "01:32"),
+            # another disk's all-clear, and one from before the warning, don't clear it
+            note("Unraid Disk 2 message", "Notice [RATTRAID] - Disk 2 returned to normal temperature", "03:00"),
+            note("Unraid Disk 3 message", "Notice [RATTRAID] - Disk 3 returned to normal temperature", "01:00"),
+            # a smart all-clear only clears the same attribute
+            note("Unraid Disk 4 SMART message [187]", "Notice [RATTRAID] - reported uncorrect returned to normal value", "03:00"),
+        ]
+        result, _ = unraid_run(unraid_data(notifications={"alerts": [], "warnings": warnings, "notices": notices}))
+        assert [key.split("|")[0] for _, _, key in texts(result)] == [
+            "notice:Warnings have been found with your server.(RattRaid)",
+            "notice:Warning [RATTRAID] - Disk 3 is hot (46 C)",
+            "notice:Warning [RATTRAID] - reallocated sector ct is 8",
+        ]
+
+    @pytest.mark.parametrize("title, cleared_by", [
+        ("Unraid Disk 3 temperature", "Unraid Disk 3 message"),
+        ("Unraid Disk 3 disk utilization", "Unraid Disk 3 message"),
+        ("Unraid Disk 3 error", "Unraid Disk 3 message"),
+        ("Unraid Disk 3 SMART health [5]", "Unraid Disk 3 SMART message [5]"),
+        ("Unraid array errors", "Unraid array errors"),
+        ("Unraid Parity-Check", "Unraid Parity-Check"),
+        ("Docker high image disk utilization", "Docker image disk utilization"),
+        ("Docker critical image disk utilization", "Docker image disk utilization"),
+        ("Boot drive failure", "Boot drive operation"),
+    ])
+    def test_unraids_monitor_pairs_a_warning_with_its_all_clear(self, title, cleared_by):
+        assert status.notice_topic(title) == status.notice_topic(cleared_by)
+        warning = {"title": title, "subject": "Warning [T] - x", "timestamp": "2026-11-22T01:00:00Z"}
+        assert status.cleared(warning, [{"title": cleared_by, "subject": "Notice [T] - y", "timestamp": "2026-11-22T02:00:00Z"}])
+        # without a time it can't be told apart from an older one
+        assert not status.cleared({**warning, "timestamp": None}, [{"title": cleared_by, "subject": "Notice [T] - y", "timestamp": "2026-11-22T02:00:00Z"}])
+
     @pytest.mark.parametrize("state, charge, problems, fact", [
         ("ONBATT", 80, [("bad", "The UPS is running on battery: 80% charged, about 30m left", "ups:battery")], "On battery, 80% charged"),
         ("ONBATT LOWBATT", 9, [("bad", "The UPS is running on battery: 9% charged, about 30m left, and the battery is low", "ups:battery")], "On battery, 9% charged"),

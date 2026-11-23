@@ -760,9 +760,11 @@ def bazarr_status(bazarr: BazarrConfig | None) -> ServiceStatus:
 # ---------------------------------------------------------------------------
 
 UNRAID_DISK = "name status type rotational temp numErrors fsSize fsFree warning critical"
-UNRAID_NOTIFICATION = "subject description"
+UNRAID_NOTIFICATION = "title subject description timestamp"
 # unread warnings and alerts read, of each
 UNRAID_NOTIFICATIONS = 20
+# unread normal notices read (newest first), for the all-clears among them
+UNRAID_NOTICES = 100
 # everything the card shows, in one request. A field the key can't read (or docker while
 # the array is stopped) answers null with an error, and the rest still answers
 UNRAID_QUERY = f"""query HelperrStatus {{
@@ -779,6 +781,7 @@ UNRAID_QUERY = f"""query HelperrStatus {{
   notifications {{
     alerts: list(filter: {{type: UNREAD, importance: ALERT, offset: 0, limit: {UNRAID_NOTIFICATIONS}}}) {{ {UNRAID_NOTIFICATION} }}
     warnings: list(filter: {{type: UNREAD, importance: WARNING, offset: 0, limit: {UNRAID_NOTIFICATIONS}}}) {{ {UNRAID_NOTIFICATION} }}
+    notices: list(filter: {{type: UNREAD, importance: INFO, offset: 0, limit: {UNRAID_NOTICES}}}) {{ {UNRAID_NOTIFICATION} }}
   }}
   docker {{ containers {{ names state status autoStart }} }}
 }}"""
@@ -790,6 +793,14 @@ UPS_QUERY = """query HelperrUps {
 # apcupsd's notifications all have this subject ("Power failure…", "Running on batteries",
 # "Power has returned…"), and unraid never clears them: the UPS's live state replaces them
 UPS_NOTICE = "UPS Alert"
+# unraid never clears a warning either: when it's over, its monitor sends a normal notice
+# ("Notice [SERVER] - Disk 3 returned to normal temperature") under a paired event (title):
+# "Unraid Disk 3 temperature" / "disk utilization" / "error" → "Unraid Disk 3 message",
+# "Unraid Disk 3 SMART health [5]" → "... SMART message [5]", "Unraid array errors" and
+# "Unraid Parity-Check" keep theirs
+MONITOR_EVENT = re.compile(r"^(Unraid .+?) (?:temperature|disk utilization|error|message)$")
+SMART_EVENT = re.compile(r"^(Unraid .+) SMART (?:health|message) (\[.+\])$")
+ALL_CLEAR = "Notice ["
 # the array isn't started, in unraid's words (ArrayState)
 ARRAY_STATES = {
     "STOPPED": "The array is stopped",
@@ -987,18 +998,64 @@ def unraid_ups(status: ServiceStatus, ups: dict[str, Any]) -> bool:
     return True
 
 
+def notice_topic(title: str) -> str:
+    """what a notification is about, from its event (title), so unraid's monitor's warning
+    and its all-clear match (MONITOR_EVENT)"""
+    if found := SMART_EVENT.match(title):
+        return f"{found[1]} SMART {found[2]}"
+    if found := MONITOR_EVENT.match(title):
+        return found[1]
+    if title.startswith("Docker ") and title.endswith("image disk utilization"):
+        return "Docker image disk utilization"
+    if title.startswith("Boot drive "):
+        return "Boot drive"
+    return title
+
+
+def _notice_time(note: dict[str, Any]) -> datetime | None:
+    try:
+        found = datetime.fromisoformat(str(note.get("timestamp")))
+    except ValueError:
+        return None
+    return found if found.tzinfo else found.replace(tzinfo=timezone.utc)
+
+
+def cleared(note: dict[str, Any], notices: list[dict[str, Any]]) -> bool:
+    """whether a later normal notice says a warning or alert is over: unraid's monitor's
+    all-clear for the same thing, or the same notice again at normal level (a plugin's,
+    such as Mover Tuning's "cache is full, moving" then "done")"""
+    when = _notice_time(note)
+    if when is None:
+        return False
+    title, subject = str(note.get("title") or ""), str(note.get("subject") or "").strip()
+    topic = notice_topic(title)
+    for later in notices:
+        if (later_at := _notice_time(later)) is None or later_at <= when:
+            continue
+        later_title, later_subject = str(later.get("title") or ""), str(later.get("subject") or "").strip()
+        if later_title == title and later_subject == subject:
+            return True
+        if later_subject.startswith(ALL_CLEAR) and notice_topic(later_title) == topic and title.startswith(("Unraid ", "Docker ", "Boot drive ")):
+            return True
+    return False
+
+
 def unraid_notifications(
     status: ServiceStatus, notes: dict[str, Any] | None, errors: list[dict[str, Any]], ups_live: bool = False
 ) -> None:
     """unraid's unread alerts and warnings (smart warnings among them), until they're
-    dismissed in unraid. apcupsd's are left out while the UPS's live state is on the card"""
+    dismissed in unraid or a later notice says they're over (cleared()). apcupsd's are left
+    out while the UPS's live state is on the card"""
     if notes is None:
         status.problem("warn", f"Unraid's notifications can't be read: {error_text(errors, 'notifications')}", "notifications")
         return
+    notices = [n for n in notes.get("notices") or [] if isinstance(n, dict)]
     for level, kind in (("bad", "alerts"), ("warn", "warnings")):
         for note in notes.get(kind) or []:
             subject = str(note.get("subject") or "").strip()
             if ups_live and subject == UPS_NOTICE:
+                continue
+            if cleared(note, notices):
                 continue
             description = str(note.get("description") or "").strip()
             text = f"{subject}: {description}" if subject and description and description != subject else subject or description
