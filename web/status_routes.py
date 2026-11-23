@@ -55,7 +55,7 @@ REFRESH_SECONDS = 60
 NEEDS = {
     "unraid": ("Unraid", "unraid"),
     "plex": ("Tautulli", "tautulli"),
-    "plex_host": ("Plex host", "plex_host"),
+    "plex_host": ("node_exporter under Plex", "plex"),
     "radarr": ("Radarr", "radarr"),
     "sonarr": ("Sonarr", "sonarr"),
     "bazarr": ("Bazarr", "bazarr"),

@@ -193,7 +193,7 @@ class TestStatus:
     def test_reads_metrics_with_basic_auth(self):
         host._samples.clear()
         with patch.object(requests, "get", return_value=response(metrics_text())) as get:
-            result = host.plex_host_status(HOST, 100)
+            result = host.plex_host_status(HOST)
         assert result.state == "ok"
         url, kwargs = get.call_args.args[0], get.call_args.kwargs
         assert url == "http://plexbox:9100/metrics"
@@ -202,12 +202,12 @@ class TestStatus:
 
     def test_without_auth_and_a_metrics_url(self):
         with patch.object(requests, "get", return_value=response(metrics_text())) as get:
-            host.plex_host_status(PlexHostConfig(url="http://plexbox:9100/metrics/"), 100)
+            host.plex_host_status(PlexHostConfig(url="http://plexbox:9100/metrics/"))
         assert get.call_args.args[0] == "http://plexbox:9100/metrics"
         assert get.call_args.kwargs["auth"] is None
 
     def test_off_without_the_connection(self):
-        assert host.plex_host_status(None, 100).state == "off"
+        assert host.plex_host_status(None).state == "off"
 
     def test_refused_and_down_in_check_all(self):
         settings = ConfigSettings(plex=None, radarr=None, sonarr=None, plex_host=HOST)
@@ -224,6 +224,17 @@ class TestConfig:
         settings = build_config({"plex_host": {"url": "http://plexbox:9100", "mounts": ["/mnt/unraid/data"]}})
         assert settings.plex_host.mounts == ["/mnt/unraid/data"]
         assert build_config({}).plex_host is None
+
+    def test_its_own_low_space_threshold(self):
+        """the machine holds Plex's data, not the media: [web] min_free_gb (750 GB for the
+        library's disks) would always be under"""
+        assert PlexHostConfig(url="http://plexbox:9100").min_free_gb == 50
+        settings = build_config({"web": {"min_free_gb": 750}, "plex_host": {"url": "http://plexbox:9100"}})
+        with patch.object(requests, "get", return_value=response(metrics_text(root_free=621 * GB))):
+            [result] = [s for s in status.check_all(settings, NOW) if s.service == "plex_host"]
+        assert result.problems == []
+        with pytest.raises(ValueError, match="min_free_gb"):
+            build_config({"plex_host": {"url": "http://plexbox:9100", "min_free_gb": -1}})
 
     def test_mounts_are_absolute_paths(self):
         with pytest.raises(ValueError, match="absolute"):

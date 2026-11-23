@@ -627,15 +627,20 @@ class PlexHostConfig:
     mounts: (list[str]) paths that must be mounted, e.g. the media's NFS mounts. Every
         network mount node_exporter reports is checked either way; listed ones are
         also missed when they're gone
+    min_free_gb: (int) a local disk with less free space is a warning, 0 is off. Its own
+        rather than [web] min_free_gb: this machine holds Plex's data, not the media
     """
 
     url: str
     username: str | None = None
     password: str | None = None
     mounts: list[str] = field(default_factory=list[str])
+    min_free_gb: int = 50
 
     def __post_init__(self):
         check_types(self)
+        if self.min_free_gb < 0:
+            raise ValueError(f"plex_host.min_free_gb must be 0 or more, got {self.min_free_gb}")
         for mount in self.mounts:
             if not mount.startswith("/"):
                 raise ValueError(f"plex_host.mounts must be absolute paths, got '{mount}'")
@@ -646,6 +651,7 @@ class PlexHostConfig:
             ("username", self.username or None),
             ("password", len(self.password) * "*" if self.password else None),
             ("mounts", ",".join(self.mounts) or None),
+            ("min_free_gb", str(self.min_free_gb)),
         ]
         return f"PlexHostConfig({','.join(f'{k}={v}' for k, v in fields_ if v is not None)})"
 

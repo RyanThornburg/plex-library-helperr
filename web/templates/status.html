@@ -218,7 +218,7 @@
     <div class="line">
       <span class="line-name">{{ s.label }}</span>
       <span class="line-state">not connected</span>
-      <span class="line-facts">{% if s.service == "plex" %}Plex's activity comes from Tautulli. {% endif %}<a href="/settings/connections#{{ section }}">Connect {{ name }}</a></span>
+      <span class="line-facts">{% if s.service == "plex" %}Plex's activity comes from Tautulli. {% elif s.service == "plex_host" %}For Plex on its own machine. {% endif %}<a href="/settings/connections#{{ section }}">Connect {{ name }}</a></span>
       <span class="line-link">{{ open_link(s) }}</span>
     </div>
   {% else %}

@@ -223,7 +223,7 @@ class TestConnections:
         monkeypatch.setattr("web.connection_routes.check_connection", check)
         response = post(client, "/settings/connections/radarr", {"version": version(client), "action": "test", "url": "http://radarr:7878"})
         assert "Connected to Radarr 6.4.4" in response.text
-        assert seen == [("radarr", {"url": "http://radarr:7878", "public_url": "", "username": "", "mounts": "", "secret": "radarr-key"})]
+        assert seen == [("radarr", {"url": "http://radarr:7878", "public_url": "", "username": "", "secret": "radarr-key"})]
         assert "radarr-key" not in response.text
 
     def test_test_needs_only_its_own_key_to_decrypt(self, client, monkeypatch):
@@ -355,33 +355,68 @@ class TestConnections:
         assert response.status_code == 303
         assert store(client).load_settings().autoscan.url == "http://autoscan:3030"
 
-    def test_plex_host_with_basic_auth_and_mounts(self, client):
-        page = client.get("/settings/connections", headers=auth()).text
-        assert 'id="plex_host-mounts"' in page and 'id="plex_host-username"' in page
-        response = post(client, "/settings/connections/plex_host", {
-            "version": 0, "action": "save", "url": "http://192.168.1.25:9100/", "username": "helperr",
-            "secret": "node-secret", "mounts": "/mnt/unraid/data\n\n /mnt/unraid/backup \n",
+    def plex(self, client, **fields):
+        return post(client, "/settings/connections/plex", {
+            "version": version(client), "action": "save", "url": "http://192.168.1.25:32400", **fields,
         })
+
+    def test_plex_machine_stats_in_plexs_form(self, client):
+        page = client.get("/settings/connections", headers=auth()).text
+        # one form for the machine: no line of its own
+        assert 'id="plex-host-url"' in page and 'id="plex_host"' not in page
+        response = self.plex(
+            client, secret="plex-token", host_url=" http://192.168.1.25:9100/ ", host_username="helperr",
+            host_secret="node-secret", host_mounts="/mnt/unraid/data\n\n /mnt/unraid/backup \n", host_min_free_gb="20",
+        )
         assert response.status_code == 303
-        host = store(client).load_settings().plex_host
-        assert (host.url, host.username, host.password, host.mounts) == (
-            "http://192.168.1.25:9100", "helperr", "node-secret", ["/mnt/unraid/data", "/mnt/unraid/backup"],
+        settings = store(client).load_settings()
+        assert settings.plex.token == "plex-token"
+        host = settings.plex_host
+        assert (host.url, host.username, host.password, host.mounts, host.min_free_gb) == (
+            "http://192.168.1.25:9100", "helperr", "node-secret", ["/mnt/unraid/data", "/mnt/unraid/backup"], 20,
         )
         # the password is a secret, never in the document
         assert document(client)["plex_host"] == {
             "url": "http://192.168.1.25:9100", "username": "helperr", "mounts": ["/mnt/unraid/data", "/mnt/unraid/backup"],
+            "min_free_gb": 20,
         }
         page = client.get("/settings/connections", headers=auth()).text
-        assert "/mnt/unraid/data\n/mnt/unraid/backup</textarea>" in page
+        assert "/mnt/unraid/data\n/mnt/unraid/backup</textarea>" in page and 'value="20"' in page
+        # saving again with the password field empty keeps it
+        self.plex(client, host_url="http://192.168.1.25:9100", host_username="helperr", host_min_free_gb="50")
+        assert store(client).load_settings().plex_host.password == "node-secret"
+        assert "min_free_gb" not in document(client)["plex_host"]
 
-    def test_plex_host_without_auth_and_bad_mounts(self, client):
-        response = post(client, "/settings/connections/plex_host", {
-            "version": 0, "action": "save", "url": "http://192.168.1.25:9100", "mounts": "mnt/data",
-        })
-        assert response.status_code == 400 and "Mounts must be absolute paths" in response.text
-        post(client, "/settings/connections/plex_host", {"version": 0, "action": "save", "url": "http://192.168.1.25:9100"})
-        host = store(client).load_settings().plex_host
-        assert (host.username, host.password, host.mounts) == (None, None, [])
+    def test_an_empty_url_turns_the_machine_stats_off(self, client):
+        self.plex(client, secret="plex-token", host_url="http://192.168.1.25:9100", host_secret="node-secret")
+        self.plex(client, host_url="  ")
+        settings = store(client).load_settings()
+        assert settings.plex_host is None and settings.plex.token == "plex-token"
+        assert "plex_host.password" not in store(client).secret_info()
+
+    def test_disconnecting_plex_removes_its_machine_too(self, client):
+        self.plex(client, secret="plex-token", host_url="http://192.168.1.25:9100", host_secret="node-secret")
+        post(client, "/settings/connections/plex", {"version": version(client), "action": "disconnect"})
+        assert "plex_host" not in document(client)
+        assert "plex_host.password" not in store(client).secret_info()
+
+    def test_bad_machine_fields(self, client):
+        response = self.plex(client, secret="plex-token", host_url="http://192.168.1.25:9100", host_mounts="mnt/data", host_min_free_gb="lots")
+        assert response.status_code == 400
+        assert "Mounts must be absolute paths" in response.text and "whole number of GB" in response.text
+
+    def test_test_checks_the_machine_too(self, client, monkeypatch):
+        seen = []
+
+        def check(service, values):
+            seen.append((service, values))
+            return {"plex": "Plex rattPlex 1.43.5", "plex_host": "node_exporter 1.10.2 on rattPlex"}[service]
+
+        monkeypatch.setattr("web.connection_routes.check_connection", check)
+        response = self.plex(client, action="test", secret="plex-token", host_url="http://192.168.1.25:9100", host_username="helperr", host_secret="node-secret")
+        assert "Connected to Plex rattPlex 1.43.5, and its machine&#39;s stats: node_exporter 1.10.2 on rattPlex" in response.text
+        assert seen[1] == ("plex_host", {"url": "http://192.168.1.25:9100", "username": "helperr", "secret": "node-secret"})
+        assert "node-secret" not in response.text
 
 
 class TestRules:

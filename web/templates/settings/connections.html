@@ -15,7 +15,7 @@
 <details{% if active == service or unreadable %} open{% endif %}>
   <summary class="line">
     <span class="line-name">{{ label }}</span>
-    <span class="line-state">{% if unreadable %}<span class="state-word state-bad">key unreadable</span>{% elif configured and (secret or service in ("autoscan", "plex_host")) %}connected{% else %}not set up{% endif %}</span>
+    <span class="line-state">{% if unreadable %}<span class="state-word state-bad">key unreadable</span>{% elif configured and (secret or service == "autoscan") %}connected{% else %}not set up{% endif %}</span>
     <span class="line-facts machine">{{ values.url }}{% if values.public_url %}<span class="muted"> · </span>{{ values.public_url }}{% endif %}</span>
     <span class="line-link"></span>
   </summary>
@@ -31,7 +31,7 @@
   <form method="post" action="/settings/connections/{{ service }}#{{ service }}" class="form form-compact">
     {{ f.version_field() }}
     <label for="{{ service }}-url">URL</label>
-    <input id="{{ service }}-url" name="url" value="{{ values.url }}" placeholder="http://192.168.1.15{{ {'radarr': ':7878', 'sonarr': ':8989', 'plex': ':32400', 'tautulli': ':8181', 'seerr': ':5055', 'sabnzbd': ':8080', 'bazarr': ':6767', 'unraid': '', 'autoscan': ':3030', 'plex_host': '.25:9100'}[service] }}" spellcheck="false" autocomplete="off">
+    <input id="{{ service }}-url" name="url" value="{{ values.url }}" placeholder="http://192.168.1.15{{ {'radarr': ':7878', 'sonarr': ':8989', 'plex': ':32400', 'tautulli': ':8181', 'seerr': ':5055', 'sabnzbd': ':8080', 'bazarr': ':6767', 'unraid': '', 'autoscan': ':3030'}[service] }}" spellcheck="false" autocomplete="off">
     {% if service in public_url_services %}
     <label for="{{ service }}-public-url">Public URL</label>
     <div>
@@ -39,22 +39,39 @@
       <p class="hint">Where the Status page links to away from home. The URL above is the local one.</p>
     </div>
     {% endif %}
-    {% if service in ("autoscan", "plex_host") %}
-    <label for="{{ service }}-username">Username</label>
-    <input id="{{ service }}-username" name="username" value="{{ values.username }}" spellcheck="false" autocomplete="off">
-    {% endif %}
-    {% if service == "plex_host" %}
-    <label for="plex_host-mounts">Mounts</label>
-    <div>
-      <textarea id="plex_host-mounts" name="mounts" rows="2" spellcheck="false" placeholder="/mnt/media">{{ values.mounts }}</textarea>
-      <p class="hint">Optional, one per line: the media mounts Plex reads. Every network mount is checked anyway; these are also an error when they're not mounted at all.</p>
-    </div>
+    {% if service == "autoscan" %}
+    <label for="autoscan-username">Username</label>
+    <input id="autoscan-username" name="username" value="{{ values.username }}" spellcheck="false" autocomplete="off">
     {% endif %}
     <label for="{{ service }}-secret">{{ secret_label }}</label>
     <div>
       <input id="{{ service }}-secret" name="secret" type="password" autocomplete="new-password" spellcheck="false" placeholder="{{ 'saved, leave empty to keep' if secret else 'not set' }}">
       {% if secret %}<p class="hint">Saved {{ secret.updated_at | localtime }}{% if secret.updated_by %} by {{ secret.updated_by }}{% endif %}</p>{% endif %}
     </div>
+    {% if service == "plex" %}
+    {% set host_saved = secrets.get(host_secret) %}
+    <h3 class="form-heading">Plex's machine</h3>
+    <p class="form-note hint">{{ host_hint }}</p>
+    <label for="plex-host-url">node_exporter URL</label>
+    <input id="plex-host-url" name="host_url" value="{{ values.host_url }}" placeholder="optional, e.g. http://192.168.1.25:9100" spellcheck="false" autocomplete="off">
+    <label for="plex-host-username">Username</label>
+    <input id="plex-host-username" name="host_username" value="{{ values.host_username }}" spellcheck="false" autocomplete="off">
+    <label for="plex-host-secret">Password</label>
+    <div>
+      <input id="plex-host-secret" name="host_secret" type="password" autocomplete="new-password" spellcheck="false" placeholder="{{ 'saved, leave empty to keep' if host_saved else 'not set' }}">
+      {% if host_saved %}<p class="hint">Saved {{ host_saved.updated_at | localtime }}{% if host_saved.updated_by %} by {{ host_saved.updated_by }}{% endif %}{% if not host_saved.readable %}. It can't be decrypted (HELPERR_SECRET_KEY changed?): enter it again{% endif %}</p>{% endif %}
+    </div>
+    <label for="plex-host-mounts">Mounts</label>
+    <div>
+      <textarea id="plex-host-mounts" name="host_mounts" rows="2" spellcheck="false" placeholder="/mnt/media">{{ values.host_mounts }}</textarea>
+      <p class="hint">Optional, one per line: the media mounts Plex reads. Every network mount is checked anyway; these are also an error when they're not mounted at all.</p>
+    </div>
+    <label for="plex-host-min-free">Low disk space below</label>
+    <div>
+      <input id="plex-host-min-free" name="host_min_free_gb" type="number" min="0" value="{{ values.host_min_free_gb }}" class="input-days"> GB
+      <p class="hint">For the machine's own disks (Plex's database, metadata and transcodes), not the media. 0 turns it off.</p>
+    </div>
+    {% endif %}
     <span></span>
     <div class="actions">
       <button type="submit" name="action" value="save">Save</button>

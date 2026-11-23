@@ -1362,7 +1362,7 @@ def check_all(settings: ConfigSettings, now: datetime) -> list[ServiceStatus]:
         # the server under everything else first: a disk dropping out is the worst news
         (ServiceStatus("unraid", "Unraid"), lambda: unraid_status(settings.unraid)),
         (ServiceStatus("plex", "Plex"), lambda: plex_status(settings.tautulli, settings.plex, settings.empty_trash.max_items)),
-        (ServiceStatus("plex_host", "Plex host"), lambda: plex_host_status(settings.plex_host, min_free)),
+        (ServiceStatus("plex_host", "Plex host"), lambda: plex_host_status(settings.plex_host)),
         (ServiceStatus("radarr", "Radarr"), lambda: arr_status("radarr", "Radarr", settings.radarr, min_free)),
         (ServiceStatus("sonarr", "Sonarr"), lambda: arr_status("sonarr", "Sonarr", settings.sonarr, min_free)),
         (ServiceStatus("bazarr", "Bazarr"), lambda: bazarr_status(settings.bazarr)),

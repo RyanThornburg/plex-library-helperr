@@ -6,7 +6,8 @@ network, so Unraid's checks say nothing about it: this card does.
   mount timeout and reports it with node_filesystem_device_error, so a hung hard NFS
   mount is an error here instead of hanging the check. Mounts listed in the config are
   also an error when they're gone
-- local disks: free space against [web] min_free_gb, and one remounted read-only (what
+- local disks: free space against its own min_free_gb (not [web]'s: this machine holds
+  Plex's data, not the media), and one remounted read-only (what
   Linux does when a disk has errors)
 - load, memory, CPU temperature, uptime; CPU use and network throughput need two
   readings, so the last one per host is kept in memory (Sample) and the rate is over the
@@ -324,7 +325,7 @@ def read_metrics(url: str, username: str | None, password: str | None) -> Metric
     return parse_metrics(response.text)
 
 
-def plex_host_status(config: "PlexHostConfig | None", min_free_gb: int) -> "ServiceStatus":
+def plex_host_status(config: "PlexHostConfig | None") -> "ServiceStatus":
     from web.status import ServiceStatus
 
     status = ServiceStatus("plex_host", "Plex host")
@@ -332,6 +333,6 @@ def plex_host_status(config: "PlexHostConfig | None", min_free_gb: int) -> "Serv
         status.state = "off"
         return status
     metrics = read_metrics(config.url, config.username, config.password)
-    host_answers(status, metrics, config.mounts, min_free_gb, rates_since_last(config.url, sample(metrics)))
+    host_answers(status, metrics, config.mounts, config.min_free_gb, rates_since_last(config.url, sample(metrics)))
     status.problems.sort(key=lambda p: -{"bad": 2, "warn": 1}.get(p.level, 0))
     return status
