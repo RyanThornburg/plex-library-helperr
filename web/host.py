@@ -202,9 +202,15 @@ def host_answers(
     """node_exporter's metrics on the card"""
     if not metrics.get("node_filesystem_avail_bytes") and not metrics.get("node_cpu_seconds_total"):
         raise HostRefused("That URL doesn't answer with node_exporter's metrics: check it ends in :9100 (or its /metrics)")
-    status.version = label(metrics, "node_exporter_build_info", "version") or None
+    # the machine's OS, like Unraid's card shows Unraid's: node_exporter is only how it's read
+    kernel = label(metrics, "node_uname_info", "release")
+    status.version = label(metrics, "node_os_info", "pretty_name") or (f"Linux {kernel}" if kernel else None)
     if name := label(metrics, "node_uname_info", "nodename"):
         status.facts.append(("Host", name))
+    if kernel and status.version != f"Linux {kernel}":
+        status.facts.append(("Kernel", kernel))
+    if exporter := label(metrics, "node_exporter_build_info", "version"):
+        status.facts.append(("node_exporter", exporter))
 
     filesystems: dict[str, Labels] = {}
     for found, _ in metrics.get("node_filesystem_size_bytes", []):

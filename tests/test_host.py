@@ -30,7 +30,8 @@ def metrics_text(
         "# HELP node_exporter_build_info A metric with a constant '1' value.",
         "# TYPE node_exporter_build_info gauge",
         'node_exporter_build_info{branch="debian/sid",goversion="go1.24",revision="",tags="",version="1.9.1"} 1',
-        'node_uname_info{domainname="(none)",machine="x86_64",nodename="rattplex",release="7.0.0",sysname="Linux",version="#1"} 1',
+        'node_uname_info{domainname="(none)",machine="x86_64",nodename="rattplex",release="7.0.0-42-generic",sysname="Linux",version="#1"} 1',
+        'node_os_info{id="ubuntu",name="Ubuntu",pretty_name="Ubuntu 26.04.1 LTS",version_id="26.04"} 1',
         *data,
         'node_filesystem_device_error{device="192.168.1.15:/mnt/user/backup",fstype="nfs4",mountpoint="/mnt/unraid/backup"} '
         f"{backup_error}",
@@ -78,9 +79,11 @@ class TestCard:
         result = card(found_rates=Rates(12.4, 45.1, 3.25))
         assert result.state == "ok"
         assert result.problems == []
-        assert result.version == "1.9.1"
+        # the machine's OS, not node_exporter's version
+        assert result.version == "Ubuntu 26.04.1 LTS"
         facts = dict(result.facts)
         assert facts["Host"] == "rattplex"
+        assert (facts["Kernel"], facts["node_exporter"]) == ("7.0.0-42-generic", "1.9.1")
         assert facts["Mounts"] == "/mnt/unraid/backup, /mnt/unraid/data"
         # only local disks, never /boot or tmpfs
         assert facts["Disks"] == "/ 621.0 GB free of 916.0 GB"
@@ -146,6 +149,11 @@ class TestCard:
         result = card(metrics_text(time=1_795_400_000.0, boot=1_795_400_000.0 - 600))
         assert result.state == "ok"
         assert [(p.level, p.text) for p in result.problems] == [("info", "The Plex host restarted 10m ago")]
+
+    def test_without_os_info_the_kernel(self):
+        text = "\n".join(line for line in metrics_text().splitlines() if not line.startswith("node_os_info"))
+        result = card(text)
+        assert result.version == "Linux 7.0.0-42-generic" and "Kernel" not in dict(result.facts)
 
     def test_not_node_exporter(self):
         with pytest.raises(HostRefused):
