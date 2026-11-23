@@ -108,6 +108,22 @@ class TestCard:
         assert [(p.level, p.key) for p in result.problems] == [("bad", "mount:/mnt/unraid/data/")]
         assert "isn't mounted" in result.problems[0].text
 
+    def test_no_network_mounts_at_all_is_likely_left_out(self):
+        # what ubuntu's node_exporter answers without the mount-points-exclude change: no /mnt
+        text = "\n".join(line for line in metrics_text().splitlines() if "/mnt/" not in line)
+        result = card(text, mounts=["/mnt/unraid/data"])
+        assert [(p.level, p.key) for p in result.problems] == [("warn", "mount:/mnt/unraid/data")]
+        assert "--collector.filesystem.mount-points-exclude" in result.problems[0].text
+        assert dict(result.facts)["Mounts"] == "none"
+
+    def test_a_bind_mount_of_a_disk_already_listed(self):
+        snap = "/var/snap/firefox/common/host-hunspell"
+        text = metrics_text() + "\n" + "\n".join([
+            f'node_filesystem_avail_bytes{{device="/dev/nvme0n1p2",fstype="ext4",mountpoint="{snap}"}} {621 * GB}',
+            f'node_filesystem_size_bytes{{device="/dev/nvme0n1p2",fstype="ext4",mountpoint="{snap}"}} {916 * GB}',
+        ])
+        assert dict(card(text).facts)["Disks"] == "/ 621.0 GB free of 916.0 GB"
+
     def test_read_only_root(self):
         result = card(metrics_text(root_ro=1))
         assert [(p.level, p.key) for p in result.problems] == [("bad", "readonly:/")]

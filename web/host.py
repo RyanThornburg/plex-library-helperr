@@ -44,6 +44,8 @@ LOW_MEMORY = 0.05
 RATE_MIN = timedelta(seconds=10)
 RATE_MAX = timedelta(minutes=30)
 RECENT_RESTART = timedelta(hours=1)
+# Debian's and Ubuntu's packages leave mounts under /mnt and /media out unless this is set
+EXCLUDE_FLAG = "--collector.filesystem.mount-points-exclude"
 
 Labels = dict[str, str]
 Metrics = dict[str, list[tuple[Labels, float]]]
@@ -223,15 +225,30 @@ def host_answers(
                 f"mount:{mountpoint}",
             )
     for mountpoint in mounts:
-        if mountpoint.rstrip("/") not in filesystems and mountpoint not in filesystems:
+        if mountpoint.rstrip("/") in filesystems or mountpoint in filesystems:
+            continue
+        if network:
             status.problem("bad", f"{mountpoint} isn't mounted, so Plex can't read the media on it", f"mount:{mountpoint}")
+        else:
+            # no network mount at all: more likely left out than every one of them gone
+            status.problem(
+                "warn",
+                f"{mountpoint} isn't among node_exporter's mounts. If it's mounted, node_exporter is leaving it "
+                f"out: Debian's and Ubuntu's skip /mnt and /media unless {EXCLUDE_FLAG} says otherwise",
+                f"mount:{mountpoint}",
+            )
     if network or mounts:
         status.facts.append(("Mounts", ", ".join(network) or "none"))
 
     disks = []
-    for mountpoint, found in sorted(filesystems.items()):
+    devices: set[str] = set()
+    # shortest first, so a bind mount of a disk already listed (a snap's) is left out
+    for mountpoint, found in sorted(filesystems.items(), key=lambda item: (len(item[0]), item[0])):
         if found.get("fstype") not in LOCAL_FS or mountpoint.startswith("/boot"):
             continue
+        if (device := found.get("device", "")) in devices:
+            continue
+        devices.add(device)
         if value(metrics, "node_filesystem_readonly", mountpoint=mountpoint) == 1:
             status.problem(
                 "bad", f"{mountpoint} has been remounted read-only: the disk may have errors", f"readonly:{mountpoint}"
