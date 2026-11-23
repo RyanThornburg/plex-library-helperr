@@ -385,7 +385,18 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="forgot the web app's password: delete it, sign every browser out and print "
         "a setup token for creating a new login",
     )
-    return parser.parse_args(argv)
+    jobs.add_argument(
+        "--maintenance",
+        nargs="+",
+        metavar=("start|end", "SOURCE"),
+        help="a maintenance window, from a backup's pre-run and post-run scripts: while "
+        "it's open the web app's health check doesn't record stopped containers or "
+        'services that can\'t be reached, e.g. --maintenance start "Appdata Backup"',
+    )
+    args = parser.parse_args(argv)
+    if args.maintenance and args.maintenance[0] not in ("start", "end"):
+        parser.error("--maintenance takes start or end, then optionally what's running")
+    return args
 
 
 def serve() -> None:
@@ -436,6 +447,28 @@ def reset_login() -> None:
         "Your settings and history are unchanged. With AUTH_MODE=cloudflare the app "
         "doesn't use this login."
     )
+
+
+def maintenance_window(action: str, source: str) -> None:
+    """--maintenance start|end, run in the container by a backup's scripts"""
+    from web import maintenance
+    from web.db import make_engine, migrate
+    from web.settings import database_path
+
+    engine = make_engine(database_path())
+    try:
+        migrate(engine)
+        if action == "start":
+            window = maintenance.start(engine, source)
+            logger.info("WEB\t Maintenance started: %s, until %s UTC at the latest", window.source, window.until())
+            print(f"Maintenance window open for {window.source}: the health check won't record stopped containers.")
+        elif (window := maintenance.end(engine)) is not None:
+            logger.info("WEB\t Maintenance ended: %s", window.source)
+            print(f"Maintenance window for {window.source} ended, the health check records everything from {window.until():%H:%M} UTC.")
+        else:
+            print("No maintenance window was open.")
+    finally:
+        engine.dispose()
 
 
 def load_settings() -> ConfigSettings:
@@ -610,6 +643,9 @@ def main(argv: list[str] | None = None) -> JobResult | None:
         return None
     if args.reset_login:
         reset_login()
+        return None
+    if args.maintenance:
+        maintenance_window(args.maintenance[0], " ".join(args.maintenance[1:]))
         return None
     logger.info("Helperr %s, loading config settings", VERSION)
     settings = load_settings()

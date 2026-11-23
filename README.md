@@ -248,6 +248,22 @@ Kometa has no API, so it reports its runs to Helperr through its webhooks instea
 
 The Status page then has a Kometa card: when the last run finished, how long it took and what it changed, and Kometa's errors from that run, such as a list that no longer exists or a filter Kometa doesn't know. They're recorded in the health history like any other problem. Helperr learns how often Kometa runs from its runs over the past week, and warns when none has finished for half again the longest usual gap plus an hour (until it has a day of runs, it assumes once a day). A newer Kometa version shows as a note. **Forget Kometa** on Settings → Webhook deletes its stored runs if you stop using it.
 
+## Backups that stop containers
+
+Unraid's Appdata Backup plugin stops each container while it copies its appdata, so every night Radarr, Sonarr, Tautulli and the rest are briefly unreachable. Tell Helperr when a backup runs and the health check won't record that as problems. Save this as a script on the server at `/mnt/user/appdata/plex-library-helperr/appdata-backup.sh` and make it executable (`chmod +x`). Keep it there, next to the `config` folder rather than inside it: Appdata Backup runs the script as root, and the container can write to its `config` folder, so a script in there could be changed from inside the container. Create it as root (from Unraid's terminal) so only root can change it:
+
+```bash
+#!/bin/bash
+# Appdata Backup runs this with pre-run before the backup and post-run after it
+case "$1" in
+  pre-run)  docker exec plex-library-helperr python main.py --maintenance start "Appdata Backup" ;;
+  post-run) docker exec plex-library-helperr python main.py --maintenance end ;;
+esac
+exit 0
+```
+
+In Appdata Backup's settings, set it as both the **pre-run script** and the **post-run script**. While the backup runs, and for 10 minutes after, services that can't be reached, stopped containers and Bazarr losing touch with an arr aren't recorded; the Status page says a backup is running. Anything still wrong after that is recorded as usual, and a backup that never says it finished stops counting after 6 hours. Problems that were already open before the backup carry on. Any other job that stops containers can do the same: `--maintenance start "<what>"`, then `--maintenance end`.
+
 ## Running jobs without the web app
 
 `main.py` can still run one job and exit. It uses the web app's database, so it needs the same `/config` folder and `HELPERR_SECRET_KEY`.

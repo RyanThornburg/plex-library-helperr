@@ -70,6 +70,9 @@
 
 {% set attention = services | selectattr("state", "in", ["warn", "bad"]) | list %}
 {% set connected = services | rejectattr("state", "equalto", "off") | list %}
+{% if maintenance %}
+<p class="banner">{{ maintenance.source }} is running{% if maintenance.ended_at %} (finished {{ maintenance.ended_at | localtime }}){% else %} since {{ maintenance.started_at | localtime }}{% endif %}: stopped containers and services that can't be reached aren't recorded until {{ maintenance.until() | localtime }}.</p>
+{% endif %}
 {% if config_error %}
 <p class="banner banner-bad">The settings can't be loaded: {{ config_error }} <a href="/settings/connections">Connections</a></p>
 {% elif not connected %}

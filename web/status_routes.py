@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from config import format_duration
 from config.models import ConfigSettings
+from web import maintenance
 from web.health import (
     CHECK_INTERVAL,
     KEEP,
@@ -154,6 +155,7 @@ def status_page(request: Request) -> HTMLResponse:
             "check_minutes": int(CHECK_INTERVAL.total_seconds() // 60),
             "auto_remove": auto_remove(request),
             "activity": activity(services),
+            "maintenance": maintenance.current(request.app.state.engine, checked_at),
         },
     )
 
@@ -186,6 +188,9 @@ def api_status(request: Request) -> JSONResponse:
             "checked_at": checked_at.isoformat(),
             "services": [s.to_dict() for s in services],
             "activity": jsonable_encoder(activity(services)),
+            "maintenance": jsonable_encoder(window.to_dict())
+            if (window := maintenance.current(request.app.state.engine, checked_at))
+            else None,
         }
     )
 

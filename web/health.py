@@ -6,7 +6,8 @@ A problem is the same from one check to the next by its key (Problem.key, or its
 so a count or countdown in the text doesn't start a new incident, and one that clears
 and comes back within REOPEN_WITHIN continues the same incident. A service that can't
 be checked gets a "down" incident and its other incidents stay as they were: nobody
-knows whether they cleared"""
+knows whether they cleared. During a maintenance window (web.maintenance) what stopped
+containers look like opens no new incident"""
 
 import logging
 import threading
@@ -23,6 +24,7 @@ from config.models import ConfigSettings
 from logging_config import redacted
 from web.db import HealthIncident
 from web.jobs import JobRunner, utc_now
+from web import maintenance
 from web.kometa import kometa_status
 from web.status import LEVELS, Item, Problem, ServiceStatus, check_all
 from web.sync import BackgroundSync, SyncStatus, save_status
@@ -118,10 +120,14 @@ def record(engine: Engine, statuses: Iterable[ServiceStatus], now: datetime) -> 
                 .order_by(HealthIncident.ended_at)
             )
         }
+        # a backup stopping containers on purpose: what that looks like isn't a new incident
+        window = maintenance.active(session, now)
         for status in statuses:
             seen = set()
             for issue in issues(status):
                 key = (status.service, issue.key)
+                if window is not None and key not in current and maintenance.quieted(*key):
+                    continue
                 seen.add(key)
                 incident = current.get(key) or recent.get(key)
                 if incident is None:
