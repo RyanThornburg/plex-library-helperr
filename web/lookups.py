@@ -20,6 +20,7 @@ from tautulli import TautulliRefused, tautulli_get
 from config.models import ArrConfig, MoverRule, PlexConfig, ProfileRule
 from web.jobs import utc_now
 from web.seerr import SeerrRefused, seerr_get
+from web.host import HostRefused, label, read_metrics
 from web.unraid import UnraidRefused, unraid_query
 
 logger = logging.getLogger(__name__)
@@ -265,6 +266,7 @@ NOT_API = "{} answered with a web page, not its API: check the URL, including an
 SERVICE_LABELS = {
     "radarr": "Radarr", "sonarr": "Sonarr", "plex": "Plex", "tautulli": "Tautulli",
     "seerr": "Seerr", "sabnzbd": "SABnzbd", "bazarr": "Bazarr", "unraid": "Unraid", "autoscan": "Autoscan",
+    "plex_host": "Plex host",
 }
 # without its base url bazarr redirects the api to its web page
 BAZARR_NOT_API = "Bazarr answered with its web page, not its API: add its base URL, e.g. http://192.168.1.15:6767/subs"
@@ -321,6 +323,13 @@ def check_connection(service: str, values: dict[str, str]) -> str:
             data, _ = unraid_query(url, secret, "{ vars { version name } }", timeout=TIMEOUT)
             about = data.get("vars") or {}
             return f"Unraid {about.get('version') or ''} ({about.get('name') or 'server'})"
+        if service == "plex_host":
+            username = values.get("username", "")
+            metrics = read_metrics(url, username or None, secret or None)
+            if not metrics.get("node_exporter_build_info"):
+                raise LookupFailed("That URL doesn't answer with node_exporter's metrics: check it ends in :9100")
+            name = label(metrics, "node_uname_info", "nodename")
+            return f"node_exporter {label(metrics, 'node_exporter_build_info', 'version')}" + (f" on {name}" if name else "")
         if service == "autoscan":
             username = values.get("username", "")
             response = requests.get(
@@ -332,7 +341,7 @@ def check_connection(service: str, values: dict[str, str]) -> str:
                 raise LookupFailed("Autoscan refused the username/password (HTTP 401)")
             response.raise_for_status()
             return "Autoscan's manual trigger"
-    except (LookupFailed, TautulliRefused, SeerrRefused, UnraidRefused) as e:
+    except (LookupFailed, TautulliRefused, SeerrRefused, UnraidRefused, HostRefused) as e:
         raise LookupFailed(redact(str(e), secret)) from None
     except requests.exceptions.JSONDecodeError:
         raise LookupFailed(NOT_API.format(SERVICE_LABELS.get(service, service))) from None

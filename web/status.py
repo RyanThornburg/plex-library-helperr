@@ -31,6 +31,7 @@ from tautulli import TautulliRefused, tautulli_get
 from web.db import Playback
 from web.lookups import BAZARR_NOT_API, redact
 from web.playback import DECISIONS, stream_columns, tracks, transcode_reason
+from web.host import HostRefused, plex_host_status
 from web.plex_health import PlexRefused, check_plex
 from web.seerr import SeerrRefused, seerr_get
 from web.unraid import UnraidRefused, error_text, unraid_query
@@ -1327,7 +1328,7 @@ def activity(services: list[ServiceStatus]) -> Activity:
 
 def failure(e: Exception, label: str, *secrets: str | None) -> str:
     """why a request to a service failed, secrets redacted"""
-    if isinstance(e, (Refused, TautulliRefused, SeerrRefused, UnraidRefused, PlexRefused)):
+    if isinstance(e, (Refused, TautulliRefused, SeerrRefused, UnraidRefused, PlexRefused, HostRefused)):
         return redact(str(e), *secrets)
     if isinstance(e, requests.exceptions.ConnectionError):
         return "Couldn't connect"
@@ -1361,6 +1362,7 @@ def check_all(settings: ConfigSettings, now: datetime) -> list[ServiceStatus]:
         # the server under everything else first: a disk dropping out is the worst news
         (ServiceStatus("unraid", "Unraid"), lambda: unraid_status(settings.unraid)),
         (ServiceStatus("plex", "Plex"), lambda: plex_status(settings.tautulli, settings.plex, settings.empty_trash.max_items)),
+        (ServiceStatus("plex_host", "Plex host"), lambda: plex_host_status(settings.plex_host, min_free)),
         (ServiceStatus("radarr", "Radarr"), lambda: arr_status("radarr", "Radarr", settings.radarr, min_free)),
         (ServiceStatus("sonarr", "Sonarr"), lambda: arr_status("sonarr", "Sonarr", settings.sonarr, min_free)),
         (ServiceStatus("bazarr", "Bazarr"), lambda: bazarr_status(settings.bazarr)),
@@ -1372,7 +1374,7 @@ def check_all(settings: ConfigSettings, now: datetime) -> list[ServiceStatus]:
         getattr(service, "apikey", None)
         for service in (settings.radarr, settings.sonarr, settings.sabnzbd, settings.seerr, settings.tautulli, settings.bazarr, settings.unraid)
         if service
-    ] + [settings.plex.token if settings.plex else None]
+    ] + [settings.plex.token if settings.plex else None, settings.plex_host.password if settings.plex_host else None]
     with ThreadPoolExecutor(max_workers=len(checks)) as pool:
         futures = [pool.submit(_checked, status, check, *secrets) for status, check in checks]
         return [f.result() for f in futures]

@@ -18,6 +18,7 @@ from config.models import (
     MoverRule,
     MovieRemoverRule,
     PlexConfig,
+    PlexHostConfig,
     ProfileRule,
     QueueCleanup,
     RemoverRule,
@@ -255,7 +256,7 @@ def _build_links(data: Any) -> list[LinkConfig]:
 # the document's sections that are tables
 TABLES = (
     "settings", "web", "plex", "tautulli", "seerr", "sabnzbd", "bazarr", "unraid", "autoscan", "radarr", "sonarr",
-    "assistant",
+    "assistant", "plex_host",
 )
 
 
@@ -363,6 +364,13 @@ def _build_config(data: Mapping[str, Any]) -> ConfigSettings:
         else None
     )
 
+    plex_host_config = data.get("plex_host", {})
+    plex_host = (
+        _build(PlexHostConfig, plex_host_config, "[plex_host]")
+        if plex_host_config.get("url")
+        else None
+    )
+
     assistant = (
         _build(AssistantConfig, assistant_config, "[assistant]")
         if assistant_config.get("apikey")
@@ -391,6 +399,7 @@ def _build_config(data: Mapping[str, Any]) -> ConfigSettings:
         sabnzbd=sabnzbd,
         bazarr=bazarr,
         unraid=unraid,
+        plex_host=plex_host,
         assistant=assistant,
         links=_build_links(data.get("links", [])),
         empty_trash=empty_trash,

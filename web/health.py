@@ -38,6 +38,7 @@ STATUS_SETTING = "health_check"
 LABELS = {
     "unraid": "Unraid",
     "plex": "Plex",
+    "plex_host": "Plex host",
     "radarr": "Radarr",
     "sonarr": "Sonarr",
     "bazarr": "Bazarr",

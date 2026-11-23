@@ -1,5 +1,6 @@
 """Tests for the status page: what radarr, sonarr, sabnzbd, seerr and plex report"""
 
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 from urllib.parse import urlparse
@@ -8,7 +9,17 @@ import pytest
 import requests
 from fastapi.testclient import TestClient
 
-from config.models import ArrConfig, BazarrConfig, ConfigSettings, LinkConfig, SabnzbdConfig, SeerrConfig, TautulliConfig, UnraidConfig
+from config.models import (
+    ArrConfig,
+    BazarrConfig,
+    ConfigSettings,
+    LinkConfig,
+    PlexHostConfig,
+    SabnzbdConfig,
+    SeerrConfig,
+    TautulliConfig,
+    UnraidConfig,
+)
 from tests.test_web import ORIGIN, FakeKeys, auth, fake_run_job
 from tests.test_web import settings  # noqa: F401 (fixture)
 from web import health, status
@@ -882,9 +893,10 @@ class TestCheckAll:
                 patch.object(status.requests, "post", return_value=response({"data": unraid_data()})):
             results = check_all(EVERYTHING, NOW)
         assert [(s.service, s.state) for s in results] == [
-            ("unraid", "ok"), ("plex", "ok"), ("radarr", "ok"), ("sonarr", "bad"), ("bazarr", "ok"), ("sabnzbd", "ok"), ("seerr", "ok"),
+            ("unraid", "ok"), ("plex", "ok"), ("plex_host", "off"), ("radarr", "ok"), ("sonarr", "bad"), ("bazarr", "ok"),
+            ("sabnzbd", "ok"), ("seerr", "ok"),
         ]
-        assert results[3].error == "Couldn't connect"
+        assert results[4].error == "Couldn't connect"
 
     def test_refused_key(self):
         with patch.object(status.requests, "get", return_value=response(code=401)):
@@ -893,12 +905,13 @@ class TestCheckAll:
 
     def test_errors_never_hold_a_key(self):
         # sabnzbd's key is a query param, requests puts the url in its errors
+        host = PlexHostConfig(url="http://plexbox:9100", username="helperr", password="host-key")
         with patch.object(status.requests, "get", return_value=response(code=500)), \
                 patch.object(status.requests, "post", return_value=response(code=500)):
-            results = check_all(EVERYTHING, NOW)
+            results = check_all(replace(EVERYTHING, plex_host=host), NOW)
         for result in results:
             assert result.state == "bad"
-            for key in ("sab-key", "radarr-key", "sonarr-key", "seerr-key", "tautulli-key", "bazarr-key", "unraid-key"):
+            for key in ("sab-key", "radarr-key", "sonarr-key", "seerr-key", "tautulli-key", "bazarr-key", "unraid-key", "host-key"):
                 assert key not in result.error
 
     def test_nothing_connected(self):

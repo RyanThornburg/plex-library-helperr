@@ -640,7 +640,7 @@ def secrets_of(settings: ConfigSettings) -> list[str]:
             getattr(settings.plex, "token", None), getattr(settings.tautulli, "apikey", None),
             getattr(settings.sabnzbd, "apikey", None), getattr(settings.bazarr, "apikey", None),
             getattr(settings.seerr, "apikey", None), getattr(settings.unraid, "apikey", None),
-            getattr(settings.assistant, "apikey", None),
+            getattr(settings.assistant, "apikey", None), getattr(settings.plex_host, "password", None),
         )
         if s
     ]

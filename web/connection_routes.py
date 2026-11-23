@@ -37,7 +37,9 @@ SERVICE_SECRETS = {
 }
 # the services the status page links to, which can have a public url too
 PUBLIC_URL_SERVICES = ("radarr", "sonarr", "tautulli", "seerr", "sabnzbd", "bazarr", "unraid")
-# secrets a service can't work without (autoscan may have no password)
+# services with basic auth, whose username is optional
+USERNAME_SERVICES = ("autoscan", "plex_host")
+# secrets a service can't work without (autoscan and node_exporter may have no password)
 REQUIRED_SECRETS = ("radarr", "sonarr", "plex", "tautulli", "seerr", "sabnzbd", "bazarr", "unraid")
 SERVICE_HINTS = {
     "radarr": "Settings → General → API Key in Radarr.",
@@ -48,6 +50,7 @@ SERVICE_HINTS = {
     "sabnzbd": "Config → General → API Key in SABnzbd (not the NZB key). Queue, speed, warnings and failed downloads, for the Status page.",
     "bazarr": "Settings → General → API Key in Bazarr. Health, throttled providers and wanted subtitles, for the Status page. Include Bazarr's base URL if it has one (e.g. /subs).",
     "unraid": "Settings → Management Access → API Keys in Unraid 7.2 or later (the Unraid Connect plugin before that): create a key with the Viewer role, which can only read. The array, disks, parity checks, containers and notifications, for the Status page. The URL is the one you open Unraid's web UI at.",
+    "plex_host": "The machine Plex runs on, through Prometheus node_exporter (on Ubuntu: sudo apt install prometheus-node-exporter): its media mounts, disk space, CPU, memory and network, for the Status page. The URL is node_exporter's, e.g. http://192.168.1.25:9100. Leave the username empty if node_exporter has no password.",
     "autoscan": "Moved folders go to Autoscan's manual trigger instead of refreshing whole Plex libraries. Leave the username empty if Autoscan has no auth.",
 }
 
@@ -67,6 +70,7 @@ def service_values(document: dict[str, Any], service: str) -> dict[str, str]:
         "url": section.get(url_key) or "",
         "public_url": section.get("public_url") or "",
         "username": section.get("username") or "",
+        "mounts": "\n".join(section.get("mounts") or []),
     }
 
 
@@ -127,6 +131,7 @@ def save_connection(request: Request, service: str, fields: FormLists) -> Respon
         "url": first(fields, "url"),
         "public_url": first(fields, "public_url"),
         "username": first(fields, "username"),
+        "mounts": first(fields, "mounts"),
     }
     # the key field is never filled in by the page, empty keeps the saved one
     new_secret = fields.get("secret", [""])[-1].strip()
@@ -156,6 +161,8 @@ def save_connection(request: Request, service: str, fields: FormLists) -> Respon
     has_secret = bool(new_secret) or secret_name in stored.secret_info()
     if service in REQUIRED_SECRETS and not has_secret:
         errors.append(f"{secret_label} is required")
+    if service == "plex_host":
+        errors += [f"Mounts must be absolute paths, e.g. /mnt/media: {m.strip()}" for m in values["mounts"].splitlines() if m.strip() and not m.strip().startswith("/")]
     if errors:
         return connections(request, service, values, errors)
 
@@ -173,11 +180,17 @@ def save_connection(request: Request, service: str, fields: FormLists) -> Respon
         section["public_url"] = values["public_url"]
     else:
         section.pop("public_url", None)
-    if service == "autoscan":
+    if service in USERNAME_SERVICES:
         if values["username"]:
             section["username"] = values["username"]
         else:
             section.pop("username", None)
+    if service == "plex_host":
+        mounts = [m.strip() for m in values["mounts"].splitlines() if m.strip()]
+        if mounts:
+            section["mounts"] = mounts
+        else:
+            section.pop("mounts", None)
     lookups(request).clear()
     return commit(
         request, fields, document, f"{label} connection",

@@ -617,6 +617,39 @@ class UnraidConfig:
         return f"UnraidConfig(url={self.url}{public},apikey={len(self.apikey) * '*'})"
 
 
+@dataclass
+class PlexHostConfig:
+    """the machine Plex runs on, through Prometheus node_exporter's /metrics (web.host):
+    its media mounts, disk space, load, memory, network, for the status page
+
+    url: (str) node_exporter, e.g. http://192.168.1.25:9100
+    username, password: (str) its basic auth (web-config.yml), when it has one
+    mounts: (list[str]) paths that must be mounted, e.g. the media's NFS mounts. Every
+        network mount node_exporter reports is checked either way; listed ones are
+        also missed when they're gone
+    """
+
+    url: str
+    username: str | None = None
+    password: str | None = None
+    mounts: list[str] = field(default_factory=list[str])
+
+    def __post_init__(self):
+        check_types(self)
+        for mount in self.mounts:
+            if not mount.startswith("/"):
+                raise ValueError(f"plex_host.mounts must be absolute paths, got '{mount}'")
+
+    def __repr__(self):
+        fields_: list[tuple[str, str | None]] = [
+            ("url", self.url),
+            ("username", self.username or None),
+            ("password", len(self.password) * "*" if self.password else None),
+            ("mounts", ",".join(self.mounts) or None),
+        ]
+        return f"PlexHostConfig({','.join(f'{k}={v}' for k, v in fields_ if v is not None)})"
+
+
 # the models the assistant can use (web.assistant), best first
 ASSISTANT_MODELS = {
     "claude-opus-5-5": "Claude Opus 5.5",
@@ -776,6 +809,7 @@ class ConfigSettings:
     sabnzbd: SabnzbdConfig | None = None
     bazarr: BazarrConfig | None = None
     unraid: UnraidConfig | None = None
+    plex_host: PlexHostConfig | None = None
     assistant: AssistantConfig | None = None
     links: list[LinkConfig] = field(default_factory=list[LinkConfig])
     empty_trash: EmptyTrashSettings = field(default_factory=EmptyTrashSettings)
@@ -783,4 +817,4 @@ class ConfigSettings:
     web: WebDefaults = field(default_factory=WebDefaults)
 
     def __repr__(self):
-        return f"ConfigSettings(filter_time={self.filter_time}, web={self.web}, plex={self.plex}, empty_trash={self.empty_trash}, duplicates={self.duplicates}, tautulli={self.tautulli}, seerr={self.seerr}, sabnzbd={self.sabnzbd}, bazarr={self.bazarr}, unraid={self.unraid}, assistant={self.assistant}, links={self.links}, autoscan={self.autoscan}, sonarr={self.sonarr}, radarr={self.radarr})"
+        return f"ConfigSettings(filter_time={self.filter_time}, web={self.web}, plex={self.plex}, empty_trash={self.empty_trash}, duplicates={self.duplicates}, tautulli={self.tautulli}, seerr={self.seerr}, sabnzbd={self.sabnzbd}, bazarr={self.bazarr}, unraid={self.unraid}, plex_host={self.plex_host}, assistant={self.assistant}, links={self.links}, autoscan={self.autoscan}, sonarr={self.sonarr}, radarr={self.radarr})"

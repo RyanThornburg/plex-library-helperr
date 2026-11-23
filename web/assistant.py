@@ -117,6 +117,7 @@ def connections(settings: ConfigSettings) -> str:
         "sonarr": settings.sonarr and settings.sonarr.baseurl, "radarr": settings.radarr and settings.radarr.baseurl,
         "plex": settings.plex, "tautulli": settings.tautulli, "sabnzbd": settings.sabnzbd,
         "bazarr": settings.bazarr, "seerr": settings.seerr, "unraid": settings.unraid,
+        "plex_host": settings.plex_host,
     }
     connected = [n for n, v in names.items() if v]
     missing = [n for n, v in names.items() if not v]

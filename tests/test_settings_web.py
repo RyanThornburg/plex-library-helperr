@@ -223,7 +223,7 @@ class TestConnections:
         monkeypatch.setattr("web.connection_routes.check_connection", check)
         response = post(client, "/settings/connections/radarr", {"version": version(client), "action": "test", "url": "http://radarr:7878"})
         assert "Connected to Radarr 6.4.4" in response.text
-        assert seen == [("radarr", {"url": "http://radarr:7878", "public_url": "", "username": "", "secret": "radarr-key"})]
+        assert seen == [("radarr", {"url": "http://radarr:7878", "public_url": "", "username": "", "mounts": "", "secret": "radarr-key"})]
         assert "radarr-key" not in response.text
 
     def test_test_needs_only_its_own_key_to_decrypt(self, client, monkeypatch):
@@ -354,6 +354,34 @@ class TestConnections:
         response = post(client, "/settings/connections/autoscan", {"version": 0, "action": "save", "url": "http://autoscan:3030", "username": ""})
         assert response.status_code == 303
         assert store(client).load_settings().autoscan.url == "http://autoscan:3030"
+
+    def test_plex_host_with_basic_auth_and_mounts(self, client):
+        page = client.get("/settings/connections", headers=auth()).text
+        assert 'id="plex_host-mounts"' in page and 'id="plex_host-username"' in page
+        response = post(client, "/settings/connections/plex_host", {
+            "version": 0, "action": "save", "url": "http://192.168.1.25:9100/", "username": "helperr",
+            "secret": "node-secret", "mounts": "/mnt/unraid/data\n\n /mnt/unraid/backup \n",
+        })
+        assert response.status_code == 303
+        host = store(client).load_settings().plex_host
+        assert (host.url, host.username, host.password, host.mounts) == (
+            "http://192.168.1.25:9100", "helperr", "node-secret", ["/mnt/unraid/data", "/mnt/unraid/backup"],
+        )
+        # the password is a secret, never in the document
+        assert document(client)["plex_host"] == {
+            "url": "http://192.168.1.25:9100", "username": "helperr", "mounts": ["/mnt/unraid/data", "/mnt/unraid/backup"],
+        }
+        page = client.get("/settings/connections", headers=auth()).text
+        assert "/mnt/unraid/data\n/mnt/unraid/backup</textarea>" in page
+
+    def test_plex_host_without_auth_and_bad_mounts(self, client):
+        response = post(client, "/settings/connections/plex_host", {
+            "version": 0, "action": "save", "url": "http://192.168.1.25:9100", "mounts": "mnt/data",
+        })
+        assert response.status_code == 400 and "Mounts must be absolute paths" in response.text
+        post(client, "/settings/connections/plex_host", {"version": 0, "action": "save", "url": "http://192.168.1.25:9100"})
+        host = store(client).load_settings().plex_host
+        assert (host.username, host.password, host.mounts) == (None, None, [])
 
 
 class TestRules:
