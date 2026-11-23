@@ -2,6 +2,18 @@
 
 What changed in each release. Versions are `MAJOR.MINOR.PATCH`: the major number goes up when upgrading needs you to do something (a new required setting, a removed feature, a change that breaks the API), the minor number for new features, the patch number for fixes.
 
+## 2.8.0 (2026-11-22)
+
+### New
+
+- Status: Plex's card now asks Plex itself too, with the Plex token: each library's trash (over Empty trash's max items is a warning, a tenth of the library or more is an error, which is what a missing media mount looks like after a scan), whether Plex can read each library's newest files (an error when it can't, or when checking them hangs), remote access failing (viewers away from home then go through Plex's slow relay), "Empty trash automatically after every scan" turned on, and a video transcode on the CPU while hardware transcoding is on (Plex has lost its GPU). The card also works with only the Plex token, without Tautulli.
+- Status: a Plex host card for when Plex runs on its own machine, read through Prometheus node_exporter: a media mount (NFS, SMB) that stops answering or isn't mounted is an error, so is a disk Linux remounted read-only; low space on its own threshold (50 GB by default), high load, low memory and a hot CPU are warnings; CPU use, memory, temperature, network and uptime are on the card. Set it up under Settings → Connections → Plex, in **Plex's machine**; the wiki has the node_exporter steps (password, firewall, and the option Ubuntu needs to report mounts under /mnt).
+- Backups that stop containers, like Unraid's Appdata Backup, can tell Helperr when they run: `python main.py --maintenance start "Appdata Backup"` from its pre-run script and `--maintenance end` from its post-run script. Until 10 minutes after the end, services that can't be reached, stopped containers and Bazarr losing touch with an arr aren't recorded as problems, and the Status page says a backup is running. The README and the wiki have the script.
+
+### Fixed
+
+- Status: Unraid warnings stayed "ongoing" after the problem was over (a cache that filled up and emptied again), because Unraid never clears a warning: it sends a separate "returned to normal" notice. A warning is now left out once a later notice says it's over.
+
 ## 2.7.0 (2026-11-19)
 
 ### New
