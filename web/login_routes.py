@@ -89,7 +89,9 @@ def bare_page(request: Request, name: str, context: dict[str, Any], status_code:
 
 
 def wait_text(request: Request) -> str | None:
-    wait = throttle(request).wait(client_key(request))
+    """None when the address may try (the try is counted as a failure until it
+    succeeds), else why not"""
+    wait = throttle(request).attempt(client_key(request))
     if wait is None:
         return None
     minutes = max(1, round(wait.total_seconds() / 60))
@@ -126,16 +128,15 @@ def _setup(request: Request, engine: Engine, fields: dict[str, str]) -> Response
         logger.warning("WEB\t Refused a setup attempt from %s: too many wrong tries", key)
         return bare_page(request, "setup.html", {**context, "errors": [waiting]}, 429)
     if not setup_token_matches(engine, fields.get("token", "")):
-        throttle(request).failed(key)
         logger.warning("WEB\t Wrong setup token from %s", key)
         error = "That setup token isn't right. Copy it from the container's log; restarting the app writes a new one."
         return bare_page(request, "setup.html", {**context, "errors": [error]}, 401)
+    throttle(request).succeeded(key)
     problems = username_problems(username) + password_problems(
         fields.get("password", ""), fields.get("confirm", "")
     )
     if problems:
         return bare_page(request, "setup.html", {**context, "errors": problems}, 400)
-    throttle(request).succeeded(key)
     set_login(engine, username, fields["password"])
     logger.info("WEB\t Login created for %r from %s", username, key)
     return with_session(RedirectResponse("/", status_code=303), request, create_session(engine, username))
@@ -179,7 +180,6 @@ def _login(request: Request, engine: Engine, fields: dict[str, str]) -> Response
         logger.warning("WEB\t Refused a sign-in from %s: too many wrong tries", key)
         return bare_page(request, "login.html", {**context, "errors": [waiting]}, 429)
     if not check_login(engine, typed, fields.get("password", "")):
-        throttle(request).failed(key)
         logger.warning("WEB\t Failed sign-in as %r from %s", typed, key)
         return bare_page(request, "login.html", {**context, "errors": ["Wrong username or password."]}, 401)
     throttle(request).succeeded(key)
@@ -241,7 +241,6 @@ def _password_change(request: Request, engine: Engine, fields: dict[str, str]) -
         return login_settings(request, [waiting])
     user = request.state.user
     if not check_login(engine, user, fields.get("current", "")):
-        throttle(request).failed(key)
         logger.warning("WEB\t Wrong current password from %s changing %s's password", key, user)
         return login_settings(request, ["The current password isn't right."])
     throttle(request).succeeded(key)

@@ -6,7 +6,10 @@ import pytest
 
 import config
 from config.document import (
+    SECRET_FIELDS,
+    SECRET_URLS,
     canonical,
+    moved_secrets,
     rule_to_dict,
     secrets_in,
     with_secrets,
@@ -127,3 +130,38 @@ class TestCanonical:
         assert canonical({"radarr": {"movers": [], "baseurl": "http://r"}}) == {
             "radarr": {"baseurl": "http://r"}
         }
+
+
+class TestMovedSecrets:
+    """a saved secret is only sent to the server it was saved for"""
+
+    BEFORE = {"radarr": {"baseurl": "http://radarr:7878"}, "plex_host": {"url": "http://plex:9100"}}
+
+    @pytest.mark.parametrize(
+        "url, moved",
+        [
+            ("http://radarr:7878", False),
+            ("http://Radarr:7878/radarr/", False),  # case and a base path don't matter
+            ("http://radarr:80", True),
+            ("http://radarr", True),
+            ("https://radarr:7878", True),
+            ("http://elsewhere:7878", True),
+            ("http://radarr:7878@elsewhere:7878", True),  # userinfo, the host is elsewhere
+        ],
+    )
+    def test_another_server(self, url, moved):
+        after = {**self.BEFORE, "radarr": {"baseurl": url}}
+        assert moved_secrets(self.BEFORE, after, {"radarr.apikey"}) == (["radarr.apikey"] if moved else [])
+
+    def test_only_the_saved_secrets_count(self):
+        after = {"radarr": {"baseurl": "http://elsewhere"}, "plex_host": {"url": "http://elsewhere:9100"}}
+        assert moved_secrets(self.BEFORE, after, {"plex_host.password", "assistant.apikey"}) == ["plex_host.password"]
+
+    def test_a_secret_without_a_url_before_counts_as_moved(self):
+        assert moved_secrets({}, self.BEFORE, {"radarr.apikey"}) == ["radarr.apikey"]
+
+    def test_no_url_after_sends_nothing(self):
+        assert moved_secrets(self.BEFORE, {"radarr": {}}, {"radarr.apikey"}) == []
+
+    def test_every_secret_but_the_assistants_has_a_url(self):
+        assert SECRET_URLS.keys() == SECRET_FIELDS.keys() - {"assistant.apikey"}

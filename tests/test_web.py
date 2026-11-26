@@ -787,7 +787,7 @@ def remover_config() -> ConfigSettings:
         RemoverRule(type="episodes", keep=5, tags=["rm-keep-5"], min_age=timedelta(hours=12)),
     ]
     sonarr = ArrConfig(
-        baseurl="http://arr", apikey="key", tag=None, removers=rules, remover_settings=RemoverSettings()
+        baseurl="http://arr", apikey="key", tag=None, removers=rules, remover_settings=RemoverSettings(max_deletes=50)
     )
     return ConfigSettings(plex=None, radarr=None, sonarr=sonarr)
 
@@ -835,6 +835,24 @@ class TestRemoversPage:
             assert c.post("/removers/auto-approve?rule=nope&enabled=true", headers=headers).status_code == 404
             response = c.post("/api/removers/auto-approve", json={"rule": "nope", "enabled": True}, headers=headers)
             assert response.status_code == 404
+
+    def test_needs_a_max_deletes(self, settings):
+        def uncapped():
+            config = remover_config()
+            config.sonarr.remover_settings.max_deletes = None
+            return config
+
+        app = create_app(settings, keys=FakeKeys(), run_job=fake_run_job, load_config=uncapped, run_scheduler=False)
+        with TestClient(app) as c:
+            page = c.get("/removers/auto-approve?rule=rm-housewives", headers={**auth(), "Accept": "text/html"})
+            assert page.status_code == 409 and "max deleted per run" in page.text
+            headers = {**auth(), **ORIGIN}
+            assert c.post("/removers/auto-approve?rule=rm-housewives&enabled=true", headers=headers).status_code == 409
+            response = c.post("/api/removers/auto-approve", json={"rule": "rm-housewives", "enabled": True}, headers=headers)
+            assert response.status_code == 409
+            assert c.app.state.runner.auto_approved_rules() == frozenset()
+            # turning off always works
+            assert c.post("/api/removers/auto-approve", json={"rule": "rm-housewives", "enabled": False}, headers=headers).status_code == 200
 
     def test_api_toggle(self, settings):
         with TestClient(removers_app(settings)) as c:

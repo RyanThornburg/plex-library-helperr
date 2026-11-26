@@ -164,7 +164,7 @@ class TestPlan:
         want = {"includeCustomFormatWhenRenaming": True, "specifications": [
             {"name": "Y", "implementation": "ReleaseTitleSpecification", "negate": True, "required": True, "fields": {"value": "b"}},
         ]}
-        assert spec_changes(have, want) == ["Include in renaming: True", "Adds condition Y: b", "Removes condition X"]
+        assert spec_changes(have, want) == ["Include in renaming: True", "Adds condition Y: not b (required)", "Removes condition X"]
 
     def test_profile_scores_follow_the_guide_and_its_score_set(self):
         state = arr_state()
@@ -254,6 +254,33 @@ class TestDiff:
         [row] = step.change.diff["conditions"]
         assert (row["condition"], row["what"], row["have"], row["want"]) == ("LQ", "value", r"\b(yts)\b", r"\b(yify)\b")
         assert (row["text"]["added"], row["text"]["removed"]) == (["yify"], ["yts"])
+
+    def test_an_added_condition_shows_every_field(self):
+        """an exceptLanguage, min/max... isn't hidden behind the value"""
+        g = guide()
+        lq = g.format_named("LQ")
+        lq["specifications"].append({"name": "Size", "implementation": "SizeSpecification", "negate": True, "fields": {"min": 0, "max": 1}})
+        [step], _ = plan_arr("RADARR", g, arr_state(), TrashSettings(formats=True))
+        [row] = step.change.diff["conditions"]
+        assert (row["what"], row["want"], row["implementation"]) == ("added", "not min: 0; max: 1", "SizeSpecification")
+
+    def test_a_guide_format_with_two_conditions_of_a_name_isnt_synced(self):
+        """by name the review would show one, the arr would get both"""
+        g = guide()
+        lq = g.format_named("LQ")
+        lq["specifications"] = [
+            {"name": "LQ", "implementation": "ReleaseTitleSpecification", "negate": True, "required": True, "fields": {"value": ".*"}},
+            {"name": "LQ", "implementation": "ReleaseTitleSpecification", "fields": {"value": r"\b(yify|newgroup)\b"}},
+        ]
+        steps, problems = plan_arr("RADARR", g, arr_state(), TrashSettings(formats=True))
+        assert steps == []
+        assert problems == ["LQ: the guides give it more than one condition named LQ, not synced"]
+
+    def test_an_arr_format_with_two_conditions_of_a_name_shows_one_going(self):
+        state = arr_state()
+        state.formats[1]["specifications"] = state.formats[1]["specifications"] * 2
+        [step], _ = plan_arr("RADARR", guide(), state, TrashSettings(formats=True))
+        assert [(r["condition"], r["what"]) for r in step.change.diff["conditions"]] == [("LQ", "removed")]
 
     def test_profile_scores_settings_and_qualities(self):
         state = arr_state()

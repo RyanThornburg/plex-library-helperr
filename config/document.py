@@ -4,6 +4,7 @@ import copy
 from dataclasses import fields
 from datetime import timedelta
 from typing import Any
+from urllib.parse import urlsplit
 
 from config import build_config, format_duration
 from config.models import MoverRule, MovieRemoverRule, ProfileRule, RemoverRule
@@ -23,6 +24,24 @@ SECRET_FIELDS: dict[str, tuple[str, str]] = {
     "plex_host.password": ("plex_host", "password"),
     "assistant.apikey": ("assistant", "apikey"),
 }
+
+# where each secret is sent, (section, url key). A saved secret is only sent to the
+# server it was saved for: changing the url to another one needs the secret again
+# (moved_secrets()), or a changed url would deliver the saved key to whoever's there.
+# assistant.apikey only goes to Anthropic
+SECRET_URLS: dict[str, tuple[str, str]] = {
+    "radarr.apikey": ("radarr", "baseurl"),
+    "sonarr.apikey": ("sonarr", "baseurl"),
+    "plex.token": ("plex", "baseurl"),
+    "tautulli.apikey": ("tautulli", "url"),
+    "seerr.apikey": ("seerr", "url"),
+    "sabnzbd.apikey": ("sabnzbd", "url"),
+    "bazarr.apikey": ("bazarr", "url"),
+    "unraid.apikey": ("unraid", "url"),
+    "autoscan.password": ("autoscan", "url"),
+    "plex_host.password": ("plex_host", "url"),
+}
+DEFAULT_PORTS = {"http": 80, "https": 443}
 
 # a new install is dry until it's turned live
 DEFAULT_DOCUMENT: dict[str, Any] = {"settings": {"dry_run": True}}
@@ -63,6 +82,40 @@ def secrets_in(document: dict[str, Any]) -> list[str]:
         for name, (section, key) in SECRET_FIELDS.items()
         if isinstance(document.get(section), dict) and key in document[section]
     ]
+
+
+def url_origin(url: Any) -> tuple[str, str, int | None] | None:
+    """(scheme, host, port) of a url, None when it has no scheme or host. A base path
+    (/radarr) isn't part of it"""
+    if not isinstance(url, str):
+        return None
+    parts = urlsplit(url.strip())
+    scheme, host = parts.scheme.casefold(), (parts.hostname or "").casefold()
+    if not scheme or not host:
+        return None
+    try:
+        port = parts.port
+    except ValueError:
+        port = None
+    return scheme, host, port or DEFAULT_PORTS.get(scheme)
+
+
+def secret_url(document: dict[str, Any], name: str) -> Any:
+    """the url a secret is sent to in a document, None when its section has none"""
+    section, key = SECRET_URLS[name]
+    values = document.get(section)
+    return values.get(key) if isinstance(values, dict) else None
+
+
+def moved_secrets(before: dict[str, Any], after: dict[str, Any], names: set[str]) -> list[str]:
+    """the secrets of `names` that `after` would send to another server than `before`
+    does (a section without a url sends nothing)"""
+    moved = []
+    for name in sorted(names & SECRET_URLS.keys()):
+        new = url_origin(secret_url(after, name))
+        if new is not None and new != url_origin(secret_url(before, name)):
+            moved.append(name)
+    return moved
 
 
 def with_secrets(document: dict[str, Any], secrets: dict[str, str]) -> dict[str, Any]:

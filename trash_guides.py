@@ -258,6 +258,23 @@ def _text(value: Any) -> str:
     return value if isinstance(value, str) else json.dumps(value)
 
 
+def condition_text(spec: Mapping[str, Any]) -> str:
+    """a whole condition in words, as an added one is reviewed: its value, every other
+    field the guide sets, negate and required. Showing only the value would hide a
+    field the arr acts on"""
+    fields = _fields(spec)
+    parts = [_text(fields.pop("value"))] if "value" in fields else []
+    parts += [f"{name}: {_text(value)}" for name, value in fields.items()]
+    text = "; ".join(parts)
+    return ("not " if spec.get("negate") else "") + text + (" (required)" if spec.get("required") else "")
+
+
+def repeated_conditions(cf: Mapping[str, Any]) -> list[str]:
+    """condition names a custom format has more than once"""
+    names = [s.get("name") for s in cf.get("specifications", [])]
+    return sorted({str(n) for n in names if names.count(n) > 1})
+
+
 def text_diff(old: str, new: str) -> dict[str, Any]:
     """two values as segments ({text, changed}) for showing what differs, and the words
     one has that the other hasn't (a release group moved between tiers, say)"""
@@ -306,12 +323,18 @@ def spec_diff(have: Mapping[str, Any], want: Mapping[str, Any]) -> list[dict[str
 
     if bool(have.get("includeCustomFormatWhenRenaming")) != bool(want.get("includeCustomFormatWhenRenaming")):
         row("", "renaming", bool(have.get("includeCustomFormatWhenRenaming")), bool(want.get("includeCustomFormatWhenRenaming")))
-    have_specs = {s.get("name"): s for s in have.get("specifications", [])}
+    have_list = list(have.get("specifications", []))
+    have_specs = {s.get("name"): s for s in have_list}
     want_specs = {s.get("name"): s for s in want.get("specifications", [])}
+    # an arr condition named like a later one: the update replaces both with one
+    for i, spec in enumerate(have_list):
+        if any(s.get("name") == spec.get("name") for s in have_list[i + 1 :]):
+            row(spec.get("name"), "removed", condition_text(spec), None)
     for name, spec in want_specs.items():
         old = have_specs.get(name)
         if old is None:
-            row(name, "added", None, _text(_fields(spec).get("value")))
+            row(name, "added", None, condition_text(spec))
+            rows[-1]["implementation"] = spec.get("implementation")
             continue
         if old.get("implementation") != spec.get("implementation"):
             row(name, "implementation", old.get("implementation"), spec.get("implementation"))
@@ -324,7 +347,7 @@ def spec_diff(have: Mapping[str, Any], want: Mapping[str, Any]) -> list[dict[str
                 row(name, key, _text(old_fields.get(key)), _text(value))
                 rows[-1]["text"] = text_diff(_text(old_fields.get(key)), _text(value))
     for name in sorted(have_specs.keys() - want_specs.keys(), key=str):
-        row(name, "removed", _text(_fields(have_specs[name]).get("value")), None)
+        row(name, "removed", condition_text(have_specs[name]), None)
     return rows
 
 
@@ -709,6 +732,17 @@ def new_profile_body(state: ArrState, name: str, plan: ProfilePlan) -> dict[str,
     return profile_body(body, plan, state)
 
 
+def unsyncable(guide_cf: Mapping[str, Any], problems: list[str]) -> bool:
+    """a guide custom format that isn't synced, saying why in problems once: one with
+    two conditions of a name, which the review (by name) couldn't show both of"""
+    if not (repeated := repeated_conditions(guide_cf)):
+        return False
+    problem = f"{guide_cf.get('name')}: the guides give it more than one condition named {', '.join(repeated)}, not synced"
+    if problem not in problems:
+        problems.append(problem)
+    return True
+
+
 def plan_arr(
     service: str, guide: ArrGuide, state: ArrState, trash: TrashSettings
 ) -> tuple[list[Step], list[str]]:
@@ -748,7 +782,7 @@ def plan_arr(
     if trash.formats:
         for arr_cf in state.formats:
             guide_cf = guide.format_named(arr_cf["name"])
-            if guide_cf is None:
+            if guide_cf is None or unsyncable(guide_cf, problems):
                 continue
             lines = spec_changes(arr_cf, guide_cf)
             if lines:
@@ -769,12 +803,12 @@ def plan_arr(
     scored_by: dict[str, list[str]] = {}
     for link, plan in [(link, plan) for link, _, plan in links] + imports:
         for name in plan.scores:
-            if state.format_named(name) is None and (cf := guide.format_named(name)):
+            if state.format_named(name) is None and (cf := guide.format_named(name)) and not unsyncable(cf, problems):
                 missing.setdefault(cf["trash_id"], cf)
                 scored_by.setdefault(cf["trash_id"], []).append(link.profile)
     for trash_id, cf in sorted(missing.items(), key=lambda kv: kv[1]["name"].casefold()):
         body = format_body(cf)
-        conditions = [f"{s['name']}: {_short(s['fields'][0]['value'] if s['fields'] else '')}" for s in body["specifications"]]
+        conditions = [f"{s['name']}: {_short(condition_text(s))}" for s in body["specifications"]]
         steps.append(
             Step(
                 PlannedChange(
@@ -786,7 +820,7 @@ def plan_arr(
                             {
                                 "condition": s["name"],
                                 "implementation": s["implementation"],
-                                "value": _text(_fields(s).get("value")),
+                                "value": condition_text({**s, "negate": False, "required": False}),
                                 "negate": s["negate"],
                                 "required": s["required"],
                             }

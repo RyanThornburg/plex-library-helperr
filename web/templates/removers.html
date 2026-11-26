@@ -37,7 +37,7 @@
 {% endblock %}
 {% block content %}
 <h1>Removers</h1>
-<p class="muted">Removers runs only plan: you approve a plan on its run's page. With auto-approve on, a run that isn't forced dry (Run…, or a schedule without "Force dry run") deletes that rule's removals without review, and <code>max_deletes</code> still applies. Other rules' removals wait in the run's plan.</p>
+<p class="muted">Removers runs only plan: you approve a plan on its run's page. With auto-approve on, a run that isn't forced dry (Run…, or a schedule without "Force dry run") deletes that rule's removals without review, up to its max deleted per run: auto-approve needs one set, and loosening it turns auto-approve off again. Other rules' removals wait in the run's plan.</p>
 
 {% if saved %}<p class="banner banner-ok">Saved.</p>{% endif %}
 {% if not allow_apply %}

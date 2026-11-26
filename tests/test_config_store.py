@@ -137,6 +137,23 @@ class TestAutoApproveReset:
         assert store.current().note == f"Sonarr remover 1 edited; auto-approve turned off for remover rm-2 ({change})"
 
 
+    @pytest.mark.parametrize(
+        "cap, off",
+        [(None, True), (200, True), (100, False), (50, False)],
+        ids=["removed", "raised", "same", "lowered"],
+    )
+    def test_turned_off_when_max_deletes_is_loosened(self, store, engine, cap, off):
+        """a restore or the Removers form loosening the cap deletes more than was agreed to"""
+        capped = {"sonarr": {"removers": [REMOVER], "remover_settings": {"max_deletes": 100}}}
+        version = store.save(capped, None, "a", 0)
+        self.turn_on(engine)
+        settings = {"max_deletes": cap} if cap is not None else {}
+        store.save({"sonarr": {"removers": [REMOVER], "remover_settings": settings}}, "me", "b", version)
+        assert self.auto(engine) is not off
+        if off:
+            assert store.current().note == "b; auto-approve turned off for remover rm-2 (max_deletes loosened)"
+
+
 class TestOpenStore:
     def test_command_line_uses_the_same_store(self, tmp_path):
         env = {"DATA_DIR": str(tmp_path), "HELPERR_SECRET_KEY": KEY}

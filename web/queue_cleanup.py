@@ -1,9 +1,10 @@
 """queue_cleanup.py - the clear_stuck job: removes downloads stuck in radarr's/sonarr's
 queue ([radarr.queue_cleanup], [sonarr.queue_cleanup]) once the health checks have seen
 them stuck for stuck_for, like the queue page's Remove. How long a download has been
-stuck is its health incident's age (web.health, keyed by the download client's id), the
-same "for 3h" the Status page shows. The health check queues a run when one comes due
-(due_services()); a run started by hand or a schedule acts on everything due"""
+stuck is counted on its health incident (web.health, keyed by the download client's id)
+from when the health checks first saw it in a state cleanup removes (removable_since,
+kept by due_services()), not from when it first had a problem. The health check queues
+a run when one comes due; a run started by hand or a schedule acts on everything due"""
 
 import logging
 from collections.abc import Callable, Iterable
@@ -60,16 +61,18 @@ class IncidentClock:
         self.engine = engine
 
     def since(self, service: str, keys: list[str]) -> dict[str, datetime]:
+        """since when each has been removable, as the health checks saw it"""
         by_incident = {incident_key(k): k for k in keys}
         with Session(self.engine) as session:
             rows = session.execute(
-                select(HealthIncident.key, HealthIncident.started_at).where(
+                select(HealthIncident.key, HealthIncident.removable_since).where(
                     HealthIncident.service == service,
                     HealthIncident.key.in_(by_incident),
                     HealthIncident.ended_at.is_(None),
+                    HealthIncident.removable_since.is_not(None),
                 )
             )
-            return {by_incident[key]: started for key, started in rows}
+            return {by_incident[key]: since for key, since in rows}
 
     def mark(self, service: str, keys: list[str], status: str, now: datetime) -> None:
         with Session(self.engine) as session:
@@ -255,23 +258,47 @@ def due_services(engine: Engine, settings: ConfigSettings, statuses: Iterable[Se
     found = []
     with Session(engine) as session:
         for status in statuses:
-            arr = getattr(settings, status.service, None) if status.service in ("radarr", "sonarr") else None
-            if arr is None or not arr.queue_cleanup.enabled or status.error:
+            if status.service not in ("radarr", "sonarr") or status.error:
+                # an arr that couldn't be read: nobody knows its downloads' states
                 continue
-            cleanup = arr.queue_cleanup
-            keys = [item_key(i) for i in status.items if removable(i.states, i.key, cleanup)]
-            if not keys:
+            arr = getattr(settings, status.service, None)
+            cleanup = arr.queue_cleanup if arr is not None and arr.queue_cleanup.enabled else None
+            keys = [item_key(i) for i in status.items if cleanup and removable(i.states, i.key, cleanup)]
+            track_removable(session, status.service, keys, now)
+            if cleanup is None or not keys:
                 continue
             rows = session.execute(
-                select(HealthIncident.started_at, HealthIncident.cleanup, HealthIncident.cleanup_at).where(
+                select(HealthIncident.removable_since, HealthIncident.cleanup, HealthIncident.cleanup_at).where(
                     HealthIncident.service == status.service,
                     HealthIncident.key.in_(keys),
                     HealthIncident.ended_at.is_(None),
                 )
             )
             if any(
-                now - started >= cleanup.stuck_for and acts_again(done, done_at, cleanup, now)
-                for started, done, done_at in rows
+                since is not None and now - since >= cleanup.stuck_for and acts_again(done, done_at, cleanup, now)
+                for since, done, done_at in rows
             ):
                 found.append(status.label)
+        session.commit()
     return found
+
+
+def track_removable(session: Session, service: str, keys: list[str], now: datetime) -> None:
+    """removable_since: set for the open stuck downloads `keys` (removable now) that
+    didn't have it, cleared for the others, so a download's clock starts again when it
+    leaves the states cleanup removes or cleanup is turned off"""
+    open_downloads = (
+        HealthIncident.service == service,
+        HealthIncident.ended_at.is_(None),
+        HealthIncident.key.startswith("queue:"),
+    )
+    session.execute(
+        update(HealthIncident)
+        .where(*open_downloads, HealthIncident.key.in_(keys), HealthIncident.removable_since.is_(None))
+        .values(removable_since=now)
+    )
+    session.execute(
+        update(HealthIncident)
+        .where(*open_downloads, HealthIncident.key.not_in(keys), HealthIncident.removable_since.is_not(None))
+        .values(removable_since=None)
+    )

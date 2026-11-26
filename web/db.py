@@ -369,6 +369,10 @@ class HealthIncident(Base):
     # (web.queue_cleanup)
     cleanup: Mapped[str | None] = mapped_column(String(16))
     cleanup_at: Mapped[datetime | None]
+    # a stuck download's: since when it has been in a state queue cleanup removes, which
+    # stuck_for counts from (a download stalled for hours, then import blocked, isn't
+    # due the minute it's blocked). None while it isn't, or cleanup is off
+    removable_since: Mapped[datetime | None]
 
 
 class LoginSession(Base):

@@ -48,6 +48,9 @@ SCRYPT_N = 2**15
 SCRYPT_R = 8
 SCRYPT_P = 1
 SCRYPT_MAXMEM = 64 * 1024 * 1024
+# hashes at once: a burst of sign-ins (from many addresses, which the throttle can't
+# stop) queues here instead of taking 32 MiB and a worker thread each
+SCRYPT_SLOTS = threading.BoundedSemaphore(2)
 
 # failed sign-ins (or setup tokens) from one address before it has to wait
 MAX_FAILURES = 5
@@ -60,9 +63,10 @@ FAILURE_WINDOW = timedelta(minutes=15)
 
 
 def _scrypt(password: str, salt: bytes, n: int, r: int, p: int) -> bytes:
-    return hashlib.scrypt(
-        password.encode("utf-8"), salt=salt, n=n, r=r, p=p, maxmem=SCRYPT_MAXMEM, dklen=32
-    )
+    with SCRYPT_SLOTS:
+        return hashlib.scrypt(
+            password.encode("utf-8"), salt=salt, n=n, r=r, p=p, maxmem=SCRYPT_MAXMEM, dklen=32
+        )
 
 
 def hash_password(password: str) -> str:
@@ -314,21 +318,18 @@ class LoginThrottle:
             failures.popleft()
         return failures
 
-    def wait(self, key: str, now: datetime | None = None) -> timedelta | None:
-        """how long the address must wait, None when it may try"""
+    def attempt(self, key: str, now: datetime | None = None) -> timedelta | None:
+        """how long the address must wait, or None when it may try. A try counts as a
+        failure from the start, until succeeded() clears it: counting after the slow
+        check let a burst of parallel guesses all pass before the first one was counted"""
         now = now or utc_now()
         with self._lock:
             failures = self._recent(key, now)
-            if len(failures) < MAX_FAILURES:
-                return None
-            return failures[0] + FAILURE_WINDOW - now
-
-    def failed(self, key: str, now: datetime | None = None) -> None:
-        now = now or utc_now()
-        with self._lock:
-            failures = self._recent(key, now)
+            if len(failures) >= MAX_FAILURES:
+                return failures[0] + FAILURE_WINDOW - now
             failures.append(now)
             self._failures[key] = failures
+            return None
 
     def succeeded(self, key: str) -> None:
         with self._lock:

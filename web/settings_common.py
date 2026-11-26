@@ -12,6 +12,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 import config
 from config.document import RULE_TYPES
+from web.body import read_body
 from web.config_store import ConfigConflict, ConfigStore
 from web.lookups import (
     Lookups,
@@ -60,11 +61,7 @@ MAX_SETTINGS_FORM_BYTES = 256_000
 
 async def form_lists(request: Request) -> dict[str, list[str]]:
     """a urlencoded form body with every value of repeated fields (checkboxes)"""
-    body = b""
-    async for chunk in request.stream():
-        body += chunk
-        if len(body) > MAX_SETTINGS_FORM_BYTES:
-            raise HTTPException(status_code=413, detail="The form was too large to save.")
+    body = await read_body(request, MAX_SETTINGS_FORM_BYTES, "The form was too large to save.")
     return parse_qs(body.decode("utf-8", "replace"), keep_blank_values=True)
 
 

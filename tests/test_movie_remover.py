@@ -174,7 +174,7 @@ class RadarrFakes:
             raw_movie(4, "Elsewhere", root="/data/media/movies/movies"),
         ]
 
-    def _run(self, rules=None, auto_approve=frozenset(), approved=None, plays=None, max_deletes=None):
+    def _run(self, rules=None, auto_approve=frozenset(), approved=None, plays=None, max_deletes=100):
         arr_config = ArrConfig(
             baseurl="http://radarr",
             apikey="key",
@@ -213,6 +213,11 @@ class TestRunMovieRemovers(RadarrFakes):
 
     def test_other_keys_dont_auto_approve(self):
         self._run(auto_approve=frozenset({"rm-seasons-2"}))
+        self.client.delete_movie.assert_not_called()
+
+    def test_auto_approve_without_max_deletes_waits_for_review(self):
+        self._run(auto_approve=frozenset({rule().key}), max_deletes=None)
+        assert {s for _, s in self.statuses()} == {"dry_run"}
         self.client.delete_movie.assert_not_called()
 
     def test_max_deletes_blocks_everything(self):

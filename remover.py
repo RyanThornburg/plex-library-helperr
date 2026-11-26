@@ -278,6 +278,21 @@ def plan_series_removal(
         recent = {
             (w.season, w.episode) for w in watches or [] if w.watched_at >= watch_cutoff
         }
+        # fail closed: a recent play of an episode Sonarr has no file for is one Plex
+        # numbers differently (absolute or TMDB ordering, common for anime), so which
+        # season it was can't be told. Protecting nothing would delete the season
+        # being watched
+        placed = {(e.season, e.episode) for e in episodes if e.file_id is not None}
+        unplaced = sorted(p for p in recent - placed if p[0] > 0 or rule.include_specials)
+        if unplaced:
+            logger.warning(
+                "%s\t %s: recently watched %s, which Sonarr has no file for (Plex may number "
+                "its episodes differently), protecting the whole series",
+                LOG_NAME,
+                series.title,
+                ", ".join(code(*p) for p in unplaced),
+            )
+            return None
         # only watches of removal candidates count, watching the latest episodes never blocks
         watched = [
             u

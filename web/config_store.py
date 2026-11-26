@@ -17,6 +17,8 @@ from config.document import (
     DEFAULT_DOCUMENT,
     SECRET_FIELDS,
     canonical,
+    moved_secrets,
+    secret_url,
     secrets_in,
     with_secrets,
 )
@@ -51,6 +53,17 @@ def remover_key(rule: Mapping[str, Any], arr: str = "sonarr") -> str:
     if arr == "radarr":
         return f"radarr:{rule.get('path', '').rstrip('/')}"
     return ",".join(sorted({t.casefold() for t in rule.get("tags", [])}))
+
+
+def loosened_caps(before: Mapping[str, Any], after: Mapping[str, Any]) -> set[str]:
+    """the arrs whose remover max_deletes was removed or raised"""
+    loosened = set()
+    for arr in ("sonarr", "radarr"):
+        old = before.get(arr, {}).get("remover_settings", {}).get("max_deletes")
+        new = after.get(arr, {}).get("remover_settings", {}).get("max_deletes")
+        if old is not None and (new is None or new > old):
+            loosened.add(arr)
+    return loosened
 
 
 def removers_of(document: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
@@ -163,8 +176,13 @@ class ConfigStore:
                     "The settings were changed since this page was loaded. Reload it and "
                     "make your change again."
                 )
-            # build with stand-ins for the secrets: their values never make it invalid
             stored = set(session.scalars(select(ConfigSecret.name)))
+            if moved := moved_secrets(latest.document if latest else {}, document, stored - secrets.keys()):
+                raise ValueError(
+                    "; ".join(f"{name} is saved for another server than {secret_url(document, name)}" for name in moved)
+                    + ". Enter it again with the new URL: a saved key is only sent where it was saved for."
+                )
+            # build with stand-ins for the secrets: their values never make it invalid
             names = (stored | {n for n, v in secrets.items() if v}) - {
                 n for n, v in secrets.items() if not v
             }
@@ -185,16 +203,19 @@ class ConfigStore:
             notes = [note]
             before = removers_of(latest.document) if latest else {}
             after = removers_of(document)
+            # a higher cap or none deletes more than was agreed to when it was turned on
+            loosened = loosened_caps(latest.document if latest else {}, document)
             for setting in session.scalars(
                 select(RemoverRuleSetting).where(RemoverRuleSetting.auto_approve)
             ):
                 key = setting.rule_key
-                if key in after and before.get(key) == after[key]:
+                arr = "radarr" if key.startswith("radarr:") else "sonarr"
+                if key in after and before.get(key) == after[key] and arr not in loosened:
                     continue
                 setting.auto_approve = False
                 setting.updated_at = now
                 setting.updated_by = by
-                change = "removed" if key not in after else "changed"
+                change = "removed" if key not in after else "changed" if before.get(key) != after[key] else "max_deletes loosened"
                 notes.append(f"auto-approve turned off for remover {key} ({change})")
                 logger.warning("WEB\t Auto-approve off for remover %s, it was %s", key, change)
 

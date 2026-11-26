@@ -20,6 +20,7 @@ import trash_guides
 from config.models import ConfigSettings, MovieRemoverRule, RemoverRule
 from results import JOBS
 from version import VERSION
+from web.body import read_body
 from web.db import WITHOUT_LOG, JobRun, RemoverRuleSetting, Schedule
 from web.jobs import (
     ACTIVE,
@@ -336,11 +337,7 @@ def schedule_to_dict(schedule: Schedule, now: datetime) -> dict[str, Any]:
 async def form_lists(request: Request, limit: int = MAX_FORM_BYTES) -> dict[str, list[str]]:
     """a urlencoded form body with every value of each field, without python-multipart.
     Unchecked boxes are absent"""
-    body = b""
-    async for chunk in request.stream():
-        body += chunk
-        if len(body) > limit:
-            raise HTTPException(status_code=413)
+    body = await read_body(request, limit)
     return parse_qs(body.decode("utf-8", "replace"), keep_blank_values=True)
 
 
@@ -797,10 +794,25 @@ def rule_settings(request: Request) -> dict[str, RemoverRuleSetting]:
         return {s.rule_key: s for s in session.scalars(select(RemoverRuleSetting))}
 
 
-def set_auto_approve(request: Request, rule_key: str, enabled: bool) -> None:
-    """turning on needs the rule in the config, off always works"""
-    if enabled and rule_key not in {r.key for r in remover_rules(request)[0]}:
+def auto_approve_refused(request: Request, rule_key: str) -> None:
+    """turning auto-approve on needs the rule in the config (404) and a max_deletes on
+    its arr (409): unattended deletion always has a cap"""
+    settings, _ = remover_config(request)
+    if rule_key not in {r.key for r in (all_removers(settings) if settings else [])}:
         raise HTTPException(status_code=404)
+    arr_name = "radarr" if rule_key.startswith("radarr:") else "sonarr"
+    arr = getattr(settings, arr_name)
+    if arr is None or arr.remover_settings.max_deletes is None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Set a max deleted per run for {arr_name.title()}'s removers first: auto-approve only deletes with a cap.",
+        )
+
+
+def set_auto_approve(request: Request, rule_key: str, enabled: bool) -> None:
+    """turning on needs the rule in the config and a max_deletes, off always works"""
+    if enabled:
+        auto_approve_refused(request, rule_key)
     with Session(request.app.state.engine) as session:
         setting = session.get(RemoverRuleSetting, rule_key) or RemoverRuleSetting(
             rule_key=rule_key
@@ -844,9 +856,8 @@ def removers_page(request: Request) -> HTMLResponse:
 @router.get("/removers/auto-approve", response_class=HTMLResponse)
 def auto_approve_confirm_page(request: Request, rule: str) -> HTMLResponse:
     """turning auto-approve on always goes through this page"""
+    auto_approve_refused(request, rule)
     matching = [r for r in remover_rules(request)[0] if r.key == rule]
-    if not matching:
-        raise HTTPException(status_code=404)
     return templates.TemplateResponse(
         request,
         "auto_approve_confirm.html",

@@ -1,6 +1,7 @@
 """Tests for AUTH_MODE=password: the app's own login, sessions, setup token and reset"""
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 import re
 from datetime import timedelta
 
@@ -200,19 +201,25 @@ class TestThrottle:
     def test_blocks_after_too_many_failures_then_lets_up(self):
         throttle, now = LoginThrottle(), utc_now()
         for i in range(MAX_FAILURES):
-            assert throttle.wait("1.2.3.4", now) is None
-            throttle.failed("1.2.3.4", now + timedelta(seconds=i))
-        assert throttle.wait("1.2.3.4", now + timedelta(seconds=10)) is not None
-        assert throttle.wait("5.6.7.8", now) is None
-        assert throttle.wait("1.2.3.4", now + FAILURE_WINDOW + timedelta(seconds=MAX_FAILURES)) is None
+            assert throttle.attempt("1.2.3.4", now + timedelta(seconds=i)) is None
+        assert throttle.attempt("1.2.3.4", now + timedelta(seconds=10)) is not None
+        assert throttle.attempt("5.6.7.8", now) is None
+        assert throttle.attempt("1.2.3.4", now + FAILURE_WINDOW + timedelta(seconds=MAX_FAILURES)) is None
 
     def test_success_clears_the_count(self):
         throttle, now = LoginThrottle(), utc_now()
         for _ in range(MAX_FAILURES - 1):
-            throttle.failed("1.2.3.4", now)
+            throttle.attempt("1.2.3.4", now)
         throttle.succeeded("1.2.3.4")
-        throttle.failed("1.2.3.4", now)
-        assert throttle.wait("1.2.3.4", now) is None
+        throttle.attempt("1.2.3.4", now)
+        assert throttle.attempt("1.2.3.4", now) is None
+
+    def test_parallel_tries_are_counted_before_they_are_checked(self):
+        """a burst of guesses sent at once: only MAX_FAILURES get to the password check"""
+        throttle, now = LoginThrottle(), utc_now()
+        with ThreadPoolExecutor(20) as pool:
+            allowed = list(pool.map(lambda _: throttle.attempt("1.2.3.4", now) is None, range(40)))
+        assert allowed.count(True) == MAX_FAILURES
 
 
 # ---------------------------------------------------------------------------

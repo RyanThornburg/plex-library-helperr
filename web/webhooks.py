@@ -16,6 +16,7 @@ from sqlalchemy import Engine, delete
 from sqlalchemy.orm import Session
 
 from web import kometa
+from web.body import read_body
 from web.db import AppSetting, TrashEvent
 from web.jobs import JobRunner, utc_now
 
@@ -91,11 +92,7 @@ def check_key(request: Request) -> None:
 
 
 async def json_body(request: Request) -> dict[str, Any]:
-    body = b""
-    async for chunk in request.stream():
-        body += chunk
-        if len(body) > MAX_BODY_BYTES:
-            raise HTTPException(status_code=413)
+    body = await read_body(request, MAX_BODY_BYTES)
     try:
         payload = json.loads(body)
     except ValueError:

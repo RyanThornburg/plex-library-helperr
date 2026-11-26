@@ -183,7 +183,7 @@
       <dt>Guide</dt><dd><code>{{ segments(r.text.want, "ins") }}</code></dd>
     </dl>
     {% elif r.what == "added" %}
-    <dl class="tdiff-pair"><dt>Guide</dt><dd><code><ins>{{ r.want }}</ins></code></dd></dl>
+    <dl class="tdiff-pair"><dt>Guide</dt><dd><code><ins>{{ r.want }}</ins></code>{% if r.implementation %} <span class="muted">{{ kind_name(r.implementation) }}</span>{% endif %}</dd></dl>
     {% elif r.what == "removed" %}
     <dl class="tdiff-pair"><dt>Yours</dt><dd><code><del>{{ r.have }}</del></code></dd></dl>
     {% elif r.what == "implementation" %}

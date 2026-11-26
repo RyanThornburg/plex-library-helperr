@@ -54,16 +54,24 @@ def act(
 ) -> None:
     """record each planned removal and delete the approved ones: all of them when
     applying a reviewed plan, else those of auto-approved rules, the rest planned for
-    review. max_deletes is all or nothing for the files this run deletes. delete()
+    review. max_deletes is all or nothing for the files this run deletes, and without
+    one auto-approved removals are planned for review too. delete()
     returns why it failed, or None; removed() is told of each deleted one"""
     live: list[R] = []
     review: list[R] = []
     for r in removals:
         (live if applying or r.rule.key in auto_approve else review).append(r)
+    uncapped = ""
+    if live and not applying and max_deletes is None:
+        # unattended deletion only with a cap: without one, a rule matching far more
+        # than meant would delete it all before anyone looked
+        logger.warning("%s\t Auto-approve needs a max_deletes, planning %s %s for review instead", log_name, len(live), unit)
+        review, live = review + live, []
+        uncapped = "auto-approve needs a max deletes per run, so this waits for review"
     if review:
         logger.info("%s\t DRY RUN - planning %s %s for review, not removing", log_name, len(review), unit)
         for r in review:
-            record(r, "dry_run", "")
+            record(r, "dry_run", uncapped if r.rule.key in auto_approve else "")
     if not live:
         return
     if not applying:

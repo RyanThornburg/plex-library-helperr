@@ -296,11 +296,13 @@ class TestRun:
 # ---------------------------------------------------------------------------
 
 
-def incident(engine, key, started, service="radarr", ended=None, done=None, done_at=None):  # noqa: F811
+def incident(engine, key, started, service="radarr", ended=None, done=None, done_at=None, removable="started"):  # noqa: F811
+    """removable_since is when it started unless given (None: not seen removable)"""
     with Session(engine) as session:
         session.add(HealthIncident(
             service=service, key=incident_key(key), level="warn", text="Stuck", started_at=started,
             last_seen_at=NOW, ended_at=ended, cleanup=done, cleanup_at=done_at,
+            removable_since=started if removable == "started" else removable,
         ))
         session.commit()
 
@@ -350,6 +352,37 @@ class TestDueServices:
         assert due_services(engine, self.settings(), [checked("a", states=["importPending"])], NOW) == []
         off = ConfigSettings(plex=None, radarr=ArrConfig(baseurl="x", apikey="k", tag=None), sonarr=None)
         assert due_services(engine, off, [checked("a")], NOW) == []
+
+    def test_counts_from_when_it_became_removable(self, engine):  # noqa: F811
+        """stalled (a warning, not removed) for 8h, then import blocked: not due until
+        stuck_for after it was blocked"""
+        incident(engine, "a", NOW - 8 * HOUR, removable=None)
+        assert due_services(engine, self.settings(), [checked("a", states=["downloading"])], NOW) == []
+        assert IncidentClock(engine).since("radarr", ["a"]) == {}
+        assert due_services(engine, self.settings(), [checked("a")], NOW) == []
+        assert IncidentClock(engine).since("radarr", ["a"]) == {"a": NOW}
+        assert due_services(engine, self.settings(), [checked("a")], NOW + 5 * HOUR) == []
+        assert due_services(engine, self.settings(), [checked("a")], NOW + 6 * HOUR) == ["Radarr"]
+
+    def test_the_clock_starts_again_when_it_stops_being_removable(self, engine):  # noqa: F811
+        incident(engine, "a", NOW - 8 * HOUR)
+        due_services(engine, self.settings(), [checked("a", states=["downloading"])], NOW)
+        assert IncidentClock(engine).since("radarr", ["a"]) == {}
+        due_services(engine, self.settings(), [checked("a")], NOW + HOUR)
+        assert IncidentClock(engine).since("radarr", ["a"]) == {"a": NOW + HOUR}
+
+    def test_turned_off_forgets_the_clock(self, engine):  # noqa: F811
+        incident(engine, "a", NOW - 8 * HOUR)
+        off = ConfigSettings(plex=None, radarr=ArrConfig(baseurl="x", apikey="k", tag=None), sonarr=None)
+        due_services(engine, off, [checked("a")], NOW)
+        assert IncidentClock(engine).since("radarr", ["a"]) == {}
+
+    def test_an_arr_that_couldnt_be_read_keeps_the_clock(self, engine):  # noqa: F811
+        incident(engine, "a", NOW - 8 * HOUR)
+        down = checked()
+        down.error = "Radarr timed out"
+        due_services(engine, self.settings(), [down], NOW)
+        assert IncidentClock(engine).since("radarr", ["a"]) == {"a": NOW - 8 * HOUR}
 
     def test_the_health_monitor_queues_a_run(self, engine):  # noqa: F811
         incident(engine, "a", NOW - 7 * HOUR)

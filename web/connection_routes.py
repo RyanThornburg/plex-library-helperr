@@ -8,12 +8,13 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 
-from config.document import SECRET_FIELDS
+from config.document import SECRET_FIELDS, secret_url, url_origin
 from config.models import LINK_SERVICES, PlexHostConfig
 from web.lookups import (
     LookupFailed,
     check_connection,
 )
+from web.config_store import ConfigStore
 from web.routes import templates
 from web.secret_box import SecretError
 from web.settings_common import (
@@ -140,6 +141,16 @@ def checked_url(url: str, errors: list[str]) -> str:
     return url
 
 
+def saved_secret(stored: ConfigStore, document: dict[str, Any], name: str, url: str) -> str:
+    """the saved secret, to test `url` with. Only for the server it was saved for: a
+    Test that changed the url would send the saved key to whatever answers there"""
+    if name not in stored.secret_info():
+        return ""
+    if url_origin(url) != url_origin(secret_url(document, name)):
+        raise LookupFailed("enter the key again to test another server, a saved key is only sent where it was saved for")
+    return stored.secret(name)
+
+
 @router.post("/settings/connections/{service}")
 def save_connection(request: Request, service: str, fields: FormLists) -> Response:
     if service not in SERVICES:
@@ -206,13 +217,13 @@ def save_connection(request: Request, service: str, fields: FormLists) -> Respon
 
     if action == "test":
         try:
-            secret = new_secret or stored.secret(secret_name)
+            secret = new_secret or saved_secret(stored, document, secret_name, values["url"])
             result = check_connection(service, {**values, "secret": secret})
         except (LookupFailed, SecretError) as e:
             return connections(request, service, values, [f"Test failed: {e}"])
         if service == "plex" and values["host_url"]:
             try:
-                host_secret = new_host_secret or (stored.secret(HOST_SECRET) if HOST_SECRET in stored.secret_info() else "")
+                host_secret = new_host_secret or saved_secret(stored, document, HOST_SECRET, values["host_url"])
                 machine = check_connection(
                     "plex_host",
                     {"url": values["host_url"], "username": values["host_username"].strip(), "secret": host_secret},

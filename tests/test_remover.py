@@ -231,6 +231,15 @@ class TestSeasonWatchProtection:
         p = plan(self.rule, self.layout, date_added={3: NEW}, watches=[watch(3, 1)])
         assert p.labels == ["S01", "S02"]
 
+    def test_a_play_sonarr_cant_place_protects_everything(self):
+        """Plex numbering the show differently (absolute order): S01E17 is no episode
+        Sonarr has a file for, so which season is being watched isn't known"""
+        assert plan(self.rule, self.layout, watches=[watch(1, 17)]) is None
+
+    def test_an_old_or_special_play_it_cant_place_doesnt(self):
+        p = plan(self.rule, self.layout, watches=[watch(1, 17, days_ago=20), watch(0, 3)])
+        assert len(p.labels) == 6
+
     def test_no_window_ignores_watches(self):
         p = plan(seasons_rule(), self.layout, watches=[watch(1, 1)])
         assert p.labels[0] == "S01"
@@ -419,7 +428,7 @@ class SonarrFakes:
             apikey="key",
             tag=None,
             removers=[rule],
-            remover_settings=settings or RemoverSettings(),
+            remover_settings=settings or RemoverSettings(max_deletes=100),
         )
         with (
             patch.object(remover, "SonarrAPI", return_value=arr),
@@ -693,6 +702,15 @@ class TestAutoApprove(SonarrFakes):
             "Other": "dry_run",
         }
 
+    def test_auto_approve_without_max_deletes_waits_for_review(self):
+        """unattended deletion only with a cap"""
+        rule = seasons_rule()
+        self._apply_auto([make_series()], rule, frozenset({rule.key}), RemoverSettings(max_deletes=None))
+        self.client.delete_episode_files.assert_not_called()
+        [change] = self.result.changes
+        assert change.status == "dry_run"
+        assert "needs a max deletes" in change.detail
+
     def test_max_deletes_counts_only_deleted_files(self):
         auto = seasons_rule()
         review = seasons_rule(tags=["rm-review"])
@@ -726,7 +744,7 @@ class TestAutoApprove(SonarrFakes):
             apikey="key",
             tag=None,
             removers=rules if isinstance(rules, list) else [rules],
-            remover_settings=settings or RemoverSettings(),
+            remover_settings=settings or RemoverSettings(max_deletes=100),
         )
         with (
             patch.object(remover, "SonarrAPI", return_value=arr),

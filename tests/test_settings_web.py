@@ -199,9 +199,38 @@ class TestConnections:
 
     def test_empty_key_keeps_the_saved_one(self, client):
         connect_radarr(client)
-        post(client, "/settings/connections/radarr", {"version": version(client), "action": "save", "url": "http://radarr2:7878", "secret": ""})
+        post(client, "/settings/connections/radarr", {"version": version(client), "action": "save", "url": "http://RADARR:7878/radarr", "secret": ""})
         settings = store(client).load_settings()
-        assert (settings.radarr.baseurl, settings.radarr.apikey) == ("http://radarr2:7878", "radarr-key")
+        assert (settings.radarr.baseurl, settings.radarr.apikey) == ("http://RADARR:7878/radarr", "radarr-key")
+
+    def test_saved_key_isnt_sent_to_another_server(self, client):
+        """a changed url would get the saved key: it has to be entered again"""
+        connect_radarr(client)
+        response = post(client, "/settings/connections/radarr", {"version": version(client), "action": "save", "url": "http://elsewhere:7878", "secret": ""})
+        assert response.status_code == 400
+        assert "radarr.apikey is saved for another server" in response.text
+        assert document(client)["radarr"]["baseurl"] == "http://radarr:7878"
+        post(client, "/settings/connections/radarr", {"version": version(client), "action": "save", "url": "http://elsewhere:7878", "secret": "other-key"})
+        settings = store(client).load_settings()
+        assert (settings.radarr.baseurl, settings.radarr.apikey) == ("http://elsewhere:7878", "other-key")
+
+    def test_api_cant_move_a_saved_key_either(self, client):
+        connect_radarr(client)
+        body = client.get("/api/config", headers=auth()).json()
+        body["config"]["radarr"]["baseurl"] = "https://radarr:7878"
+        response = client.put("/api/config", json={"version": body["version"], "config": body["config"]}, headers={**auth(), **ORIGIN})
+        assert response.status_code == 422
+        assert document(client)["radarr"]["baseurl"] == "http://radarr:7878"
+
+    def test_test_with_another_url_needs_the_key(self, client, monkeypatch):
+        connect_radarr(client)
+        seen = []
+        monkeypatch.setattr("web.connection_routes.check_connection", lambda service, values: seen.append(values) or "Radarr")
+        response = post(client, "/settings/connections/radarr", {"version": version(client), "action": "test", "url": "http://elsewhere:7878"})
+        assert "enter the key again to test another server" in response.text
+        assert seen == []
+        post(client, "/settings/connections/radarr", {"version": version(client), "action": "test", "url": "http://elsewhere:7878", "secret": "typed"})
+        assert seen[0]["secret"] == "typed"
 
     def test_key_required_at_first(self, client):
         response = post(client, "/settings/connections/sonarr", {"version": 0, "action": "save", "url": "http://sonarr:8989"})
@@ -668,6 +697,8 @@ class TestMovieRemovers:
 
     def test_auto_approve_and_editing_turns_it_off(self, client):
         post(client, "/settings/radarr/removers/new", {**self.REMOVER, "version": 0})
+        # auto-approve needs a cap
+        post(client, "/settings/radarr/remover-settings", {"version": version(client), "max_deletes": "5"})
         key = "radarr:/movies/kids"
         page = client.get("/removers/auto-approve?" + urlencode({"rule": key}), headers=auth()).text
         assert "delete movies and their files" in page and "watched or not" in page
