@@ -29,6 +29,8 @@ from web.login_routes import router as login_router
 from web.health import HealthMonitor
 from web.logs_routes import router as logs_router
 from web.lookups import Lookups
+from web.new_request_routes import router as new_request_router
+from web.posters import PosterCache
 from web.playback import PlaybackSync
 from web.playback_routes import router as playback_router
 from web.routes import error_page, router
@@ -156,6 +158,7 @@ def create_app(
     app.state.load_config = load_config
     app.state.store = store
     app.state.lookups = lookups or Lookups()
+    app.state.posters = PosterCache(settings.database_path.parent / "posters")
     app.state.auth_mode = settings.auth_mode
     app.state.login_throttle = LoginThrottle()
     app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
@@ -169,6 +172,8 @@ def create_app(
     # last of the settings pages: /settings/{arr} would catch /settings/trash
     app.include_router(rule_router)
     app.include_router(webhook_router)
+    # before stats: /requests/new is its own page
+    app.include_router(new_request_router)
     app.include_router(stats_router)
     app.include_router(library_router)
     app.include_router(status_router)

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Add a request · Helperr{% endblock %}
+{% block content %}
+<h1>Add a request</h1>
+<p class="muted">Search Seerr for a movie or show, check the poster and what's in Plex already, then pick where it goes and who it's for.</p>
+{% if problem %}<p class="banner banner-bad">{{ problem }}</p>
+{% elif not connected %}<p class="banner banner-warn">Connect Seerr on <a href="/settings/connections#seerr">Settings → Connections</a> to add requests here.</p>{% endif %}
+
+<form method="get" action="/requests/new" class="filters" role="search">
+  <label>Title
+    <input name="query" type="search" value="{{ query }}" maxlength="200" required class="input-search"{% if not query %} autofocus{% endif %}{% if not connected %} disabled{% endif %}>
+  </label>
+  <div class="actions"><button type="submit"{% if not connected %} disabled{% endif %}>Search</button></div>
+</form>
+
+{% if error %}<p class="banner banner-bad">{{ error }}</p>{% endif %}
+{% if found %}
+{% if found.results %}
+<ul class="posters">
+  {% for r in found.results %}
+  <li>
+    <a class="poster-card" href="/requests/new/{{ r.media_type }}/{{ r.tmdb_id }}?{{ {'query': query} | urlencode }}">
+      {{ ui.poster(r.poster, "w185") }}
+      <span class="poster-title">{{ r.title }}</span>
+      <span class="poster-facts">{{ "Movie" if r.media_type == "movie" else "TV" }}{% if r.year %} · {{ r.year }}{% endif %}</span>
+      {% if r.state %}<span class="tag {{ r.state[1] }}">{{ r.state[0] }}</span>{% endif %}
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% if found.pages > 1 %}
+<p class="pager">
+  {% if found.page > 1 %}<a href="/requests/new?{{ {'query': query, 'page': found.page - 1} | urlencode }}">← Previous</a>{% endif %}
+  <span class="muted">Page {{ found.page }} of {{ found.pages }}</span>
+  {% if found.page < found.pages and found.page < max_page %}<a href="/requests/new?{{ {'query': query, 'page': found.page + 1} | urlencode }}">Next →</a>{% endif %}
+</p>
+{% endif %}
+{% else %}
+<p class="empty">Seerr found no movie or show called “{{ query }}”.</p>
+{% endif %}
+{% endif %}
+{% endblock %}

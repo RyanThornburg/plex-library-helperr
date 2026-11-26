@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}{{ title.title }} · Add a request · Helperr{% endblock %}
+{% block toolbar %}
+<div class="group">{{ ui.tool("back", "Search results" if query else "Search", "/requests/new" ~ ("?" ~ {"query": query} | urlencode if query else "")) }}</div>
+{% endblock %}
+{% block content %}
+{% set type_label = "Movie" if title.media_type == "movie" else "TV" %}
+<div class="title-head">
+  {{ ui.poster(title.poster, "w342") }}
+  <div class="title-about">
+    <h1>{{ title.title }}{% if title.year %} <span class="muted">({{ title.year }})</span>{% endif %}</h1>
+    <p class="muted">{{ type_label }}{% if title.genres %} · {{ title.genres | join(", ") }}{% endif %}{% if title.runtime %} · {{ title.runtime }} min{% endif %}{% if title.seasons %} · {{ title.seasons | length }} season{{ "s" if title.seasons | length != 1 }}{% endif %}{% if title.anime %} · Anime{% endif %}</p>
+    <p class="title-state">
+      {% set now = title.state(False) %}<span class="tag {{ now[1] if now }}">{{ now[0] if now else "Not in Plex" }}</span>
+      {% if has_4k %}{% set now_4k = title.state(True) %}<span class="tag {{ now_4k[1] if now_4k }}">4K: {{ now_4k[0] if now_4k else "not in Plex" }}</span>{% endif %}
+    </p>
+    {% if title.overview %}<p class="title-overview">{{ title.overview }}</p>{% endif %}
+    <p class="card-links">
+      <a href="{{ seerr_url }}" rel="noreferrer" target="_blank">Seerr</a>
+      · <a href="https://www.themoviedb.org/{{ title.media_type }}/{{ title.tmdb_id }}" rel="noreferrer" target="_blank">TMDB</a>
+      {% if title.plex_url %}· <a href="{{ title.plex_url }}" rel="noreferrer" target="_blank">Plex</a>{% endif %}
+    </p>
+  </div>
+</div>
+
+{% if done == "approved" %}<p class="banner banner-ok">Requested. Seerr approved it and sent it to {{ arr }}.</p>
+{% elif done == "pending" %}<p class="banner banner-ok">Requested. It's waiting for approval in Seerr.</p>{% endif %}
+{% if error %}<p class="banner banner-bad">{{ error }}</p>{% endif %}
+{% if loaded.servers_error %}<p class="banner banner-bad">{{ loaded.servers_error }}</p>
+{% elif not loaded.servers %}<p class="banner banner-warn">Seerr has no {{ arr }} server set up, so there's nowhere to send a request.</p>
+{% elif picked is none %}<p class="banner">{{ "All of it is" if title.media_type == "tv" else "It's" }} in Plex or requested already{% if has_4k %}, 4K too{% endif %}.</p>
+{% else %}
+<form method="post" action="/requests/new/{{ title.media_type }}/{{ title.tmdb_id }}" class="form">
+  {% if query %}<input type="hidden" name="query" value="{{ query }}">{% endif %}
+
+  <label for="server">{{ arr }} server</label>
+  <div>
+    <select id="server" name="server" data-server-pick>
+      {% for v in views %}
+      <option value="{{ v.server.id }}"{% if v.server.id == picked %} selected{% endif %}{% if not v.usable %} disabled{% endif %}>{{ v.server.label }}{% if v.server.is_default %} (Seerr's default){% endif %}{% if not v.usable %}: in Plex or requested{% endif %}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  {% for v in views if v.usable %}
+  {% set s = v.server %}
+  <div class="form-group" data-server="{{ s.id }}"{% if s.id != picked %} hidden{% endif %}>
+    {% if s.problem %}
+    <p class="form-note banner banner-warn">{{ s.problem }}. The request uses {{ s.label }}'s defaults in Seerr.</p>
+    {% else %}
+    <input type="hidden" name="options_{{ s.id }}" value="1">
+    <label for="profile_{{ s.id }}">Quality profile</label>
+    <select id="profile_{{ s.id }}" name="profile_{{ s.id }}">
+      {% for id, name in s.profiles %}<option value="{{ id }}"{% if id == v.profile %} selected{% endif %}>{{ name }}</option>{% endfor %}
+    </select>
+
+    <label for="root_{{ s.id }}">Root folder</label>
+    <select id="root_{{ s.id }}" name="root_{{ s.id }}">
+      {% if v.root and v.root not in s.root_folders | map(attribute="path") %}<option value="{{ v.root }}" selected>{{ v.root }} (not found)</option>{% endif %}
+      {% for f in s.root_folders %}<option value="{{ f.path }}"{% if f.path == v.root %} selected{% endif %}>{{ f.path }}{% if f.free_bytes is not none %} ({{ size(f.free_bytes) }} free){% endif %}</option>{% endfor %}
+    </select>
+
+    {% if s.tags %}
+    <span class="label">Tags</span>
+    <div class="checks">
+      {% for id, label in s.tags %}<label class="check"><input type="checkbox" name="tag_{{ s.id }}" value="{{ id }}"{% if id in v.tags %} checked{% endif %}> {{ label }}</label>{% endfor %}
+    </div>
+    {% endif %}
+    {% endif %}
+
+    {% if title.media_type == "tv" %}
+    <span class="label">Seasons</span>
+    <div>
+      <div class="checks checks-column">
+        {% if title.open_seasons(s.is_4k) | length > 1 %}<label class="check"><input type="checkbox" data-select-all="season_{{ s.id }}"{% if v.seasons | length == title.open_seasons(s.is_4k) | length %} checked{% endif %}> All open seasons</label>{% endif %}
+        {% for season in title.seasons %}
+        {% set closed = season.state(s.is_4k) if not season.open(s.is_4k) %}
+        <label class="check">
+          <input type="checkbox"{% if closed %} disabled{% if closed[0] == "In Plex" %} checked{% endif %}{% else %} name="season_{{ s.id }}" value="{{ season.number }}"{% if season.number in v.seasons %} checked{% endif %}{% endif %}>
+          {{ season.name }} <span class="muted">{{ season.episodes }} episode{{ "s" if season.episodes != 1 }}{% if season.year %} · {{ season.year }}{% endif %}</span>
+          {% if closed %}<span class="tag {{ closed[1] }}">{{ closed[0] }}</span>{% endif %}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  <label for="user">Request for</label>
+  <div>
+    {% if loaded.users %}
+    <select id="user" name="user">
+      {% for u in loaded.users %}<option value="{{ u.id }}"{% if u.id == requester %} selected{% endif %}>{{ u.name }}{% if u.detail %} ({{ u.detail }}){% endif %}</option>{% endfor %}
+    </select>
+    <p class="hint">It's their request in Seerr and on the Requests page.</p>
+    {% else %}
+    <p class="hint">{{ loaded.users_error or "Seerr has no users to pick from." }}</p>
+    {% endif %}
+  </div>
+
+  <span></span>
+  <div>
+    <div class="actions"><button type="submit">Request</button></div>
+    <p class="hint">Seerr approves requests made here straight away and sends them to {{ arr }}.</p>
+  </div>
+</form>
+{% endif %}
+{% endblock %}

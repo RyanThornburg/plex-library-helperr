@@ -73,7 +73,10 @@ SECTIONS = [
     ("movers", "Movers", "/movers", "movers", []),
     ("removers", "Removers", "/removers", "trash", []),
     ("library", "Library", "/library", "library", []),
-    ("requests", "Requests", "/requests", "inbox", []),
+    ("requests", "Requests", "/requests", "inbox", [
+        ("stats", "Who watches", "/requests", ("/requests",)),
+        ("new", "Add a request", "/requests/new", ("/requests/new",)),
+    ]),
     ("playback", "Playback", "/playback", "playback", []),
     ("assistant", "Assistant", "/assistant", "chat", []),
     ("settings", "Settings", "/settings", "settings", [

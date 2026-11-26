@@ -64,7 +64,7 @@ class TestBuildShell:
         assert not section(shell, "status").children
 
     def test_a_section_page_without_sub_pages_is_current(self):
-        assert section(build_shell("/requests", Needs()), "requests").current
+        assert section(build_shell("/playback", Needs()), "playback").current
 
     def test_nothing_wrong_is_quiet(self):
         shell = build_shell("/status", Needs())

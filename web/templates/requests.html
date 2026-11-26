@@ -2,6 +2,7 @@
 {% block title %}Requests · Helperr{% endblock %}
 {% block head %}{% if syncing %}<meta http-equiv="refresh" content="5">{% endif %}{% endblock %}
 {% block toolbar %}
+<div class="group">{{ ui.tool("plus", "Add a request", "/requests/new") }}</div>
 <div class="group">{{ ui.tool_post("refresh", "Syncing…" if syncing else "Sync now", "/requests/sync", disabled=syncing or missing) }}</div>
 {% endblock %}
 {% block content %}

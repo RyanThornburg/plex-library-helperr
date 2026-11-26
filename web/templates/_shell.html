@@ -66,3 +66,9 @@
 {% macro mode_tag(key, note="") -%}
 {% set label, level = MODES.get(key, MODES["unknown"]) %}<span class="tag{% if level %} tag-{{ level }}{% endif %}">{{ label }}</span>{% if note %} <span class="muted">{{ note }}</span>{% endif %}
 {%- endmacro %}
+
+{# a TMDB poster through /posters (web.posters), or an empty frame of the same shape.
+   The title is always written beside it, so it's left out for screen readers #}
+{% macro poster(name, size) -%}
+{% if name %}<img class="poster" src="/posters/{{ size }}/{{ name }}" alt="" loading="lazy" width="{{ 185 if size == 'w185' else 342 }}" height="{{ 278 if size == 'w185' else 513 }}">{% else %}<span class="poster poster-none" aria-hidden="true">{{ icon("library") }}</span>{% endif %}
+{%- endmacro %}

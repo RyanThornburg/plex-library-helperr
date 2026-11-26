@@ -83,6 +83,16 @@ A whole-codebase review: no critical or high findings. Each item was verified, m
 - [ ] CI: a dependency scan (pip-audit/osv), digest-pinned base images visible to Dependabot, a Dependabot cooldown.
 - [ ] Docs: the README publishes the port (`-p 8780:8080`) while the Dockerfile says never to; say what plain http on a LAN means for the cookie.
 
+## Notifications
+
+- [ ] **Slack**: a message when something needs looking into, so the site doesn't have to be checked.
+  - Built on the health incidents (`HealthIncident`): a message when a warning or error opens, and one when it clears. Wait a few minutes before sending, so blips that clear on the next check (a service restarting) don't send anything. Maintenance windows already keep a backup's stopped containers out.
+  - Also worth a message: a failed run, a removers / duplicates / TRaSH Guides plan waiting for review, Kometa errors.
+  - Several problems found in one check go in one message, not one each.
+  - Each message links to the Status page (or the run). The app doesn't know its own public address, so that's a new setting.
+  - Settings → Notifications: a Slack incoming webhook URL, stored encrypted like the other secrets (the URL is the credential), a Test button, and which levels to send (errors only, or warnings too).
+  - Maybe later: a daily summary instead of every incident, quiet hours, and other targets (Discord, ntfy, email) behind the same settings.
+
 ## TRaSH Guides sync, later
 
 - [ ] Optional custom format groups (the guides' cf-groups, like `[Unwanted] Unwanted Formats`): offer a group's new custom formats for a linked profile, so a format TRaSH adds to a group you use shows up in the plan.
@@ -106,11 +116,8 @@ Support for a service comes in three levels, and most only need the first:
 
 ## Add requests from the site
 
-- [ ] Search for a movie or show and add it.
-  - **Through Seerr** when it's connected (`POST /api/v1/request`). Seerr's defaults apply, the request counts in Requests stats, and Seerr tracks when it's available.
-  - **Directly to Radarr/Sonarr** when Seerr isn't connected (`movie/lookup` + `POST movie`, `series/lookup` + `POST series`). Root folder, quality profile, tags and monitor/search options come from pick lists, which `Lookups` already has. The add webhook then runs movers as usual.
-  - Something already in the library shows where it is instead of an Add button.
-  - Posters: the CSP blocks third-party images. Either go without posters or serve them through the app (fetched from TMDB on the server and cached).
+- [x] Search for a movie or show and add it through Seerr (Requests → Add a request): posters, what's in Plex or requested already per season and per 4K copy, and a picker for the server, quality profile, root folder, tags and who it's for, each set to Seerr's default.
+- [ ] **Directly to Radarr/Sonarr** when Seerr isn't connected (`movie/lookup` + `POST movie`, `series/lookup` + `POST series`). Root folder, quality profile, tags and monitor/search options come from pick lists, which `Lookups` already has. The add webhook then runs movers as usual. No requester picker (there are no users), and posters come from the lookup's `remotePoster`.
 - [ ] Maybe: approve or decline Seerr's pending requests (Status only counts them today).
 
 ## Other ideas
