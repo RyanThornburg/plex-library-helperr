@@ -81,9 +81,27 @@ class TestPlanItem:
         tracked = Tracked("Heat (1995) [Bluray-1080p].mkv", OLD, False)
         assert "it may be another cut" in plan_item(movie(theatrical, extended), tracked, SETTINGS, NOW)
 
-    def test_a_multi_episode_file_is_left_alone(self):
-        double = version(2, "Show - S01E01-E02 - Title.mkv", duration=44 * MIN)
+    @pytest.mark.parametrize("name", [
+        "Show - S01E01-E02 - Title.mkv", "Show - S01E01E02 - Title.mkv", "Show - S01E01-02 - Title.mkv",
+        "Show - S01E01 - S01E02 - Title.mkv", "show.s01e01.s01e02.mkv", "Show - 1x01x02 - Title.mkv",
+        "Show - 1x01-1x02 - Title.mkv", "Show - 1x01-02 - Title.mkv",
+    ])
+    def test_a_multi_episode_file_is_left_alone(self, name):
+        double = version(2, name, duration=44 * MIN)
         assert plan_item(episode(double, NEW_COPY), TRACKED, SETTINGS, NOW) == "a version's file holds more than one episode"
+
+    @pytest.mark.parametrize("name", [
+        "Show - S01E01 - Title [WEBDL-1080p].mkv", "Show - S01E01 - Title 1920x1080.mkv",
+        "Show - 1x01 - Title [x264].mkv", "Show - S01E01-1080p.mkv",
+    ])
+    def test_one_episode_names(self, name):
+        from duplicates import MULTI_EPISODE
+
+        assert not MULTI_EPISODE.search(name)
+
+    def test_an_unknown_arr_date_is_never_old(self):
+        tracked = Tracked(TRACKED.name, None, False)
+        assert plan_item(episode(OLD_COPY, NEW_COPY), tracked, SETTINGS, NOW) == "Sonarr's file has no date it was added"
 
     def test_unknown_lengths_dont_block(self):
         unknown = version(2, "Show - S01E02 - old.mkv", duration=None)

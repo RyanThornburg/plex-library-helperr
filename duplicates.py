@@ -40,8 +40,15 @@ ARR_LABELS = {"RADARR": "Radarr", "SONARR": "Sonarr"}
 # a version this much longer or shorter than the arr's file may be something else
 LENGTH_TOLERANCE = 0.10
 LENGTH_TOLERANCE_MIN_MS = 2 * 60 * 1000
-# S01E01E02, S01E01-E02, S01E01-02: deleting that file in plex takes every episode in it
-MULTI_EPISODE = re.compile(r"[Ss]\d+[Ee]\d+(?:-?[Ee]\d+|-\d+)")
+# a file named for more than one episode, in any of Sonarr's multi-episode styles:
+# S01E01E02, S01E01-E02, S01E01-02, S01E01.S01E02 (duplicate) and their 1x01 forms
+# (1x01x02, 1x01-1x02). Deleting that file in plex takes every episode in it. A
+# resolution such as 1920x1080 isn't an episode (1-2 digit season, 2-3 digit episode)
+EPISODE_CODE = r"(?:s\d{1,4}e\d{1,4}|\b\d{1,2}x\d{2,3}(?!\d))"
+MULTI_EPISODE = re.compile(
+    rf"{EPISODE_CODE}(?:-?e\d{{1,4}}|-?x\d{{2,3}}(?!\d)|-\d{{1,4}}\b)|{EPISODE_CODE}.*{EPISODE_CODE}",
+    re.IGNORECASE,
+)
 # how plans and approvals name a version's item
 SERVICE = "PLEX"
 
@@ -361,7 +368,10 @@ def plan_item(item: PlexItem, tracked: Tracked | None, settings: DuplicatesSetti
         return f"not found in {arr}, or {arr} has no file for it"
     if tracked.queued:
         return f"a download for it is in {arr}'s queue"
-    if tracked.added is not None and tracked.added > now - settings.min_age:
+    if tracked.added is None:
+        # min_age can't be checked: never read as old
+        return f"{arr}'s file has no date it was added"
+    if tracked.added > now - settings.min_age:
         return f"{arr}'s file was added in the last {format_duration(settings.min_age)}"
     keep = [v for v in item.versions if tracked.name in v.names]
     if not keep:

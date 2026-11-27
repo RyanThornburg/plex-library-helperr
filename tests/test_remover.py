@@ -139,9 +139,11 @@ class TestParseSeriesData:
         with pytest.raises(InvalidSeriesData):
             parse_series_data(eps, raw_files)
 
-    def test_bad_date_added_raises(self):
+    @pytest.mark.parametrize("value", ["yesterday", "0001-01-01T00:00:00Z"], ids=["text", "sonarr-no-date"])
+    def test_bad_date_added_raises(self, value):
+        # sonarr's 0001-01-01 is no date, it must never read as very old
         eps, raw_files = build_raw({1: 1})
-        raw_files[0]["dateAdded"] = "yesterday"
+        raw_files[0]["dateAdded"] = value
         with pytest.raises(InvalidSeriesData):
             parse_series_data(eps, raw_files)
 
@@ -204,6 +206,31 @@ class TestPlanSeasons:
         # specials included, 2 numbered seasons: both numbered seasons are kept
         p = plan(seasons_rule(include_specials=True), {0: 1, 1: 1, 2: 1})
         assert p.labels == ["S00"]
+
+
+class TestSharedFiles:
+    def test_a_file_holding_an_episode_of_a_kept_season_is_kept(self):
+        """S02E10 and S03E01 in one file, S03 is kept: S02 stays whole"""
+        eps, files = build_raw({1: 2, 2: 10, 3: 2})
+        s03e01 = next(e for e in eps if (e["seasonNumber"], e["episodeNumber"]) == (3, 1))
+        files = [f for f in files if f["id"] != s03e01["episodeFileId"]]
+        s03e01["episodeFileId"] = 12  # S02E10's file
+        p = plan(seasons_rule(), None, raw=(eps, files))
+        assert p.labels == ["S01"]
+
+    def test_a_file_shared_by_two_removed_seasons_goes(self):
+        eps, files = build_raw({1: 2, 2: 2, 3: 2, 4: 2})
+        files = [f for f in files if f["id"] != 3]
+        eps[2]["episodeFileId"] = 2  # S02E01 in S01E02's file
+        assert plan(seasons_rule(), None, raw=(eps, files)).labels == ["S01", "S02"]
+
+    def test_a_protected_season_keeps_the_file_it_shares(self):
+        eps, files = build_raw({1: 2, 2: 2, 3: 2, 4: 2})
+        files = [f for f in files if f["id"] != 3]
+        eps[2]["episodeFileId"] = 2
+        rule = seasons_rule(skip_if_watched_within=timedelta(days=14))
+        # S02 is being watched: S01 shares a file with it, so it stays too
+        assert plan(rule, None, raw=(eps, files), watches=[watch(2, 2)]) is None
 
 
 class TestSeasonWatchProtection:
@@ -479,8 +506,9 @@ class TestRunRemovers(SonarrFakes):
         self._run([make_series(added=NOW - timedelta(days=10))])
         self.client.episodes.assert_not_called()
 
-    def test_missing_added_date_skipped(self):
-        self._run([make_series(added=None)])
+    @pytest.mark.parametrize("added", [None, datetime(1, 1, 1)], ids=["none", "sonarr-no-date"])
+    def test_missing_added_date_skipped(self, added):
+        self._run([make_series(added=added)])
         self.client.episodes.assert_not_called()
 
     def test_queued_series_skipped(self):

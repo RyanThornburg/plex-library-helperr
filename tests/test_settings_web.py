@@ -6,6 +6,7 @@ import time
 from datetime import timedelta
 from urllib.parse import urlencode
 
+import html
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -702,9 +703,11 @@ class TestMovieRemovers:
         key = "radarr:/movies/kids"
         page = client.get("/removers/auto-approve?" + urlencode({"rule": key}), headers=auth()).text
         assert "delete movies and their files" in page and "watched or not" in page
-        response = client.post("/removers/auto-approve?" + urlencode({"rule": key, "enabled": "true"}), headers={**auth(), **ORIGIN}, follow_redirects=False)
+        action = html.unescape(re.search(r'action="(/removers/auto-approve\?[^"]+)"', page).group(1))
+        response = client.post(action, headers={**auth(), **ORIGIN}, follow_redirects=False)
         assert response.status_code == 303
-        assert {"rule": key, "auto_approve": True, "service": "RADARR", "path": "/movies/kids"} in client.get("/api/removers", headers=auth()).json()
+        rules = [{k: v for k, v in r.items() if k != "fingerprint"} for r in client.get("/api/removers", headers=auth()).json()]
+        assert {"rule": key, "auto_approve": True, "service": "RADARR", "path": "/movies/kids"} in rules
         post(client, "/settings/radarr/removers/1", {**self.REMOVER, "version": version(client), "loaded": loaded(client, "/settings/radarr/removers/1"), "min_age": "365d"})
         with Session(client.app.state.engine) as session:
             assert session.get_one(RemoverRuleSetting, key).auto_approve is False

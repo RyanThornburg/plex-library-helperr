@@ -68,13 +68,20 @@ class Episode:
     file_id: int | None
 
 
+# sonarr writes 0001-01-01 for a date it doesn't have, which must never read as very old
+NO_DATE_BEFORE = 1900
+
+
 def _utc_naive(value: object) -> datetime:
+    """a sonarr date as naive utc, InvalidSeriesData for none or sonarr's 0001-01-01"""
     if not isinstance(value, str):
         raise InvalidSeriesData(f"invalid date '{value}'")
     try:
         parsed = datetime.fromisoformat(value)
     except ValueError as e:
         raise InvalidSeriesData(f"invalid date '{value}'") from e
+    if parsed.year < NO_DATE_BEFORE:
+        raise InvalidSeriesData(f"no date '{value}'")
     if parsed.tzinfo:
         parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
     return parsed
@@ -256,6 +263,25 @@ class RemovalPlan:
         )
 
 
+def without_shared_files(units: list[Unit], episodes: list[Episode], series: Series) -> list[Unit]:
+    """the units whose files hold only episodes being removed: a multi-episode file that
+    also holds an episode that stays (a kept, protected or too new season, an unplanned
+    special) stays, with its whole unit. Repeated, since dropping one unit keeps its
+    episodes"""
+    by_file: dict[int, set[int]] = {}
+    for e in episodes:
+        if e.file_id is not None:
+            by_file.setdefault(e.file_id, set()).add(e.id)
+    while True:
+        going = {e.id for u in units for e in u.episodes}
+        kept = [u for u in units if all(by_file.get(f, set()) <= going for f in u.file_ids)]
+        if len(kept) == len(units):
+            return units
+        dropped = [u.label for u in units if u not in kept]
+        logger.info("%s\t %s: keeping %s, a file also holds an episode that stays", LOG_NAME, series.title, ", ".join(dropped))
+        units = kept
+
+
 def plan_series_removal(
     rule: RemoverRule,
     series: Series,
@@ -327,7 +353,7 @@ def plan_series_removal(
             series.title,
             ", ".join(held),
         )
-    units = [u for u in old_enough if u.label not in protected]
+    units = without_shared_files([u for u in old_enough if u.label not in protected], episodes, series)
 
     if not units:
         return None
@@ -398,7 +424,7 @@ def skip_reason(
     """why a tagged series isn't planned this run, None when it is"""
     if rule.skip_if_watched_within and watches is None:
         return "no watch history"
-    if series.added is None:
+    if series.added is None or series.added.year < NO_DATE_BEFORE:
         return "no added date"
     if series.added > now - rule.min_age:
         return "added recently"

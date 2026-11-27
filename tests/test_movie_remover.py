@@ -43,7 +43,7 @@ def raw_movie(id=1, title="Falling Like Snowflakes", root=HALLMARK, added="2024-
         "imdbId": f"tt{id}",
         "tags": list(tags),
         "hasFile": True,
-        "movieFile": {"id": file_id or (id or 0) * 10, "path": f"{root}/{title} (2024)/{title}.mkv"},
+        "movieFile": {"id": file_id or (id or 0) * 10, "path": f"{root}/{title} (2024)/{title}.mkv", "dateAdded": added},
     }
     raw.update(kwargs)
     return raw
@@ -69,7 +69,7 @@ class TestParseMovie:
         assert m.added == datetime(2024, 7, 4, 16, 45, 49)
         assert m.released == datetime(2024, 6, 29)
         assert m.tags == {"hallmark"}
-        assert m.file == MovieFile(10, f"{HALLMARK}/Falling Like Snowflakes (2024)/Falling Like Snowflakes.mkv")
+        assert m.file == MovieFile(10, f"{HALLMARK}/Falling Like Snowflakes (2024)/Falling Like Snowflakes.mkv", m.added)
         assert (m.tmdb_id, m.imdb_id) == (1001, "tt1")
 
     def test_root_without_trailing_slash_and_from_the_path(self):
@@ -119,6 +119,9 @@ class TestAgeSkipReason:
             ({"hasFile": False}, "no file"),
             ({"tags": [1]}, "excluded tag"),
             ({"added": "2026-01-01T00:00:00Z"}, "added recently"),
+            # added long ago, downloaded lately
+            ({"movieFile": {"id": 10, "path": "/m.mkv", "dateAdded": "2026-01-01T00:00:00Z"}}, "downloaded recently"),
+            ({"movieFile": {"id": 10, "path": "/m.mkv", "dateAdded": "0001-01-01T00:00:00Z"}}, "file date unknown"),
             # an old movie added lately stays: both dates must be old
             ({"released": "2026-01-01T00:00:00Z"}, "released recently"),
             ({"released": None}, "no release date"),

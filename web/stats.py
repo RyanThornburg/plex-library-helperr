@@ -447,10 +447,25 @@ def movie_guids(items: list[Any], tmdb_id: int | None, imdb_id: str | None) -> s
     return guids
 
 
+def playing_now(tautulli: TautulliConfig) -> set[str]:
+    """the guids of the movies plex is playing now: a play in progress isn't in the
+    plays table (Tautulli's history gives it no id until it stops)"""
+    activity = tautulli_get(tautulli.url, tautulli.apikey, "get_activity") or {}
+    sessions = activity.get("sessions") if isinstance(activity, dict) else None
+    if not isinstance(sessions, list):
+        raise SyncError("Tautulli's activity has no sessions list")
+    return {
+        normalize_guid(s["guid"])
+        for s in sessions
+        if isinstance(s, dict) and s.get("media_type") == "movie" and isinstance(s.get("guid"), str) and s["guid"]
+    }
+
+
 def movie_play_lookup(engine: Engine, settings: ConfigSettings) -> PlayLookup:
     """movie_remover's PlayLookup, from the plays table. It syncs new plays from Tautulli
-    first, so a play from the last hour counts. Movies plex doesn't have are left out
-    (their plays can't all be found), so removers that check plays keep them"""
+    first, so a play from the last hour counts, and a movie playing now counts as played
+    now. Movies plex doesn't have are left out (their plays can't all be found), so
+    removers that check plays keep them"""
 
     def lookup(movies: list[RadarrMovie]) -> dict[int, list[datetime]]:
         tautulli, plex = settings.tautulli, settings.plex
@@ -458,6 +473,7 @@ def movie_play_lookup(engine: Engine, settings: ConfigSettings) -> PlayLookup:
             raise SyncError("needs Tautulli and Plex on Settings → Connections")
         try:
             sync_plays(engine, tautulli)
+            playing = playing_now(tautulli)
             index = PlexIndex(PlexServer(plex.baseurl, plex.token, timeout=TIMEOUT), ("movie",))
         except Exception as e:
             # requests errors hold urls, and tautulli's key is a query param
@@ -475,6 +491,9 @@ def movie_play_lookup(engine: Engine, settings: ConfigSettings) -> PlayLookup:
                 found[movie.id] = sorted(
                     session.scalars(select(Play.started_at).where(Play.guid.in_(guids)))
                 )
+                if playing & set(guids):
+                    logger.info("STATS\t %s is playing now", movie.label)
+                    found[movie.id].append(utc_now())
         return found
 
     return lookup

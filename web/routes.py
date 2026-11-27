@@ -1,5 +1,7 @@
 """routes.py - pages and json api for running jobs, reviewing runs and scheduling jobs"""
 
+import hashlib
+import json
 import logging
 import pathlib
 from datetime import datetime, timedelta
@@ -17,6 +19,7 @@ from sqlalchemy.orm import Session
 
 import config
 import trash_guides
+from config.document import rule_to_dict
 from config.models import ConfigSettings, MovieRemoverRule, RemoverRule
 from results import JOBS
 from version import VERSION
@@ -794,25 +797,43 @@ def rule_settings(request: Request) -> dict[str, RemoverRuleSetting]:
         return {s.rule_key: s for s in session.scalars(select(RemoverRuleSetting))}
 
 
-def auto_approve_refused(request: Request, rule_key: str) -> None:
-    """turning auto-approve on needs the rule in the config (404) and a max_deletes on
-    its arr (409): unattended deletion always has a cap"""
+def rule_fingerprint(settings: ConfigSettings, rule: RemoverRule | MovieRemoverRule) -> str:
+    """what turning auto-approve on agrees to: the rule as it is and its arr's
+    max_deletes. A confirm page carries it, so a rule edited since isn't approved"""
+    arr = settings.radarr if isinstance(rule, MovieRemoverRule) else settings.sonarr
+    agreed = {"rule": rule_to_dict(rule), "max_deletes": arr.remover_settings.max_deletes if arr else None}
+    return hashlib.sha256(json.dumps(agreed, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def auto_approve_refused(request: Request, rule_key: str) -> tuple[RemoverRule | MovieRemoverRule, str]:
+    """the rule and its fingerprint when auto-approve can be turned on. It needs the rule
+    in the config (404) and a max_deletes on its arr (409): unattended deletion always
+    has a cap"""
     settings, _ = remover_config(request)
-    if rule_key not in {r.key for r in (all_removers(settings) if settings else [])}:
+    rule = next((r for r in (all_removers(settings) if settings else []) if r.key == rule_key), None)
+    if settings is None or rule is None:
         raise HTTPException(status_code=404)
-    arr_name = "radarr" if rule_key.startswith("radarr:") else "sonarr"
+    arr_name = "radarr" if isinstance(rule, MovieRemoverRule) else "sonarr"
     arr = getattr(settings, arr_name)
     if arr is None or arr.remover_settings.max_deletes is None:
         raise HTTPException(
             status_code=409,
             detail=f"Set a max deleted per run for {arr_name.title()}'s removers first: auto-approve only deletes with a cap.",
         )
+    return rule, rule_fingerprint(settings, rule)
 
 
-def set_auto_approve(request: Request, rule_key: str, enabled: bool) -> None:
-    """turning on needs the rule in the config and a max_deletes, off always works"""
+def set_auto_approve(request: Request, rule_key: str, enabled: bool, seen: str | None = None) -> None:
+    """turning on needs the rule in the config and a max_deletes, and when `seen` (the
+    fingerprint the confirm page showed) is given, the rule as it was shown. Off always
+    works"""
     if enabled:
-        auto_approve_refused(request, rule_key)
+        _, current = auto_approve_refused(request, rule_key)
+        if seen is not None and seen != current:
+            raise HTTPException(
+                status_code=409,
+                detail="The rule or its max deleted per run changed since this page was opened. Look at it again before turning auto-approve on.",
+            )
     with Session(request.app.state.engine) as session:
         setting = session.get(RemoverRuleSetting, rule_key) or RemoverRuleSetting(
             rule_key=rule_key
@@ -856,23 +877,23 @@ def removers_page(request: Request) -> HTMLResponse:
 @router.get("/removers/auto-approve", response_class=HTMLResponse)
 def auto_approve_confirm_page(request: Request, rule: str) -> HTMLResponse:
     """turning auto-approve on always goes through this page"""
-    auto_approve_refused(request, rule)
-    matching = [r for r in remover_rules(request)[0] if r.key == rule]
+    found, seen = auto_approve_refused(request, rule)
     return templates.TemplateResponse(
         request,
         "auto_approve_confirm.html",
         {
             "user": request.state.user,
-            "rule": matching[0],
+            "rule": found,
             "allow_apply": runner(request).allow_apply,
-            "query": urlencode({"rule": rule, "enabled": "true"}),
+            "query": urlencode({"rule": rule, "enabled": "true", "seen": seen}),
         },
     )
 
 
 @router.post("/removers/auto-approve")
-def auto_approve_form(request: Request, rule: str, enabled: bool) -> RedirectResponse:
-    set_auto_approve(request, rule, enabled)
+def auto_approve_form(request: Request, rule: str, enabled: bool, seen: str = "") -> RedirectResponse:
+    """turning on needs `seen`, the confirm page's fingerprint of the rule"""
+    set_auto_approve(request, rule, enabled, seen)
     return RedirectResponse("/removers", status_code=303)
 
 
@@ -923,32 +944,36 @@ class AutoApproveRequest(BaseModel):
     # MovieRemoverRule.key, radarr:<root folder>
     rule: str
     enabled: bool
+    # GET /api/removers' fingerprint of the rule: when given, turning on is refused (409)
+    # if the rule or its max_deletes changed since
+    fingerprint: str | None = None
 
 
 @router.get("/api/removers")
 def api_removers(request: Request) -> list[dict[str, Any]]:
     """the config's removers with their auto-approve setting"""
-    rules, config_error = remover_rules(request)
-    if config_error:
+    config, config_error = remover_config(request)
+    if config_error or config is None:
         raise HTTPException(status_code=503, detail=config_error)
     settings = rule_settings(request)
     return [
         {
             "rule": r.key,
             "auto_approve": r.key in settings and settings[r.key].auto_approve,
+            "fingerprint": rule_fingerprint(config, r),
             **(
                 {"service": "SONARR", "type": r.type, "keep": r.keep, "tags": r.tags}
                 if isinstance(r, RemoverRule)
                 else {"service": "RADARR", "path": r.root}
             ),
         }
-        for r in rules
+        for r in all_removers(config)
     ]
 
 
 @router.post("/api/removers/auto-approve")
 def api_auto_approve(request: Request, body: AutoApproveRequest) -> dict[str, Any]:
-    set_auto_approve(request, body.rule, body.enabled)
+    set_auto_approve(request, body.rule, body.enabled, body.fingerprint)
     return {"rule": body.rule, "auto_approve": body.enabled}
 
 

@@ -2,17 +2,20 @@
 request body, the pages and the poster cache"""
 
 import html
+import threading
+import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 import requests
+import urllib3
 from fastapi.testclient import TestClient
 
 from config.models import ArrConfig, ConfigSettings, SeerrConfig
 from tests.test_web import ORIGIN, FakeKeys, auth
 from tests.test_web import settings  # noqa: F401 (fixture)
-from web import new_request_routes, posters
+from web import new_request_routes, new_requests, posters
 from web.app import create_app
 from web.new_requests import (
     AVAILABLE,
@@ -105,7 +108,7 @@ class TestParse:
     def test_poster_name_only_takes_a_file_name(self):
         assert poster_name("/abc_D-1.jpg") == "abc_D-1.jpg"
         assert poster_name("abc.png") == "abc.png"
-        for bad in ("/../etc/passwd", "/a/b.jpg", "/a.gif", "", None, 5, "/a.jpg?x=1"):
+        for bad in ("/../etc/passwd", "/a/b.jpg", "/a.gif", "", None, 5, "/a.jpg?x=1", "/a.jpg\n"):
             assert poster_name(bad) is None
 
     def test_search_keeps_movies_and_shows(self):
@@ -129,6 +132,20 @@ class TestParse:
         assert found.results[0].status == AVAILABLE and found.results[0].status_4k == UNKNOWN
         assert found.results[0].state == ("In Plex", "")
         assert found.results[1].state is None
+
+    def test_users_stop_when_seerr_ignores_skip(self, monkeypatch):
+        """the same full page every time would page forever"""
+        page = [{"id": i, "displayName": f"User {i}"} for i in range(new_requests.USERS_PAGE)]
+        calls = []
+
+        def get(url, key, path, timeout=None, **params):
+            calls.append(path)
+            return {"id": 1} if path == "auth/me" else {"results": page}
+
+        monkeypatch.setattr("web.new_requests.seerr_get", get)
+        found, me = new_requests.users(SEERR)
+        assert len(found) == new_requests.USERS_PAGE and me == 1
+        assert calls == ["user", "user", "auth/me"]
 
     def test_a_result_without_dates_or_poster(self):
         result = parse_result({"id": 5, "mediaType": "movie", "title": "Untitled"})
@@ -521,6 +538,31 @@ class TestPages:
         bad = client.post("/api/requests/new/movie/603", json={"tags": "2"}, headers={**auth(), **ORIGIN})
         assert bad.status_code == 422
 
+    @pytest.mark.parametrize("path, kwargs", [
+        ("/requests/new/movie/603", {"data": {"server": "1", "options_1": "1", "profile_1": "4", "root_1": "/movies"}}),
+        ("/api/requests/new/movie/603", {"json": {}}),
+    ], ids=["form", "api"])
+    def test_a_slow_seerr_doesnt_block_other_requests(self, client, fake_seerr, monkeypatch, path, kwargs):
+        """seerr is asked in a worker thread, the app keeps answering meanwhile"""
+        started, release = threading.Event(), threading.Event()
+
+        def slow_send(config, planned):
+            started.set()
+            release.wait(5)
+            return fake_seerr.made
+
+        monkeypatch.setattr(new_request_routes, "send", slow_send)
+        sending = threading.Thread(target=lambda: client.post(path, headers={**auth(), **ORIGIN}, follow_redirects=False, **kwargs))
+        sending.start()
+        try:
+            assert started.wait(5)
+            began = time.monotonic()
+            assert client.get("/healthz").status_code == 200
+            assert time.monotonic() - began < 2 and not release.is_set()
+        finally:
+            release.set()
+            sending.join(5)
+
 
 # ---------------------------------------------------------------------------
 # posters
@@ -536,6 +578,12 @@ class FakeImage:
     def close(self):
         pass
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
 
 class TestPosters:
     def test_fetched_once_then_kept(self, tmp_path, monkeypatch):
@@ -547,7 +595,9 @@ class TestPosters:
         assert calls == ["https://image.tmdb.org/t/p/w185/abc.jpg"]
         assert (tmp_path / "posters" / "w185" / "abc.jpg").exists()
 
-    @pytest.mark.parametrize("size, name", [("original", "abc.jpg"), ("w185", "../x.jpg"), ("w185", "x.svg"), ("w185", "a/b.jpg")])
+    @pytest.mark.parametrize("size, name", [
+        ("original", "abc.jpg"), ("w185", "../x.jpg"), ("w185", "x.svg"), ("w185", "a/b.jpg"), ("w185", "abc.jpg\n"),
+    ])
     def test_only_tmdb_posters(self, tmp_path, monkeypatch, size, name):
         monkeypatch.setattr(posters.requests, "get", MagicMock(side_effect=AssertionError("not fetched")))
         assert PosterCache(tmp_path).get(size, name) is None
@@ -565,6 +615,22 @@ class TestPosters:
     def test_tmdb_down(self, tmp_path, monkeypatch):
         monkeypatch.setattr(posters.requests, "get", MagicMock(side_effect=requests.ConnectionError("down")))
         assert PosterCache(tmp_path).get("w185", "abc.jpg") is None
+
+    def test_a_connection_dropped_mid_read(self, tmp_path, monkeypatch):
+        """reading the raw body raises urllib3's errors, not requests'"""
+        image = FakeImage()
+        image.raw = SimpleNamespace(read=MagicMock(side_effect=urllib3.exceptions.ProtocolError("reset")))
+        monkeypatch.setattr(posters.requests, "get", lambda url, **k: image)
+        assert PosterCache(tmp_path).get("w185", "abc.jpg") is None
+
+    def test_a_failed_write_leaves_no_half_file(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(posters.requests, "get", lambda url, **k: FakeImage())
+        monkeypatch.setattr(posters.os, "replace", MagicMock(side_effect=OSError("disk full")))
+        assert PosterCache(tmp_path).get("w185", "abc.jpg") == (b"\xff\xd8jpeg", "image/jpeg")
+        assert list(tmp_path.glob("*/*")) == []
+
+    def test_route_answers_404_for_a_name_with_a_newline(self, client):
+        assert client.get("/posters/w185/abc.jpg%0A", headers=auth()).status_code == 404
 
     def test_oldest_pruned(self, tmp_path, monkeypatch):
         monkeypatch.setattr(posters, "MAX_FILES", 3)

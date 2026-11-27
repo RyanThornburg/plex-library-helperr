@@ -534,9 +534,10 @@ def radarr_movie(id, tmdb_id=None, imdb_id=None, title="Heat"):
 class TestMoviePlayLookup:
     SETTINGS = ConfigSettings(plex=PLEX, radarr=None, sonarr=None, tautulli=TAUTULLI)
 
-    def lookup(self, engine, movies, plex, settings=SETTINGS):
+    def lookup(self, engine, movies, plex, settings=SETTINGS, playing=frozenset()):
         with (
             patch.object(stats, "sync_plays") as synced,
+            patch.object(stats, "playing_now", return_value=set(playing)),
             patch.object(stats, "PlexServer", return_value=plex),
         ):
             found = movie_play_lookup(engine, settings)(movies)
@@ -567,6 +568,24 @@ class TestMoviePlayLookup:
     def test_never_played(self, engine):
         plex = fake_plex(FakeSection("movie", [plex_item("Heat", "plex://movie/a", ["imdb://tt1"])]))
         assert self.lookup(engine, [radarr_movie(1, imdb_id="tt1")], plex) == {1: []}
+
+    def test_playing_now_counts_as_played_now(self, engine):
+        """a play in progress has no id in Tautulli's history, so it isn't stored yet"""
+        plex = fake_plex(FakeSection("movie", [plex_item("Heat", "plex://movie/a", ["imdb://tt1"])]))
+        [played] = self.lookup(engine, [radarr_movie(1, imdb_id="tt1")], plex, playing={"plex://movie/a"})[1]
+        assert utc_now() - played < timedelta(minutes=1)
+
+    def test_sessions_from_activity(self):
+        activity = {"sessions": [
+            {"media_type": "movie", "guid": "plex://movie/a"},
+            {"media_type": "movie", "guid": "com.plexapp.agents.imdb://tt1?lang=en"},
+            {"media_type": "episode", "guid": "plex://episode/b"},
+            {"media_type": "movie"},
+        ]}
+        with patch.object(stats, "tautulli_get", return_value=activity):
+            assert stats.playing_now(TAUTULLI) == {"plex://movie/a", "com.plexapp.agents.imdb://tt1"}
+        with patch.object(stats, "tautulli_get", return_value={}), pytest.raises(SyncError):
+            stats.playing_now(TAUTULLI)
 
     def test_needs_tautulli_and_plex(self, engine):
         lookup = movie_play_lookup(engine, ConfigSettings(plex=PLEX, radarr=None, sonarr=None))

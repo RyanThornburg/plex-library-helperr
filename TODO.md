@@ -18,12 +18,12 @@ A whole-codebase review: no critical or high findings. Each item was verified, m
 
 ### Low: deletion safety
 
-- [ ] #46 Movie remover can't see a play in progress (only finished plays are stored), so a first watch in progress is "never played".
-- [ ] #50 Movie remover ignores the file's age: added long ago, downloaded yesterday, removable now.
-- [ ] #48 Seasons mode can delete a multi-episode file that also holds an episode of a kept season.
-- [ ] #49 Sonarr remover reads `0001-01-01` as ancient (Radarr's parser treats it as no date).
-- [ ] #51 Duplicates: the multi-episode guard misses Sonarr's `Duplicate`/`NxNN` styles; an unknown arr file date skips `min_age`.
-- [ ] #54 The auto-approve confirmation isn't tied to the rule's content: a stale confirm approves an edited rule.
+- [x] #46 Movie remover can't see a play in progress (only finished plays are stored), so a first watch in progress is "never played".
+- [x] #50 Movie remover ignores the file's age: added long ago, downloaded yesterday, removable now.
+- [x] #48 Seasons mode can delete a multi-episode file that also holds an episode of a kept season.
+- [x] #49 Sonarr remover reads `0001-01-01` as ancient (Radarr's parser treats it as no date).
+- [x] #51 Duplicates: the multi-episode guard misses Sonarr's `Duplicate`/`NxNN` styles; an unknown arr file date skips `min_age`.
+- [x] #54 The auto-approve confirmation isn't tied to the rule's content: a stale confirm approves an edited rule.
 
 ### Low: sign-in and exposure
 
@@ -58,7 +58,7 @@ A whole-codebase review: no critical or high findings. Each item was verified, m
 - [ ] #14 / #15 / #16 Webhook key: a negative Kometa `run_time` pins the card to ok; tables can grow without limit; it also schedules empty trash follow-ups.
 - [ ] #56 A "changed since this page was loaded" error re-renders stale values with the current version, so the next Save overwrites the other change.
 - [ ] #73 / #74 / #76 / #77 TRaSH: a malformed snapshot is stored before validation (500 until upstream changes); no size limits on the download; case-only name clashes share a plan key; re-downloading an old commit makes it "newest".
-- [ ] New request/poster code: #78 Seerr calls on the event loop in the new POST handlers, #79 `users()` pages forever if Seerr ignores `skip`, #80 a poster name ending in a newline 500s, #81 urllib3 read errors uncaught.
+- [x] New request/poster code: #78 Seerr calls on the event loop in the new POST handlers, #79 `users()` pages forever if Seerr ignores `skip`, #80 a poster name ending in a newline 500s, #81 urllib3 read errors uncaught.
 - [ ] #84 uv 0.11.2 in the Dockerfile has published advisories; Dependabot PRs unmerged.
 - [ ] #86 `.gitignore` misses `helperr.db`, its `-wal`/`-shm` and `posters/`.
 - [ ] #87 `HELPERR_SECRET_KEY` only from an env var, likely in the same backups as the db: support `HELPERR_SECRET_KEY_FILE` and say so in the docs.

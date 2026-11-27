@@ -43,8 +43,11 @@ STATES = {
 DECLINED, COMPLETED = 3, 5
 # users read a page at a time
 USERS_PAGE = 100
+# pages of users read at most (20,000 users): a seerr that ignores `skip` would answer
+# the same full page forever
+USERS_PAGES = 200
 # a tmdb image's file name, as seerr gives its path ("/abc.jpg")
-POSTER_NAME = re.compile(r"^/?([A-Za-z0-9_-]{1,64}\.(?:jpg|jpeg|png))$")
+POSTER_NAME = re.compile(r"/?([A-Za-z0-9_-]{1,64}\.(?:jpg|jpeg|png))")
 
 
 class RequestInvalid(ValueError):
@@ -52,7 +55,7 @@ class RequestInvalid(ValueError):
 
 
 def poster_name(path: object) -> str | None:
-    match = POSTER_NAME.match(path) if isinstance(path, str) else None
+    match = POSTER_NAME.fullmatch(path) if isinstance(path, str) else None
     return match.group(1) if match else None
 
 
@@ -491,18 +494,23 @@ def parse_user(raw: Mapping[str, Any]) -> User | None:
 
 def users(config: SeerrConfig) -> tuple[list[User], int | None]:
     """seerr's users by name, and the one the API key requests as"""
-    found: list[User] = []
-    skip = 0
-    while True:
-        body = seerr_get(config.url, config.apikey, "user", timeout=TIMEOUT, take=USERS_PAGE, skip=skip)
+    found: dict[int, User] = {}
+    for number in range(USERS_PAGES):
+        body = seerr_get(config.url, config.apikey, "user", timeout=TIMEOUT, take=USERS_PAGE, skip=number * USERS_PAGE)
         page = body.get("results", []) if isinstance(body, dict) else []
-        found.extend(u for raw in page if isinstance(raw, dict) and (u := parse_user(raw)))
+        before = len(found)
+        found.update((u.id, u) for raw in page if isinstance(raw, dict) and (u := parse_user(raw)))
         if len(page) < USERS_PAGE:
             break
-        skip += USERS_PAGE
+        if len(found) == before:
+            # a full page of users already read: seerr isn't paging
+            logger.warning("SEERR\t Its user list repeats a page, stopped reading it at %s users", len(found))
+            break
+    else:
+        logger.warning("SEERR\t Read the first %s users only", len(found))
     me = seerr_get(config.url, config.apikey, "auth/me", timeout=TIMEOUT)
     me_id = as_int(me.get("id")) if isinstance(me, dict) else None
-    return sorted(found, key=lambda u: u.name.casefold()), me_id
+    return sorted(found.values(), key=lambda u: u.name.casefold()), me_id
 
 
 # ---------------------------------------------------------------------------

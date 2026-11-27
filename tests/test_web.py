@@ -1,5 +1,6 @@
 """Tests for the web app: access auth, security headers, database"""
 
+import html
 import dataclasses
 import re
 import threading
@@ -792,6 +793,11 @@ def remover_config() -> ConfigSettings:
     return ConfigSettings(plex=None, radarr=None, sonarr=sonarr)
 
 
+def confirm_action(page: str) -> str:
+    """the url the auto-approve confirm page's button posts to"""
+    return html.unescape(re.search(r'action="(/removers/auto-approve\?[^"]+)"', page).group(1))
+
+
 def removers_app(settings, allow_apply=True):
     return create_app(
         dataclasses.replace(settings, allow_remover_apply=allow_apply),
@@ -811,12 +817,8 @@ class TestRemoversPage:
         with TestClient(removers_app(settings)) as c:
             confirm = c.get("/removers/auto-approve?rule=rm-housewives", headers=auth()).text
             assert "without review" in confirm
-            assert 'action="/removers/auto-approve?rule=rm-housewives&amp;enabled=true"' in confirm
-            response = c.post(
-                "/removers/auto-approve?rule=rm-housewives&enabled=true",
-                headers={**auth(), **ORIGIN},
-                follow_redirects=False,
-            )
+            assert 'action="/removers/auto-approve?rule=rm-housewives&amp;enabled=true&amp;seen=' in confirm
+            response = c.post(confirm_action(confirm), headers={**auth(), **ORIGIN}, follow_redirects=False)
             assert response.status_code == 303
             assert c.app.state.runner.auto_approved_rules() == {"rm-housewives"}
             # every place that says what a config run does says so
@@ -835,6 +837,30 @@ class TestRemoversPage:
             assert c.post("/removers/auto-approve?rule=nope&enabled=true", headers=headers).status_code == 404
             response = c.post("/api/removers/auto-approve", json={"rule": "nope", "enabled": True}, headers=headers)
             assert response.status_code == 404
+
+    def test_a_rule_changed_since_the_confirm_page_isnt_approved(self, settings):
+        """the page showed the rule as it was: a stale click doesn't approve the new one"""
+        keep = {"value": 1}
+
+        def config():
+            settings_ = remover_config()
+            settings_.sonarr.removers[0].keep = keep["value"]
+            return settings_
+
+        app = create_app(settings, keys=FakeKeys(), run_job=fake_run_job, load_config=config, run_scheduler=False)
+        with TestClient(app) as c:
+            confirm = c.get("/removers/auto-approve?rule=rm-housewives", headers=auth()).text
+            keep["value"] = 0  # edited in another tab: keep no seasons
+            response = c.post(confirm_action(confirm), headers={**auth(), **ORIGIN, "Accept": "text/html"})
+            assert response.status_code == 409 and "changed since this page was opened" in response.text
+            # without the page's fingerprint it isn't turned on either
+            assert c.post("/removers/auto-approve?rule=rm-housewives&enabled=true", headers={**auth(), **ORIGIN}).status_code == 409
+            assert c.app.state.runner.auto_approved_rules() == frozenset()
+            # the api checks one when given
+            [rule] = [r for r in c.get("/api/removers", headers=auth()).json() if r["rule"] == "rm-housewives"]
+            keep["value"] = 1
+            body = {"rule": "rm-housewives", "enabled": True, "fingerprint": rule["fingerprint"]}
+            assert c.post("/api/removers/auto-approve", json=body, headers={**auth(), **ORIGIN}).status_code == 409
 
     def test_needs_a_max_deletes(self, settings):
         def uncapped():

@@ -54,6 +54,8 @@ class InvalidMovieData(InvalidArrData):
 class MovieFile:
     id: int
     path: str
+    # when radarr imported it (an upgrade's is the upgrade's), None when it doesn't say
+    added: datetime | None = None
 
 
 @dataclass
@@ -121,7 +123,7 @@ def parse_movie(raw: dict[str, Any], tag_labels: dict[int, str]) -> RadarrMovie:
         file_path = movie_file.get("path")
         if not isinstance(file_path, str) or not file_path:
             raise InvalidMovieData("its file has no path")
-        file = MovieFile(_int(movie_file, "id"), file_path)
+        file = MovieFile(_int(movie_file, "id"), file_path, _date(movie_file.get("dateAdded")))
 
     year = raw.get("year")
     tmdb_id = raw.get("tmdbId")
@@ -160,6 +162,12 @@ def age_skip_reason(
         return "excluded tag"
     if movie.added > now - rule.min_age:
         return "added recently"
+    # a movie added to radarr long ago may have been downloaded yesterday: its file's
+    # age counts too (an upgrade's too, which only keeps it longer)
+    if movie.file.added is None:
+        return "file date unknown"
+    if movie.file.added > now - rule.min_age:
+        return "downloaded recently"
     if movie.released is None:
         return "no release date"
     if movie.released > now - rule.min_age:

@@ -11,6 +11,7 @@ from typing import Any
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Request
+from starlette.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from config.models import SeerrConfig
@@ -314,6 +315,12 @@ def what(title: Title, seasons: tuple[int, ...]) -> str:
 async def request_form(request: Request, media_type: str, tmdb_id: int) -> Response:
     check_type(media_type)
     form = await form_lists(request)
+    # seerr's answers take a while: in a worker thread, not on the event loop every
+    # other request waits on
+    return await run_in_threadpool(_request_form, request, media_type, tmdb_id, form)
+
+
+def _request_form(request: Request, media_type: str, tmdb_id: int, form: dict[str, list[str]]) -> Response:
     config, problem = seerr_config(request)
     if config is None:
         return error_page(request, 409, problem or "Connect Seerr on Settings → Connections to add requests.", ("Add a request", "/requests/new"))
@@ -396,6 +403,10 @@ async def api_request(request: Request, media_type: str, tmdb_id: int) -> JSONRe
         raise HTTPException(status_code=422, detail="the body must be json") from None
     if not isinstance(body, dict):
         raise HTTPException(status_code=422, detail="the body must be a json object")
+    return await run_in_threadpool(_api_request, request, media_type, tmdb_id, body)
+
+
+def _api_request(request: Request, media_type: str, tmdb_id: int, body: dict[str, Any]) -> JSONResponse:
     config = connected(request)
     loaded = load(config, media_type, tmdb_id)
     try:
