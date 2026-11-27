@@ -2,6 +2,26 @@
 
 What changed in each release. Versions are `MAJOR.MINOR.PATCH`: the major number goes up when upgrading needs you to do something (a new required setting, a removed feature, a change that breaks the API), the minor number for new features, the patch number for fixes.
 
+## 2.9.0 (2026-11-26)
+
+### New
+
+- Requests → Add a request: search for a movie or show and request it through Seerr, with posters, what's already in Plex or requested (per season, and per 4K copy), and a choice of server, quality profile, root folder, tags and who it's for, each set to Seerr's default. Posters are fetched from TMDB by Helperr and kept on disk, so your browser only talks to Helperr. Also `GET /api/requests/search`, `GET` and `POST /api/requests/new/{movie|tv}/{tmdb id}`.
+
+### Changed
+
+- Auto-approve needs a max deleted per run: without one, an auto-approved rule's removals wait for review, and turning auto-approve on is refused. Removing or raising the max deleted per run turns auto-approve off again, and so does confirming it on a page opened before the rule or its max changed. If a rule had auto-approve on without a max, set one on the Removers page.
+- A saved API key is only sent to the server it was saved for: changing a connection's address to another server (or http to https) asks for the key again, on Save, Test, the config API and restoring an old version.
+- Queue cleanup counts how long a download has been stuck from when it first reached a state it removes, not from its first warning. Every stuck download's clock starts again after upgrading.
+
+### Fixed
+
+- Removers: Sonarr watch protection missed plays of shows Plex numbers differently from Sonarr (absolute order, common for anime); a recent play it can't place now protects the whole series. A movie being watched right now counted as never played. The movie remover ignored when the file was downloaded (a movie added long ago and downloaded yesterday was removable at once). A multi-episode file holding an episode of a season that stays could be deleted with the season next to it. Sonarr's empty date (0001-01-01) read as very old.
+- Duplicates: more of Sonarr's multi-episode file names are recognised and left alone, and a file without a date is never treated as old.
+- TRaSH Guides: a review now shows every field of a new condition, and a guide custom format with two conditions of the same name (which the review couldn't show) isn't synced.
+- Sign-in: a burst of guesses sent at once all got through before the first was counted; now only five do, and password checks run at most two at a time. A request that stopped halfway through its body logged a traceback and could hold up the app.
+- Requests: a slow Seerr no longer holds up every other page, reading Seerr's users can't loop forever, and a few odd poster requests no longer error.
+
 ## 2.8.0 (2026-11-22)
 
 ### New
