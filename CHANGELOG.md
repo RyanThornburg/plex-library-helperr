@@ -2,6 +2,12 @@
 
 What changed in each release. Versions are `MAJOR.MINOR.PATCH`: the major number goes up when upgrading needs you to do something (a new required setting, a removed feature, a change that breaks the API), the minor number for new features, the patch number for fixes.
 
+## 2.10.1 (2026-11-28)
+
+### Fixed
+
+- Failed starts: how Plex sent a stream reads "direct play", "direct stream" or "transcode" like everywhere else, not "Direct Play" mid-sentence (Tautulli's notifications capitalize it).
+
 ## 2.10.0 (2026-11-28)
 
 ### New
