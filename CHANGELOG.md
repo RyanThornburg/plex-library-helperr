@@ -2,6 +2,12 @@
 
 What changed in each release. Versions are `MAJOR.MINOR.PATCH`: the major number goes up when upgrading needs you to do something (a new required setting, a removed feature, a change that breaks the API), the minor number for new features, the patch number for fixes.
 
+## 2.10.0 (2026-11-28)
+
+### New
+
+- Failed starts: someone who keeps trying a title that won't start, and gives up without telling you, is now a warning on the Status page's Plex card. Tautulli leaves plays under two minutes out of its history, so these never showed anywhere. Add a Webhook notification agent in Tautulli (Settings → Webhook in Helperr has the URL and the JSON to paste) and Helperr sees every session. A title that failed 3 times for one person, or 4 failed starts of different titles on one device, is a warning until it plays for them (or for 3 days). Playback lists them under Couldn't start, and every failed start in the window under Failed starts; `GET /api/playback` has them as `failed_starts`.
+
 ## 2.9.0 (2026-11-26)
 
 ### New
