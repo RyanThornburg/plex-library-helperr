@@ -590,9 +590,13 @@ class TestSubmitSoon:
         runner = make_runner(engine, lambda job, settings: JobResult(job))
         real = runner._execute
         running, release = threading.Event(), threading.Event()
+        # the first run the worker executes fails. Not "run_id == first": the worker can
+        # pick the run up before submit() returns and `first` is assigned
+        failing: list[int] = []
 
         def execute(run_id):
-            if run_id == first:
+            if not failing:
+                failing.append(run_id)
                 running.set()
                 release.wait(5)
                 raise RuntimeError("database is locked")
@@ -600,7 +604,7 @@ class TestSubmitSoon:
 
         monkeypatch.setattr(runner, "_execute", execute)
         first = runner.submit("movers", True, "manual", None)
-        assert running.wait(5)
+        assert running.wait(5) and failing == [first]
         assert runner.submit_soon("movers", "webhook", "Radarr: A") is None
         release.set()
         runner.wait_idle()
