@@ -95,6 +95,11 @@ def _fields(payload: dict[str, Any]) -> dict[str, Any]:
         "video_resolution": 16, "audio_codec": 32, "audio_profile": 64,
     }
     found: dict[str, Any] = {k: v for k, n in text.items() if (v := as_text(payload.get(k), n)) is not None}
+    # notifications say Direct Play, Direct Stream, Transcode; the api says direct play,
+    # copy, transcode
+    for key in ("transcode_decision", "video_decision", "audio_decision", "subtitle_decision"):
+        if key in found:
+            found[key] = found[key].casefold().replace("direct stream", "copy")
     for key in ("rating_key", "audio_channels"):
         if (number := as_int(payload.get(key))) is not None:
             found[key] = number

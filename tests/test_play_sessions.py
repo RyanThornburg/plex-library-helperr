@@ -29,9 +29,9 @@ PRIMETIME = {
     "platform": "Tizen",
     "location": "wan",
     "quality_profile": "Original",
-    "transcode_decision": "direct play",
-    "video_decision": "direct play",
-    "audio_decision": "direct play",
+    "transcode_decision": "Direct Play",
+    "video_decision": "Direct Play",
+    "audio_decision": "Direct Play",
     "subtitle_decision": "",
     "container": "mkv",
     "video_codec": "h264",
@@ -84,6 +84,12 @@ class TestRecord:
         assert (s.user_id, s.user, s.rating_key, s.title, s.player, s.audio_channels) == (13892756, "majcher33", 310750, "Primetime", "TV 2025", 6)
         assert (s.started_at, s.ended_at, s.start_offset, s.end_offset, s.stream_seconds) == (NOW, NOW + timedelta(seconds=27), 0, 0, 27)
         assert said == "majcher33 stopped Primetime on TV 2025 after 27s at 0:00 (direct play of H264 1080p, EAC3 Atmos 5.1)"
+
+    def test_decisions_are_read_as_the_api_says_them(self, engine):
+        record(engine, {**PRIMETIME, "event": "play", "transcode_decision": "Direct Stream", "audio_decision": "Transcode"}, NOW)
+        [s] = stored(engine)
+        assert (s.transcode_decision, s.video_decision, s.audio_decision) == ("copy", "direct play", "transcode")
+        assert play_sessions.stream(s).startswith("direct stream of H264 1080p")
 
     def test_a_stop_whose_start_wasnt_seen(self, engine):
         record(engine, {**PRIMETIME, "event": "stop", "offset": "0", "stream_seconds": "27"}, NOW)
