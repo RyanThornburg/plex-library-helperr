@@ -13,7 +13,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 import config
 from config.models import QueueCleanup, WebDefaults
-from web import kometa
+from web import kometa, play_sessions
 from web.db import ConfigVersion
 from web.lookups import (
     LookupFailed,
@@ -378,6 +378,9 @@ def webhook_page(request: Request) -> HTMLResponse:
             "port": os.environ.get("PORT", "8080"),
             "kometa_events": kometa.EVENTS,
             "kometa_last": kometa.last_received(request.app.state.engine),
+            "tautulli_json": json.dumps(play_sessions.TEMPLATE, indent=2),
+            "tautulli_triggers": play_sessions.TRIGGERS,
+            "tautulli_last": play_sessions.last_received(request.app.state.engine),
         },
     )
 

@@ -27,9 +27,9 @@ from web.health import (
     record,
     span,
     summary,
+    with_webhooks,
 )
 from web.jobs import utc_now
-from web.kometa import kometa_status
 from web.queue_cleanup import IncidentClock, auto_note, summary as cleanup_summary
 from web.routes import form_lists, loaded_settings, templates
 from web.sync import sync_status
@@ -85,7 +85,7 @@ def statuses(
     others = [{"name": l.name, "local": l.url, "public": l.public_url, "service": l.service} for l in settings.links]
     now = utc_now()
     # like health.all_statuses, with check_all from here so tests can replace it
-    found = check_all(settings, now) + [kometa_status(request.app.state.engine, now)]
+    found = with_webhooks(request.app.state.engine, check_all(settings, now), now)
     # what the page shows is recorded too, so the header pill and the sidebar badges
     # (read from the incidents) agree with it instead of with the last background check
     try:

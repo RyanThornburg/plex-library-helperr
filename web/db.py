@@ -181,6 +181,50 @@ class KometaRun(Base):
     latest_version: Mapped[str | None] = mapped_column(String(64))
 
 
+class PlaySession(Base):
+    """a Plex session, from Tautulli's playback start/stop/error webhooks
+    (web.play_sessions): every attempt, including those too short for Tautulli's history,
+    so a title or device someone can't start shows. Times are when helperr got them.
+    Kept for web.play_sessions.KEEP"""
+
+    __tablename__ = "play_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # plex's session key: a stop or error goes to the open session with it
+    session_key: Mapped[str] = mapped_column(String(64), index=True)
+    started_at: Mapped[datetime] = mapped_column(index=True)  # naive utc
+    # None while it plays (or when its stop never came)
+    ended_at: Mapped[datetime | None]
+    user_id: Mapped[int] = mapped_column(index=True)
+    user: Mapped[str] = mapped_column(String(255))
+    rating_key: Mapped[int | None]
+    title: Mapped[str] = mapped_column(String(500))
+    media_type: Mapped[str | None] = mapped_column(String(16))
+    player: Mapped[str | None] = mapped_column(String(255))
+    product: Mapped[str | None] = mapped_column(String(64))
+    platform: Mapped[str | None] = mapped_column(String(64))
+    location: Mapped[str | None] = mapped_column(String(16))  # lan, wan
+    quality_profile: Mapped[str | None] = mapped_column(String(64))
+    transcode_decision: Mapped[str | None] = mapped_column(String(32))
+    video_decision: Mapped[str | None] = mapped_column(String(32))
+    audio_decision: Mapped[str | None] = mapped_column(String(32))
+    subtitle_decision: Mapped[str | None] = mapped_column(String(32))
+    # the file's
+    container: Mapped[str | None] = mapped_column(String(32))
+    video_codec: Mapped[str | None] = mapped_column(String(32))
+    video_resolution: Mapped[str | None] = mapped_column(String(16))
+    audio_codec: Mapped[str | None] = mapped_column(String(32))
+    audio_channels: Mapped[int | None]
+    audio_profile: Mapped[str | None] = mapped_column(String(64))
+    # where in the item it started and where it last was, in seconds
+    start_offset: Mapped[int | None]
+    end_offset: Mapped[int | None]
+    # how long it streamed (tautulli's, less pauses), at its stop
+    stream_seconds: Mapped[int | None]
+    # tautulli sent playback error for it
+    error: Mapped[bool] = mapped_column(default=False)
+
+
 class Play(Base):
     """a play from Tautulli's history, copied by web.stats so request stats don't read all
     of it every time. Matched to requests by plex guid, which survives a move to another

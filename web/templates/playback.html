@@ -13,7 +13,7 @@
 {% block content %}
 {% set r = report %}
 <h1>Playback</h1>
-<p class="muted">How Plex streamed movies and episodes once they stopped, and why they transcoded, from Tautulli (what's playing now is on <a href="/status#plex">Status</a>). Synced every {{ interval_minutes }} minutes{% if status.finished_at %}, last {{ status.finished_at | localtime }}{% endif %}; plays are kept {{ keep_days }} days, from {{ backfill_days }} days before the first sync.</p>
+<p class="muted">How Plex streamed movies and episodes once they stopped, and why they transcoded, from Tautulli (what's playing now is on <a href="/status#plex">Status</a>). Synced every {{ interval_minutes }} minutes{% if status.finished_at %}, last {{ status.finished_at | localtime }}{% endif %}; plays are kept {{ keep_days }} days, from {{ backfill_days }} days before the first sync.{% if starts_heard %} Failed starts come from Tautulli's webhook as they happen.{% endif %}</p>
 {% if syncing %}<p class="banner">Syncing. The first sync reads {{ backfill_days }} days of plays and takes a minute or two; this page refreshes until it's done.</p>{% endif %}
 {% if missing %}<p class="banner banner-warn">Connect {{ missing | join(" and ") }} on <a href="/settings/connections">Settings → Connections</a> to see how Plex streams plays here.</p>{% endif %}
 {% if status.error %}<p class="banner banner-bad">{{ status.error }}</p>{% endif %}
@@ -35,6 +35,57 @@
     {% if filters.filtered %}<a class="button button-secondary" href="/playback">Clear</a>{% endif %}
   </div>
 </form>
+
+{% set st = starts %}
+{% if st.troubles %}
+<h2 id="failed-starts">Couldn't start</h2>
+<p class="muted">Tried {{ start_rules.tries }} or more times without it playing for them since (or {{ start_rules.device_tries }} tries of different titles on one device), in the last {{ start_rules.alert_days }} days. Also on <a href="/status#plex">Status</a> until it plays.</p>
+<div class="table-scroll">
+<table class="fixes">
+  <thead><tr><th>Who</th><th>Title</th><th>Device</th><th>Tries</th><th>Last try</th><th>Stream</th></tr></thead>
+  <tbody>
+    {% for t in st.troubles %}
+    <tr>
+      <td class="long"><a href="/playback?{{ filters.query(user=t.user_id) | urlencode }}">{{ t.user }}</a></td>
+      <td class="long">{% if t.kind == "device" %}{{ t.titles | length }} titles<br><span class="muted">{{ t.titles | join(", ") }}</span>{% else %}{{ t.titles[0] }}{% endif %}</td>
+      <td class="long">{{ t.player }}{% if t.remote %}<br><span class="muted">remote</span>{% endif %}</td>
+      <td><span class="decision decision-transcode">{{ t.tries }}</span></td>
+      <td>{{ t.last_at | relative }}</td>
+      <td class="long muted">{{ t.stream }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="hint">One title failing for one person while others play it is usually the file and their app: try it on another of their devices, ask them to pick a lower quality (Plex then converts it), or get another version of the file. Many titles failing on one device is that device or its connection.</p>
+{% endif %}
+{% if st.rows %}
+<details class="fold">
+<summary><h2>Failed starts</h2> <span class="muted">{{ st.failed }} of {{ st.sessions }} session{{ "s" if st.sessions != 1 }}</span></summary>
+<p class="muted">Sessions that stopped within {{ start_rules.short_minutes }} minutes having played under {{ start_rules.played_seconds }} seconds, or that Plex reported an error for. Tautulli leaves these out of its history. One now and then is someone changing their mind.</p>
+<div class="table-scroll">
+<table data-sortable>
+  <thead><tr><th>Who</th><th>Title</th><th>Device</th><th>Tries</th><th>Last try</th><th>Played since</th><th>Stream</th></tr></thead>
+  <tbody>
+    {% for f in st.rows %}
+    <tr>
+      <td class="long">{{ f.user }}</td>
+      <td class="long">{{ f.title }}</td>
+      <td class="long">{{ f.player }}{% if f.remote %}<br><span class="muted">remote</span>{% endif %}</td>
+      <td>{{ f.tries }}{% if f.errors %}<br><span class="muted">{{ f.errors }} error{{ "s" if f.errors != 1 }}</span>{% endif %}</td>
+      <td>{{ f.last_at | localtime }}</td>
+      <td>{% if f.played_since %}{{ f.played_since | localtime }}{% else %}<span class="muted">no</span>{% endif %}</td>
+      <td class="long muted">{{ f.stream }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% if st.more %}<p class="muted">{{ st.more }} more not shown.</p>{% endif %}
+</details>
+{% elif not starts_heard %}
+<p class="muted">To catch titles someone tries and can't start (Tautulli leaves those out of its history), send Tautulli's playback webhook here: <a href="/settings/webhook#tautulli">Settings → Webhook</a>.</p>
+{% endif %}
 
 {% if not r.plays %}
 <p class="empty">{% if status.finished_at %}No plays in the {{ WINDOWS[filters.window][0] | lower }}{% if filters.user is not none %} for this user{% endif %}.{% else %}Nothing synced yet.{% endif %}</p>

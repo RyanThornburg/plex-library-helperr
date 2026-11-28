@@ -108,7 +108,7 @@ SEERR_PATHS = (
 # login's hash), config_secrets or login_sessions; the assistant's own aren't useful
 DB_TABLES = (
     "plays", "playbacks", "media_requests", "library_items", "health_incidents", "job_runs",
-    "schedules", "trash_events", "kometa_runs", "config_versions", "remover_rule_settings",
+    "schedules", "trash_events", "kometa_runs", "play_sessions", "config_versions", "remover_rule_settings",
 )
 
 

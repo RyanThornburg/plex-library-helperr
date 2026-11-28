@@ -24,7 +24,7 @@ from config.models import ConfigSettings
 from logging_config import redacted
 from web.db import HealthIncident
 from web.jobs import JobRunner, utc_now
-from web import maintenance
+from web import maintenance, play_sessions
 from web.kometa import kometa_status
 from web.status import LEVELS, Item, Problem, ServiceStatus, check_all
 from web.sync import BackgroundSync, SyncStatus, save_status
@@ -158,9 +158,22 @@ def record(engine: Engine, statuses: Iterable[ServiceStatus], now: datetime) -> 
 
 
 def all_statuses(engine: Engine, settings: ConfigSettings, now: datetime) -> list[ServiceStatus]:
-    """every service's card: the ones asked now (web.status), then kometa's, read from
-    what its webhooks sent"""
-    return check_all(settings, now) + [kometa_status(engine, now)]
+    """every service's card: the ones asked now (web.status), then what webhooks sent"""
+    return with_webhooks(engine, check_all(settings, now), now)
+
+
+def with_webhooks(engine: Engine, found: list[ServiceStatus], now: datetime) -> list[ServiceStatus]:
+    """the cards asked now, with what webhooks sent: failed starts (Tautulli's) on Plex's
+    card while it's connected and checked, then Kometa's card"""
+    plex = next((s for s in found if s.service == "plex"), None)
+    if plex is not None and plex.state != "off" and not plex.error:
+        try:
+            for problem in play_sessions.problems(engine, now):
+                plex.problem(problem.level, problem.text, problem.key)
+            plex.problems.sort(key=lambda p: -LEVELS.get(p.level, 0))
+        except Exception:
+            logger.exception("HEALTH\t Couldn't read Plex sessions")
+    return found + [kometa_status(engine, now)]
 
 
 def check(

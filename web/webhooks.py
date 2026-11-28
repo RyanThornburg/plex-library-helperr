@@ -1,4 +1,5 @@
-"""webhooks.py - radarr/sonarr and kometa webhooks, authenticated with the app's api key"""
+"""webhooks.py - radarr/sonarr, kometa and tautulli webhooks, authenticated with the app's
+api key"""
 
 import base64
 import binascii
@@ -15,7 +16,7 @@ from starlette.concurrency import run_in_threadpool
 from sqlalchemy import Engine, delete
 from sqlalchemy.orm import Session
 
-from web import kometa
+from web import kometa, play_sessions
 from web.body import read_body
 from web.db import AppSetting, TrashEvent
 from web.jobs import JobRunner, utc_now
@@ -35,8 +36,8 @@ IMPORT_EVENT = "Download"
 
 def api_key(engine: Engine) -> str:
     """the app's api key, generated the first time. Like the *arrs it's stored and shown
-    as is: it only lets radarr/sonarr start movers and kometa report its runs, and it's
-    sent with every webhook"""
+    as is: it only lets radarr/sonarr start movers, kometa report its runs and tautulli
+    its sessions, and it's sent with every webhook"""
     with Session(engine) as session:
         setting = session.get(AppSetting, API_KEY_SETTING)
         if setting is None:
@@ -178,3 +179,18 @@ async def kometa_webhook(request: Request) -> JSONResponse:
         # one line whatever kometa's text holds, so it can't fake another log line
         logger.info("WEB\t %s", " ".join(said.split()))
     return JSONResponse({"event": event, "recorded": said is not None})
+
+
+@router.post("/webhooks/tautulli")
+async def tautulli_webhook(request: Request) -> JSONResponse:
+    """tautulli's webhook notification agent, on playback start, stop and error: every
+    Plex session, short ones too, so failed starts show (web.play_sessions). The key is
+    the url's password, like kometa's. Other actions are accepted and ignored"""
+    check_key(request)
+    payload = await json_body(request)
+    event = str(payload.get("event", ""))[:32]
+    stored, said = await run_in_threadpool(play_sessions.record, request.app.state.engine, payload, utc_now())
+    if said is not None:
+        # one line whatever the title holds
+        logger.info("WEB\t Failed start: %s", " ".join(said.split()))
+    return JSONResponse({"event": event, "recorded": stored})

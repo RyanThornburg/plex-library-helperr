@@ -2,12 +2,14 @@
 transcoded, from the table web.playback syncs"""
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
+from web import play_sessions
 from web.jobs import utc_now
 from web.playback import (
     BACKFILL,
@@ -65,7 +67,8 @@ def playback_sync(request: Request) -> PlaybackSync:
 @router.get("/playback", response_class=HTMLResponse)
 def playback_page(request: Request) -> HTMLResponse:
     filters = parse_filters(request)
-    plays = window_plays(request.app.state.engine, utc_now() - WINDOWS[filters.window][1])
+    now = utc_now()
+    plays = window_plays(request.app.state.engine, now - WINDOWS[filters.window][1])
     # everyone in the window, so the user select keeps them while one is picked
     users = sorted({p.user_id: p.user for p in plays}.items(), key=lambda u: u[1].casefold())
     if filters.user is not None:
@@ -81,6 +84,15 @@ def playback_page(request: Request) -> HTMLResponse:
             "filters": filters,
             "users": users,
             "report": report(plays),
+            "starts": starts(request, filters, now),
+            "starts_heard": play_sessions.last_received(request.app.state.engine),
+            "start_rules": {
+                "short_minutes": int(play_sessions.SHORT.total_seconds() // 60),
+                "played_seconds": int(play_sessions.PLAYED.total_seconds()),
+                "tries": play_sessions.TRIES,
+                "device_tries": play_sessions.DEVICE_TRIES,
+                "alert_days": play_sessions.ALERT_FOR.days,
+            },
             "keep_days": KEEP.days,
             "backfill_days": BACKFILL.days,
             "file_min_users": FILE_MIN_USERS,
@@ -88,6 +100,16 @@ def playback_page(request: Request) -> HTMLResponse:
             "WINDOWS": WINDOWS,
             "DECISIONS": DECISIONS,
         },
+    )
+
+
+def starts(request: Request, filters: Filters, now: datetime) -> dict[str, Any]:
+    """failed starts in the window, from Tautulli's webhook (web.play_sessions)"""
+    engine = request.app.state.engine
+    return play_sessions.report(
+        play_sessions.window_sessions(engine, now - WINDOWS[filters.window][1], filters.user),
+        play_sessions.recent_sessions(engine, now, filters.user),
+        now,
     )
 
 
@@ -100,7 +122,8 @@ def sync_now(request: Request) -> RedirectResponse:
 @router.get("/api/playback")
 def api_playback(request: Request) -> JSONResponse:
     filters = parse_filters(request)
-    since = utc_now() - WINDOWS[filters.window][1]
+    now = utc_now()
+    since = now - WINDOWS[filters.window][1]
     status = sync_status(request.app.state.engine, STATUS_SETTING)
     return JSONResponse(
         jsonable_encoder(
@@ -110,6 +133,7 @@ def api_playback(request: Request) -> JSONResponse:
                 "synced_at": status.finished_at,
                 "sync_error": status.error,
                 **report(window_plays(request.app.state.engine, since, filters.user)),
+                "failed_starts": starts(request, filters, now),
             }
         )
     )
